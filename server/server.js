@@ -1,0 +1,444 @@
+import express from 'express'
+import fs from 'fs/promises'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { spawn } from 'child_process'
+import cors from 'cors'
+import RSSParser from 'rss-parser'
+import os from 'os'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+const app = express()
+const PORT = 3000
+
+// 数据文件路径
+const DATA_FILE = path.join(__dirname, 'data.json')
+const DEFAULT_FILE = path.join(__dirname, 'default.json')
+const MUSIC_DIR = path.join(__dirname, 'music')
+const CACHE_TTL_MS = 60 * 60 * 1000
+const HOT_CACHE = { weibo: { ts: 0, data: [] }, news: { ts: 0, data: [] }, rss: new Map() }
+
+// ------------------------------------------------------------------
+// 全局中间件
+// ------------------------------------------------------------------
+app.use(cors())
+// 修复点1：确保有足够的 JSON 大小限制，防止保存大数据时报错
+app.use(express.json({ limit: '50mb' }))
+app.use(express.urlencoded({ extended: true }))
+
+// ------------------------------------------------------------------
+// 初始化 data.json & music 目录
+// ------------------------------------------------------------------
+async function ensureInit() {
+  try {
+    await fs.access(DATA_FILE)
+  } catch {
+    try {
+      const def = await fs.readFile(DEFAULT_FILE, 'utf-8')
+      await fs.writeFile(DATA_FILE, def)
+    } catch {
+      const initData = {
+        groups: [{ id: "default", title: "常用", items: [] }],
+        widgets: [],
+        appConfig: {},
+        password: "admin"
+      }
+      await fs.writeFile(DATA_FILE, JSON.stringify(initData, null, 2))
+    }
+  }
+
+  try { 
+    await fs.access(MUSIC_DIR) 
+  } catch {
+    await fs.mkdir(MUSIC_DIR, { recursive: true })
+  }
+}
+
+ensureInit()
+
+// ------------------------------------------------------------------
+// 读取配置 (核心修复点)
+// ------------------------------------------------------------------
+app.get('/api/data', async (req, res) => {
+  try {
+    // 修复点2：强制禁用浏览器缓存，解决刷新后配置还原的问题
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    res.setHeader('Pragma', 'no-cache')
+    res.setHeader('Expires', '0')
+
+    const json = await fs.readFile(DATA_FILE, 'utf-8')
+    res.json(JSON.parse(json))
+  } catch (err) {
+    console.error('[读取配置失败]:', err)
+    res.status(500).json({ error: 'Failed to read data.json' })
+  }
+})
+
+// ------------------------------------------------------------------
+// 保存配置
+// ------------------------------------------------------------------
+app.post('/api/save', async (req, res) => {
+  console.log(`[Save] Received save request. Body size: ${JSON.stringify(req.body).length} chars`)
+  try {
+    const body = req.body
+    // 修复点3：增加简单的空数据检查，防止误删
+    if (!body || Object.keys(body).length === 0) {
+      console.warn('[Save] Empty body received, skipping save.')
+      return res.status(400).json({ error: 'Empty body' })
+    }
+    await fs.writeFile(DATA_FILE, JSON.stringify(body, null, 2))
+    console.log('[Save] Successfully wrote to data.json')
+    res.json({ success: true })
+  } catch (err) {
+    console.error('[保存配置失败]:', err)
+    res.status(500).json({ error: 'Failed to save config' })
+  }
+})
+
+// ------------------------------------------------------------------
+// 导入配置
+// ------------------------------------------------------------------
+app.post('/api/data', async (req, res) => {
+  try {
+    await fs.writeFile(DATA_FILE, JSON.stringify(req.body, null, 2))
+    res.json({ success: true })
+  } catch (err) {
+    console.error('[导入配置失败]:', err)
+    res.status(500).json({ error: 'Failed to import data' })
+  }
+})
+
+app.post('/api/reset', async (req, res) => {
+  try {
+    try {
+      const def = await fs.readFile(DEFAULT_FILE, 'utf-8')
+      await fs.writeFile(DATA_FILE, def)
+    } catch {
+      const init = {
+        groups: [{ id: 'g1', title: '常用', items: [] }],
+        widgets: [
+          { id: 'w1', type: 'clock', enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+          { id: 'w2', type: 'weather', enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+          { id: 'w3', type: 'calendar', enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+          { id: 'w4', type: 'memo', enable: true, data: '', colSpan: 1, rowSpan: 1, isPublic: false },
+          { id: 'w5', type: 'search', enable: true, isPublic: true },
+          { id: 'w6', type: 'bookmarks', enable: true, data: [], colSpan: 1, rowSpan: 2, isPublic: false },
+          { id: 'w7', type: 'quote', enable: true, isPublic: true },
+          { id: 'w8', type: 'todo', enable: true, data: [], colSpan: 1, rowSpan: 1, isPublic: false },
+          { id: 'w9', type: 'calculator', enable: false, colSpan: 1, rowSpan: 1, isPublic: true },
+          { id: 'w10', type: 'ip', enable: false, colSpan: 1, rowSpan: 1, isPublic: false },
+          { id: 'w11', type: 'iframe', enable: false, data: { url: '' }, colSpan: 2, rowSpan: 2, isPublic: true },
+          { id: 'player', type: 'player', enable: true, isPublic: true },
+          { id: 'hot-list', type: 'hot', enable: true, colSpan: 1, rowSpan: 2, isPublic: true, data: { rssUrl: 'https://www.v2ex.com/feed/' } },
+        ],
+        appConfig: {
+          background: '',
+          customTitle: '我的导航',
+          titleAlign: 'left',
+          titleSize: 48,
+          titleColor: '#ffffff',
+          cardLayout: 'vertical',
+          cardSize: 120,
+          gridGap: 24,
+          cardBgColor: 'rgba(255, 255, 255, 0.8)',
+          iconShape: 'rounded'
+        },
+        password: 'admin'
+      }
+      await fs.writeFile(DATA_FILE, JSON.stringify(init, null, 2))
+    }
+    res.json({ success: true })
+  } catch (err) {
+    console.error('[恢复初始化失败]:', err)
+    res.status(500).json({ error: 'Failed to reset to defaults' })
+  }
+})
+
+// 将当前配置保存为默认模板
+app.post('/api/default/save', async (req, res) => {
+  try {
+    const cur = await fs.readFile(DATA_FILE, 'utf-8')
+    await fs.writeFile(DEFAULT_FILE, cur)
+    res.json({ success: true })
+  } catch (err) {
+    console.error('[保存默认模板失败]:', err)
+    res.status(500).json({ error: 'Failed to save default template' })
+  }
+})
+
+const rssParser = new RSSParser()
+
+// ------------------------------------------------------------------
+// 微博热搜 (保留完整逻辑)
+// ------------------------------------------------------------------
+app.get('/api/hot/weibo', async (req, res) => {
+  console.log('GET /api/hot/weibo')
+  try {
+    const force = req.query.force === '1'
+    if (!force && HOT_CACHE.weibo.data.length && (Date.now() - HOT_CACHE.weibo.ts) < CACHE_TTL_MS) {
+      return res.json(HOT_CACHE.weibo.data)
+    }
+    const r = await fetch('https://weibo.com/ajax/side/hotSearch', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Referer: 'https://weibo.com/'
+      }
+    })
+    const text = await r.text()
+    if (!r.ok) return res.status(r.status).json({ error: 'upstream_error', status: r.status, body: text })
+    let j
+    try { j = JSON.parse(text) } catch { return res.status(502).json({ error: 'invalid_json', body: text.slice(0, 500) }) }
+    const arr = Array.isArray(j?.data?.realtime) ? j.data.realtime : []
+    const items = arr.map(x => ({
+      title: x.word || x.note || '',
+      url: 'https://s.weibo.com/weibo?q=' + encodeURIComponent(x.word || x.note || ''),
+      hot: x.num || x.rank || ''
+    }))
+    HOT_CACHE.weibo = { ts: Date.now(), data: items }
+    res.json(items)
+  } catch (err) {
+    if (HOT_CACHE.weibo.data.length) return res.json(HOT_CACHE.weibo.data)
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// ------------------------------------------------------------------
+// 中国新闻网 (替换原百度热搜)
+// ------------------------------------------------------------------
+app.get('/api/hot/news', async (req, res) => {
+  console.log('GET /api/hot/news')
+  try {
+    const force = req.query.force === '1'
+    if (!force && HOT_CACHE.news.data.length && (Date.now() - HOT_CACHE.news.ts) < CACHE_TTL_MS) {
+      return res.json(HOT_CACHE.news.data)
+    }
+    
+    // 设置超时，防止请求挂起
+    const feed = await rssParser.parseURL('https://www.chinanews.com.cn/rss/scroll-news.xml')
+    
+    const items = (feed.items || []).slice(0, 50).map(i => {
+      let timeStr = ''
+      if (i.pubDate) {
+         try {
+           const d = new Date(i.pubDate)
+           if (!isNaN(d.getTime())) {
+             const mon = String(d.getMonth() + 1).padStart(2, '0')
+             const day = String(d.getDate()).padStart(2, '0')
+             const h = String(d.getHours()).padStart(2, '0')
+             const m = String(d.getMinutes()).padStart(2, '0')
+             timeStr = `${mon}-${day} ${h}:${m}`
+           } else {
+             timeStr = i.pubDate.slice(0, 16)
+           }
+         } catch {
+           timeStr = ''
+         }
+      }
+      return {
+        title: i.title || '',
+        url: i.link || '',
+        hot: timeStr
+      }
+    })
+
+    HOT_CACHE.news = { ts: Date.now(), data: items }
+    res.json(items)
+  } catch (err) {
+    console.error('Fetch news failed:', err)
+    // 错误处理：如果有缓存，返回缓存；否则返回错误
+    if (HOT_CACHE.news.data.length) return res.json(HOT_CACHE.news.data)
+    res.status(502).json({ error: '获取新闻失败: ' + String(err.message || err) })
+  }
+})
+
+// ------------------------------------------------------------------
+// GitHub 热搜 (保留完整逻辑)
+// ------------------------------------------------------------------
+app.get('/api/hot/github', async (req, res) => {
+  console.log('GET /api/hot/github', req.query)
+  try {
+    const url = typeof req.query.url === 'string' ? req.query.url : ''
+    if (!url) return res.status(400).json({ error: 'rss_url_required' })
+    const force = req.query.force === '1'
+    const entry = HOT_CACHE.rss.get(url)
+    if (!force && entry && (Date.now() - entry.ts) < CACHE_TTL_MS) {
+      return res.json(entry.data)
+    }
+    const feed = await rssParser.parseURL(url)
+    const items = (feed.items || []).map(i => ({
+      title: i.title || '',
+      url: i.link || '',
+      hot: i.isoDate || i.pubDate || ''
+    }))
+    HOT_CACHE.rss.set(url, { ts: Date.now(), data: items })
+    res.json(items)
+  } catch (err) {
+    const entry = HOT_CACHE.rss.get(String(req.query.url || ''))
+    if (entry) return res.json(entry.data)
+    res.status(502).json({ error: String(err) })
+  }
+})
+
+// ------------------------------------------------------------------
+// RSS 通用解析 (保留完整逻辑)
+// ------------------------------------------------------------------
+app.get('/api/rss/parse', async (req, res) => {
+  try {
+    const url = typeof req.query.url === 'string' ? req.query.url : ''
+    if (!url) return res.status(400).json({ error: 'rss_url_required' })
+    const force = req.query.force === '1'
+    const entry = HOT_CACHE.rss.get(url)
+    if (!force && entry && (Date.now() - entry.ts) < CACHE_TTL_MS) {
+      return res.json({ meta: entry.meta || {}, items: entry.data })
+    }
+    const feed = await rssParser.parseURL(url)
+    const items = (feed.items || []).map(i => ({
+      title: i.title || '',
+      url: i.link || '',
+      hot: i.isoDate || i.pubDate || ''
+    }))
+    const meta = { title: feed.title || url, icon: (feed.image && (feed.image.url || feed.image.link)) || '' }
+    HOT_CACHE.rss.set(url, { ts: Date.now(), data: items, meta })
+    res.json({ meta, items })
+  } catch (err) {
+    const entry = HOT_CACHE.rss.get(String(req.query.url || ''))
+    if (entry) return res.json({ meta: entry.meta || {}, items: entry.data })
+    res.status(502).json({ error: String(err) })
+  }
+})
+
+
+// ------------------------------------------------------------------
+// 音乐列表 (保留完整逻辑)
+// ------------------------------------------------------------------
+app.get('/api/music-list', async (req, res) => {
+  try {
+    const files = await fs.readdir(MUSIC_DIR)
+    const list = files.filter(f => /\.(mp3|flac|wav|m4a)$/i.test(f))
+    res.json(list)
+  } catch (err) {
+    console.error('[音乐列表读取失败]:', err)
+    res.status(500).json({ error: 'Failed to read music folder' })
+  }
+})
+
+// ------------------------------------------------------------------
+// 图标列表 (新增功能)
+// ------------------------------------------------------------------
+app.get('/api/icons', async (req, res) => {
+  try {
+    const iconsDir = path.join(__dirname, '../public/icons')
+    // 检查目录是否存在
+    try {
+      await fs.access(iconsDir)
+    } catch {
+      // 如果不存在，返回空数组
+      return res.json([])
+    }
+    
+    const files = await fs.readdir(iconsDir)
+    // 过滤出图片文件 (png, jpg, jpeg, svg, ico, webp)
+    const list = files.filter(f => /\.(png|jpg|jpeg|svg|ico|webp)$/i.test(f))
+    res.json(list)
+  } catch (err) {
+    console.error('[图标列表读取失败]:', err)
+    res.status(500).json({ error: 'Failed to read icons folder' })
+  }
+})
+
+// ------------------------------------------------------------------
+// CGI 处理器 (新增功能)
+// ------------------------------------------------------------------
+app.all(/.*\.cgi(\/.*)?$/, (req, res) => {
+  const cgiScript = path.join(__dirname, 'cgi-bin', 'index.cgi')
+  console.log(`[CGI] Handling request: ${req.originalUrl} via ${cgiScript}`)
+
+  const env = {
+    ...process.env,
+    REQUEST_METHOD: req.method,
+    REQUEST_URI: req.originalUrl,
+    QUERY_STRING: req.originalUrl.split('?')[1] || '',
+    SERVER_PROTOCOL: 'HTTP/1.1',
+    SERVER_SOFTWARE: 'NodeJS',
+    SCRIPT_NAME: req.path,
+    PATH_INFO: req.path,
+  }
+
+  const child = spawn('python3', [cgiScript], { env })
+
+  let responseHeadersParsed = false
+  let buffer = Buffer.alloc(0)
+
+  child.stdout.on('data', (chunk) => {
+    if (responseHeadersParsed) {
+      res.write(chunk)
+      return
+    }
+
+    buffer = Buffer.concat([buffer, chunk])
+
+    // 查找头部结束标记
+    let headerEnd = -1
+    if (buffer.indexOf('\r\n\r\n') !== -1) {
+      headerEnd = buffer.indexOf('\r\n\r\n')
+    } else if (buffer.indexOf('\n\n') !== -1) {
+      headerEnd = buffer.indexOf('\n\n')
+    }
+
+    if (headerEnd !== -1) {
+      const headerPart = buffer.slice(0, headerEnd).toString()
+      // 跳过头部结束标记
+      const bodyPart = buffer.slice(headerEnd + (buffer.indexOf('\r\n\r\n') !== -1 ? 4 : 2))
+
+      const lines = headerPart.split(/\r?\n/)
+      lines.forEach(line => {
+        const parts = line.split(': ')
+        const key = parts[0]
+        const value = parts.slice(1).join(': ')
+        if (key && value) {
+          if (key.toLowerCase() === 'status') {
+            res.status(parseInt(value))
+          } else {
+            res.setHeader(key, value)
+          }
+        }
+      })
+
+      responseHeadersParsed = true
+      if (bodyPart.length > 0) {
+        res.write(bodyPart)
+      }
+    }
+  })
+
+  child.stderr.on('data', (data) => {
+    console.error(`[CGI Error]: ${data}`)
+  })
+
+  child.on('close', (code) => {
+    if (!responseHeadersParsed) {
+        // 如果脚本结束了还没输出头，说明出错了
+        console.error('[CGI] Script exited without headers')
+        if (!res.headersSent) res.status(500).send('CGI Script Error')
+    }
+    res.end()
+  })
+})
+
+// 静态文件
+app.use('/music', express.static(MUSIC_DIR))
+
+// ------------------------------------------------------------------
+// 前端 dist 目录
+// ------------------------------------------------------------------
+const distPath = path.join(__dirname, '../dist')
+app.use(express.static(distPath))
+app.get(/.*/, (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'))
+})
+
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`)
+})
