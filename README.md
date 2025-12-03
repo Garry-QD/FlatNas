@@ -148,8 +148,17 @@ FlatNas/
 如果您使用 Debian 系统，可以使用我们提供的自动化脚本进行无 Docker 部署。
 详细指南请参考：[一键部署文档](README_DEPLOY.md)
 
+### 快速安装（推荐）
+
+无需手动下载代码，直接运行以下命令即可：
+
 ```bash
-# 快速开始
+wget -O deploy.sh https://raw.githubusercontent.com/Garry-QD/FlatNas/main/deploy.sh && sudo bash deploy.sh install
+```
+
+### 手动安装
+
+```bash
 git clone https://github.com/Garry-QD/FlatNas.git
 cd FlatNas
 chmod +x deploy.sh

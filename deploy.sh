@@ -51,8 +51,9 @@ check_system() {
 # 2. Install Dependencies
 install_dependencies() {
     log "Updating system and installing dependencies..."
-    apt-get update
-    apt-get install -y curl git gnupg2 ca-certificates lsb-release
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq
+    apt-get install -y -qq curl git gnupg2 ca-certificates lsb-release
 
     # Install Node.js
     if ! command -v node &> /dev/null; then
@@ -60,8 +61,8 @@ install_dependencies() {
         mkdir -p /etc/apt/keyrings
         curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
         echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
-        apt-get update
-        apt-get install -y nodejs
+        apt-get update -qq
+        apt-get install -y -qq nodejs
     else
         log "Node.js is already installed: $(node -v)"
     fi
@@ -69,7 +70,7 @@ install_dependencies() {
     # Install Nginx
     if ! command -v nginx &> /dev/null; then
         log "Installing Nginx..."
-        apt-get install -y nginx
+        apt-get install -y -qq nginx
     else
         log "Nginx is already installed."
     fi
@@ -235,7 +236,17 @@ case "$1" in
         deploy_app
         setup_service
         setup_nginx
-        log "Deployment Complete! Access your FlatNas at http://$(curl -s ifconfig.me) or local IP."
+        
+        IP_ADDR=$(hostname -I | awk '{print $1}')
+        PUBLIC_IP=$(curl -s ifconfig.me || echo "Unknown")
+        
+        log "==============================================="
+        log "   FlatNas Deployment Successful!   "
+        log "==============================================="
+        log "Access your FlatNas at:"
+        log "  Local:   http://${IP_ADDR}"
+        log "  Public:  http://${PUBLIC_IP}"
+        log "==============================================="
         ;;
     update)
         check_system

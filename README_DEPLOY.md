@@ -9,27 +9,22 @@
 - **权限**: root 用户或具有 sudo 权限的用户
 - **网络**: 能够访问 GitHub 和 npm 镜像源
 
-### 获取脚本
-如果您还没有下载本项目，请先克隆仓库或直接下载 `deploy.sh` 脚本。
+### 获取脚本与快速安装
+
+**方式一：快速安装命令（推荐）**
+无需手动下载代码，直接复制以下命令执行即可：
+
+```bash
+wget -O deploy.sh https://raw.githubusercontent.com/Garry-QD/FlatNas/main/deploy.sh && sudo bash deploy.sh install
+```
+
+**方式二：手动克隆仓库**
+如果您希望手动管理代码：
 
 ```bash
 git clone https://github.com/Garry-QD/FlatNas.git
 cd FlatNas
-```
-
-## 2. 使用方法
-
-首先，赋予脚本执行权限：
-
-```bash
 chmod +x deploy.sh
-```
-
-### 2.1 全新安装 (Install)
-
-执行以下命令进行全自动安装。该过程包括环境检查、依赖安装(Node.js, Nginx)、应用构建、服务配置和反向代理设置。
-
-```bash
 sudo ./deploy.sh install
 ```
 
