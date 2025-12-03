@@ -143,6 +143,19 @@ FlatNas/
          - ./music:/app/server/music #映射播放器路径
    ```
 
+## 🚀 一键部署 (Debian)
+
+如果您使用 Debian 系统，可以使用我们提供的自动化脚本进行无 Docker 部署。
+详细指南请参考：[一键部署文档](README_DEPLOY.md)
+
+```bash
+# 快速开始
+git clone https://github.com/Garry-QD/FlatNas.git
+cd FlatNas
+chmod +x deploy.sh
+sudo ./deploy.sh install
+```
+
 ## ⚙️ 配置说明
 
 - **默认密码**: 系统初始密码为 `admin`，请登录后在设置中及时修改。

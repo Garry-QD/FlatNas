@@ -59,9 +59,20 @@ const fetchWeather = async () => {
 
     let city = '本地'
     if (ipData.success && ipData.location) {
-      // 简单处理一下 location，去掉多余的信息（如运营商）
-      // 例如 "浙江省宁波市 电信" -> "浙江省宁波市"
-      city = ipData.location.split(' ')[0]
+      // 1. 去除运营商信息
+      let loc = ipData.location.split(' ')[0]
+
+      // 2. 去除省份、自治区、特别行政区前缀
+      loc = loc.replace(/^(?:.*?省|.*?自治区|.*?特别行政区)/, '')
+
+      // 3. 保留第一级城市 (如 "宁波市慈溪市" -> "宁波市")
+      //    只匹配第一个 "市/州/盟/地区"
+      const match = loc.match(/^(.*?[市州盟地区])/)
+      if (match) {
+        loc = match[1]
+      }
+
+      city = loc
     }
 
     weather.value = {
@@ -189,13 +200,16 @@ onUnmounted(() => {
             class="text-[10px] sm:text-xs font-bold tracking-widest uppercase bg-white/10 px-1.5 py-0.5 rounded backdrop-blur-md border border-white/10 shadow-sm"
             >{{ date }}</span
           >
-          <div
-            v-if="weatherType === 'sunny' || weatherType === 'clear-night'"
-            class="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]"
-          ></div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm sm:text-base opacity-90 font-medium">{{ weather.text }}</span>
+            <div
+              v-if="weatherType === 'sunny' || weatherType === 'clear-night'"
+              class="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]"
+            ></div>
+          </div>
         </div>
         <div
-          class="mt-1 sm:mt-2 text-4xl sm:text-5xl font-bold tracking-tighter drop-shadow-lg font-mono leading-none bg-gradient-to-b from-white to-white/80 bg-clip-text text-transparent"
+          class="mt-1 sm:mt-2 text-4xl sm:text-5xl font-bold tracking-tighter drop-shadow-lg font-mono leading-none bg-gradient-to-b from-white to-white/80 bg-clip-text text-transparent scale-85 origin-left"
         >
           {{ time }}
         </div>
@@ -229,11 +243,10 @@ onUnmounted(() => {
               >{{ weather.city }}</span
             >
           </div>
-          <span class="text-[10px] sm:text-xs opacity-75 pl-5 font-light">{{ weather.text }}</span>
         </div>
         <div class="flex flex-col items-end">
           <div
-            class="text-3xl sm:text-4xl font-bold tracking-tight drop-shadow-xl leading-none scale-150 origin-bottom-right"
+            class="text-3xl sm:text-4xl font-bold tracking-tight drop-shadow-xl leading-none scale-85 origin-bottom-right"
           >
             {{ weather.temp }}<span class="text-lg sm:text-2xl align-top">°</span>
           </div>

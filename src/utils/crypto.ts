@@ -40,6 +40,7 @@ export async function encryptPayload(plain: string, password: string) {
   return { v: 1, alg: 'AES-GCM', kdf: 'PBKDF2-SHA256', salt: toB64(salt.buffer), iv: toB64(iv.buffer), ct: toB64(cipherBuf), md5: md5sum(plain), ts: new Date().toISOString() }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function decryptPayload(payload: any, password: string) {
   const fromB64 = (b: string) => Uint8Array.from(atob(b), c => c.charCodeAt(0)).buffer
   const enc = new TextEncoder()

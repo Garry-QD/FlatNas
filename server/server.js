@@ -168,6 +168,17 @@ app.get('/api/ping', async (req, res) => {
 // IP 检测代理接口 (解决前端 CORS 问题)
 // ------------------------------------------------------------------
 app.get('/api/ip', async (req, res) => {
+  // 获取客户端真实 IP (尝试从 X-Forwarded-For 或 socket 获取)
+  let clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || ''
+  // 清理 IPv6 映射前缀
+  if (clientIp.startsWith('::ffff:')) {
+    clientIp = clientIp.substring(7)
+  }
+  // 如果有多个 IP (X-Forwarded-For)，取第一个
+  if (clientIp.includes(',')) {
+    clientIp = clientIp.split(',')[0].trim()
+  }
+
   const sources = [
     { url: 'https://whois.pconline.com.cn/ipJson.jsp?json=true', type: 'pconline' },
     { url: 'https://qifu-api.baidubce.com/ip/local/geo/v1/district', type: 'baidu' },
@@ -211,7 +222,7 @@ app.get('/api/ip', async (req, res) => {
       }
 
       if (ip) {
-        return res.json({ success: true, ip, location, source: s.type })
+        return res.json({ success: true, ip, location, source: s.type, clientIp })
       }
     } catch (e) {
       console.warn(`[IP Proxy] Failed to fetch from ${s.type}:`, e.message)
@@ -219,8 +230,7 @@ app.get('/api/ip', async (req, res) => {
   }
 
   // Fallback: try to get IP from request socket if all externals fail
-  const remoteIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress
-  res.json({ success: false, ip: remoteIp, location: 'Unknown', source: 'fallback' })
+  res.json({ success: false, ip: clientIp, location: 'Unknown', source: 'fallback', clientIp })
 })
 
 // ------------------------------------------------------------------

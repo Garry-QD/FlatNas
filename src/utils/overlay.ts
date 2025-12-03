@@ -58,13 +58,17 @@ export function waitForDisappearance(timeoutMs = 10000): Promise<void> {
 
 export function attachErrorCapture() {
   const logs: Array<{ type: string; message: string; stack?: string }> = []
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const record = (type: string, err: any) => {
     const entry = { type, message: String(err?.message || err), stack: String(err?.stack || '') }
     logs.push(entry)
     console.error('[dev-error]', entry)
   }
   window.addEventListener('error', (e) => record('error', e.error || e.message))
-  window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => record('unhandledrejection', e.reason))
+  window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) =>
+    record('unhandledrejection', e.reason),
+  )
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(window as any).__devErrorLogs = logs
 }
 
@@ -73,7 +77,7 @@ export async function ensureOverlayHandled() {
     await waitForAppearance(1000)
     // Give Vite some room, then wait for it to disappear
     await waitForDisappearance(15000)
-  } catch (e) {
+  } catch {
     // If overlay persists, we still capture errors for diagnostics
   }
 }

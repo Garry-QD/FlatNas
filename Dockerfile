@@ -6,7 +6,7 @@ WORKDIR /app
 # 1. 安装项目依赖
 # 利用缓存层，如果 package.json 没变，就不重新 npm install
 COPY package.json package-lock.json ./
-RUN npm install
+RUN npm config set registry https://registry.npmmirror.com && npm install
 
 # 2. 拷贝所有源代码
 COPY . .
@@ -25,7 +25,7 @@ WORKDIR /app
 # 由于 server 目录没有 package.json，我们使用根目录的 package.json
 # 这里的依赖包含 express, cors 等后端需要的包
 COPY package.json package-lock.json ./
-RUN npm install --omit=dev
+RUN npm config set registry https://registry.npmmirror.com && npm install --omit=dev
 
 # 2. 准备后端文件结构
 COPY server/ ./server/

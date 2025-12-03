@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useMainStore } from '../stores/main'
+import type { RssFeed, WidgetConfig, RssCategory, SearchEngine } from '@/types'
 import IconUploader from './IconUploader.vue'
 import PasswordConfirmModal from './PasswordConfirmModal.vue'
 import { VueDraggable } from 'vue-draggable-plus'
 
-const props = defineProps<{ show: boolean }>()
+defineProps<{ show: boolean }>()
 const emit = defineEmits(['update:show'])
 const store = useMainStore()
 
@@ -81,7 +82,7 @@ const handleFileChange = (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
   const reader = new FileReader()
-  reader.onload = async (e) => {
+  reader.onload = async (e: ProgressEvent<FileReader>) => {
     try {
       const content = e.target?.result as string
       const data = JSON.parse(content)
@@ -144,7 +145,7 @@ const handleSaveAsDefault = async () => {
 
 // 修复：移除 computed 中的副作用，改用 onMounted 初始化
 onMounted(() => {
-  store.widgets.forEach((w) => {
+  store.widgets.forEach((w: WidgetConfig) => {
     if (w.type === 'iframe' && !w.data) {
       w.data = { url: '' }
     }
@@ -163,10 +164,10 @@ const addSearchEngine = () => {
   store.appConfig.searchEngines.push({ id, key, label, urlTemplate })
 }
 const removeSearchEngine = (key: string) => {
-  const list = (store.appConfig.searchEngines || []).filter((e) => e.key !== key)
+  const list = (store.appConfig.searchEngines || []).filter((e: SearchEngine) => e.key !== key)
   store.appConfig.searchEngines = list
   if (store.appConfig.defaultSearchEngine === key) {
-    store.appConfig.defaultSearchEngine = list[0]?.key || undefined
+    store.appConfig.defaultSearchEngine = list[0]?.key || ''
   }
 }
 
@@ -182,9 +183,9 @@ const rssForm = ref({
 })
 const editingRss = ref(false)
 
-const editRss = (feed?: any) => {
+const editRss = (feed?: RssFeed) => {
   if (feed) {
-    rssForm.value = { ...feed, tags: (feed.tags || []).join(', ') }
+    rssForm.value = { ...feed, category: feed.category || '', tags: (feed.tags || []).join(', ') }
     editingRss.value = true
   } else {
     rssForm.value = {
@@ -220,7 +221,7 @@ const saveRss = () => {
   if (!store.rssFeeds) store.rssFeeds = []
 
   if (rssForm.value.id) {
-    const index = store.rssFeeds.findIndex((f) => f.id === rssForm.value.id)
+    const index = store.rssFeeds.findIndex((f: RssFeed) => f.id === rssForm.value.id)
     if (index !== -1) store.rssFeeds[index] = newItem
   } else {
     store.rssFeeds.push(newItem)
@@ -229,9 +230,13 @@ const saveRss = () => {
   // Auto-add category
   if (rssForm.value.category) {
     if (!store.rssCategories) store.rssCategories = []
-    const exists = store.rssCategories.some((c) => c.name === rssForm.value.category)
+    const exists = store.rssCategories.some((c: RssCategory) => c.name === rssForm.value.category)
     if (!exists) {
-      store.rssCategories.push({ id: Date.now().toString() + '-cat', name: rssForm.value.category })
+      store.rssCategories.push({
+        id: Date.now().toString() + '-cat',
+        name: rssForm.value.category,
+        feeds: [],
+      })
     }
   }
 
@@ -241,10 +246,10 @@ const saveRss = () => {
 
 const deleteRss = (id: string) => {
   if (!confirm('确定删除此订阅源？')) return
-  store.rssFeeds = store.rssFeeds.filter((f) => f.id !== id)
+  store.rssFeeds = store.rssFeeds.filter((f: RssFeed) => f.id !== id)
 }
 
-const rssWidget = computed(() => store.widgets.find((w) => w.type === 'rss'))
+const rssWidget = computed(() => store.widgets.find((w: WidgetConfig) => w.type === 'rss'))
 
 // RSS Category Management
 const managingCategories = ref(false)
@@ -256,9 +261,9 @@ const addCategory = () => {
   const name = newCategoryName.value.trim()
   if (!name) return
   if (!store.rssCategories) store.rssCategories = []
-  if (store.rssCategories.some((c) => c.name === name)) return alert('分类已存在')
+  if (store.rssCategories.some((c: RssCategory) => c.name === name)) return alert('分类已存在')
 
-  store.rssCategories.push({ id: Date.now().toString() + '-cat', name })
+  store.rssCategories.push({ id: Date.now().toString() + '-cat', name, feeds: [] })
   newCategoryName.value = ''
   store.saveData()
 }
@@ -270,20 +275,23 @@ const startEditCategory = (cat: { id: string; name: string }) => {
 
 const updateCategory = () => {
   if (!editingCategoryId.value || !editCategoryName.value.trim()) return
-  const index = store.rssCategories.findIndex((c) => c.id === editingCategoryId.value)
+  const index = store.rssCategories.findIndex((c: RssCategory) => c.id === editingCategoryId.value)
   if (index !== -1) {
     // Update category name in feeds
-    const oldName = store.rssCategories[index].name
-    const newName = editCategoryName.value.trim()
-    store.rssCategories[index].name = newName
+    const cat = store.rssCategories[index]
+    if (cat) {
+      const oldName = cat.name
+      const newName = editCategoryName.value.trim()
+      cat.name = newName
 
-    // Update associated feeds
-    if (store.rssFeeds) {
-      store.rssFeeds.forEach((f) => {
-        if (f.category === oldName) f.category = newName
-      })
+      // Update associated feeds
+      if (store.rssFeeds) {
+        store.rssFeeds.forEach((f: RssFeed) => {
+          if (f.category === oldName) f.category = newName
+        })
+      }
+      store.saveData()
     }
-    store.saveData()
   }
   editingCategoryId.value = null
   editCategoryName.value = ''
@@ -291,15 +299,15 @@ const updateCategory = () => {
 
 const deleteCategory = (id: string) => {
   if (!confirm('确定删除该分类？(该分类下的订阅源将变为无分类)')) return
-  const cat = store.rssCategories.find((c) => c.id === id)
+  const cat = store.rssCategories.find((c: RssCategory) => c.id === id)
   if (cat) {
     // Clear category from feeds
     if (store.rssFeeds) {
-      store.rssFeeds.forEach((f) => {
+      store.rssFeeds.forEach((f: RssFeed) => {
         if (f.category === cat.name) f.category = ''
       })
     }
-    store.rssCategories = store.rssCategories.filter((c) => c.id !== id)
+    store.rssCategories = store.rssCategories.filter((c: RssCategory) => c.id !== id)
     store.saveData()
   }
 }
@@ -307,8 +315,8 @@ const deleteCategory = (id: string) => {
 // Tag Suggestions
 const allTags = computed(() => {
   const tags = new Set<string>()
-  store.rssFeeds?.forEach((f) => {
-    f.tags?.forEach((t) => tags.add(t))
+  store.rssFeeds?.forEach((f: RssFeed) => {
+    f.tags?.forEach((t: string) => tags.add(t))
   })
   return Array.from(tags)
 })
@@ -406,41 +414,63 @@ const addTagToForm = (tag: string) => {
           </button>
         </nav>
 
-        <div class="mt-auto flex items-center justify-center gap-4 pt-4 border-t border-gray-200">
-          <a
-            href="https://github.com/Garry-QD/FlatNas"
-            target="_blank"
-            class="text-gray-400 hover:text-gray-800 transition-colors"
-            title="GitHub"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              class="w-6 h-6"
+        <div
+          class="mt-auto flex items-center justify-between pt-4 border-t border-gray-200 px-2 flex-nowrap"
+        >
+          <div class="flex items-center gap-2">
+            <a
+              href="https://github.com/Garry-QD/FlatNas"
+              target="_blank"
+              class="text-gray-400 hover:text-gray-800 transition-colors"
+              title="GitHub"
             >
-              <path
-                d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
-              />
-            </svg>
-          </a>
-          <a
-            href="https://hub.docker.com/r/qdnas/flatnas"
-            target="_blank"
-            class="text-gray-400 hover:text-blue-600 transition-colors"
-            title="Docker"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              class="w-6 h-6"
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                class="w-6 h-6"
+              >
+                <path
+                  d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
+                />
+              </svg>
+            </a>
+            <a
+              href="https://gitee.com/gjx0808/FlatNas"
+              target="_blank"
+              class="text-gray-400 hover:text-red-600 transition-colors"
+              title="Gitee"
             >
-              <path
-                d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.119a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.186.185.186m-2.955 5.43h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186H8.074a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954 5.43h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185H5.12a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m2.954 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185H8.074a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m2.955 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m2.954 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m5.908 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m-5.908-5.43h2.119a.186.186 0 00.186-.185V3.574a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.186.185.186m8.861 5.614c-.25-.203-1.963-1.34-4.513-1.34a11.61 11.61 0 00-2.118.223l.03-.03V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185s.185-.083.185-.185V9.19h1.749v1.523c0 .102.083.185.185.185s.185-.083.185-.185V9.19h.23c.31.066.625.144.943.233.033.009.068.014.102.014.171 0 .326-.107.382-.276.061-.182-.034-.384-.211-.455a12.71 12.71 0 00-3.174-.39c-1.58 0-3.086.273-4.5.754-.16.055-.247.226-.198.387.05.161.221.25.388.201 1.349-.459 2.789-.719 4.31-.719.304 0 .606.01.906.03v1.737c0 .102.083.185.185.185s.185-.083.185-.185V9.472c2.456.123 3.983 1.166 4.096 1.257.076.061.12.152.12.248 0 .003 0 .007-.001.01v2.515c0 .102-.083.185-.185.185H2.563a.186.186 0 00-.186.185v3.292c0 2.02 1.642 3.662 3.662 3.662h11.62c2.02 0 3.662-1.642 3.662-3.662v-3.292a.186.186 0 00-.186-.185z"
-              />
-            </svg>
-          </a>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                class="w-6 h-6"
+              >
+                <path
+                  d="M11.984 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.811 17.914l-.943-.896c-.342-.325-.92-.332-1.19-.026l-2.72 3.067a.772.772 0 0 1-1.05.09l-6.55-5.314a.775.775 0 0 1 .1-1.267l6.894-4.003a.775.775 0 0 1 1.03.22l2.214 3.285a.775.775 0 0 0 1.19.12l1.024-.967a.775.775 0 0 0 .08-1.02l-3.65-5.504a.775.775 0 0 0-1.17-.14l-8.78 7.32a.775.775 0 0 0-.15 1.08l7.87 6.38a.775.775 0 0 0 1.05-.09l3.58-4.034a.775.775 0 0 0 .02-1.08z"
+                />
+              </svg>
+            </a>
+            <a
+              href="https://hub.docker.com/r/qdnas/flatnas"
+              target="_blank"
+              class="text-gray-400 hover:text-blue-600 transition-colors"
+              title="Docker"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                class="w-6 h-6"
+              >
+                <path
+                  d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.119a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.186.185.186m-2.955 5.43h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186H8.074a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954 5.43h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185H5.12a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m2.954 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185H8.074a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m2.955 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m2.954 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m5.908 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m-5.908-5.43h2.119a.186.186 0 00.186-.185V3.574a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.186.185.186m8.861 5.614c-.25-.203-1.963-1.34-4.513-1.34a11.61 11.61 0 00-2.118.223l.03-.03V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185s.185-.083.185-.185V9.19h1.749v1.523c0 .102.083.185.185.185s.185-.083.185-.185V9.19h.23c.31.066.625.144.943.233.033.009.068.014.102.014.171 0 .326-.107.382-.276.061-.182-.034-.384-.211-.455a12.71 12.71 0 00-3.174-.39c-1.58 0-3.086.273-4.5.754-.16.055-.247.226-.198.387.05.161.221.25.388.201 1.349-.459 2.789-.719 4.31-.719.304 0 .606.01.906.03v1.737c0 .102.083.185.185.185s.185-.083.185-.185V9.472c2.456.123 3.983 1.166 4.096 1.257.076.061.12.152.12.248 0 .003 0 .007-.001.01v2.515c0 .102-.083.185-.185.185H2.563a.186.186 0 00-.186.185v3.292c0 2.02 1.642 3.662 3.662 3.662h11.62c2.02 0 3.662-1.642 3.662-3.662v-3.292a.186.186 0 00-.186-.185z"
+                />
+              </svg>
+            </a>
+          </div>
+          <span class="text-xs text-gray-400 font-mono shrink-0">v1.0.5</span>
         </div>
       </div>
 
@@ -463,7 +493,17 @@ const addTagToForm = (tag: string) => {
                 <div>
                   <label class="text-sm font-bold text-gray-600 mb-1 block">背景图片</label>
                   <div class="border border-gray-200 rounded-xl p-2 bg-gray-50">
-                    <IconUploader v-model="store.appConfig.background" />
+                    <IconUploader
+                      v-model="store.appConfig.background"
+                      :crop="false"
+                      :previewStyle="{
+                        filter: `blur(${store.appConfig.backgroundBlur ?? 0}px)`,
+                        transform: 'scale(1.1)',
+                      }"
+                      :overlayStyle="{
+                        backgroundColor: `rgba(0,0,0,${store.appConfig.backgroundMask ?? 0})`,
+                      }"
+                    />
                     <button
                       v-if="store.appConfig.background"
                       @click="store.appConfig.background = ''"
@@ -471,6 +511,40 @@ const addTagToForm = (tag: string) => {
                     >
                       清除背景
                     </button>
+                  </div>
+
+                  <div
+                    v-if="store.appConfig.background"
+                    class="grid grid-cols-2 gap-4 mt-2 p-3 bg-gray-50 rounded-lg"
+                  >
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1 flex justify-between">
+                        <span>模糊半径</span>
+                        <span>{{ store.appConfig.backgroundBlur ?? 0 }}px</span>
+                      </label>
+                      <input
+                        type="range"
+                        v-model.number="store.appConfig.backgroundBlur"
+                        min="0"
+                        max="20"
+                        step="1"
+                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 mb-1 flex justify-between">
+                        <span>遮罩浓度</span>
+                        <span>{{ Math.round((store.appConfig.backgroundMask ?? 0) * 100) }}%</span>
+                      </label>
+                      <input
+                        type="range"
+                        v-model.number="store.appConfig.backgroundMask"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -528,25 +602,6 @@ const addTagToForm = (tag: string) => {
                     class="w-10 h-10 rounded cursor-pointer border-0 p-0"
                   />
                 </div>
-              </div>
-
-              <div
-                class="flex items-center justify-between mt-4 bg-purple-50 p-3 rounded-xl border border-purple-100"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="text-lg">🎵</span>
-                  <span class="text-sm font-bold text-gray-700">自动播放随机音乐</span>
-                </div>
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    v-model="store.appConfig.autoPlayMusic"
-                    class="sr-only peer"
-                  />
-                  <div
-                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"
-                  ></div>
-                </label>
               </div>
             </div>
           </div>
@@ -663,6 +718,20 @@ const addTagToForm = (tag: string) => {
                         ><input type="checkbox" v-model="w.enable" class="sr-only peer" />
                         <div
                           class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-500"
+                        ></div
+                      ></label>
+                    </div>
+                    <div v-if="w.type === 'player'" class="flex flex-col items-center gap-0.5">
+                      <span class="text-[10px] text-gray-400 scale-90">自动</span>
+                      <label
+                        class="relative inline-flex items-center cursor-pointer"
+                        title="自动播放"
+                        ><input
+                          type="checkbox"
+                          v-model="store.appConfig.autoPlayMusic"
+                          class="sr-only peer" />
+                        <div
+                          class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-500"
                         ></div
                       ></label>
                     </div>

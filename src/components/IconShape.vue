@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 const props = defineProps<{
-  shape: 'rounded' | 'square' | 'circle' | 'leaf' | 'diamond' | 'pentagon' | 'hexagon' | 'octagon'
+  shape: string
   size?: number
   bgClass?: string
   icon?: string

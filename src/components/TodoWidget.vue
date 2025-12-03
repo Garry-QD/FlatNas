@@ -1,6 +1,7 @@
 <script setup lang="ts">
+/* eslint-disable vue/no-mutating-props */
 import { ref } from 'vue'
-import type { WidgetConfig, TodoItem } from '../types'
+import type { WidgetConfig } from '@/types'
 
 const props = defineProps<{ widget: WidgetConfig }>()
 const newItem = ref('')

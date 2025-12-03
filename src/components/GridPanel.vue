@@ -3,7 +3,7 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useStorage } from '@vueuse/core'
 import { useMainStore } from '../stores/main'
-import type { NavItem, WidgetConfig, NavGroup } from '../types'
+import type { NavItem, WidgetConfig, NavGroup } from '@/types'
 import EditModal from './EditModal.vue'
 import SettingsModal from './SettingsModal.vue'
 import GroupSettingsModal from './GroupSettingsModal.vue'
@@ -76,6 +76,7 @@ const processIcon = (iconStr: string) => {
 // --- 核心修复逻辑结束 ---
 
 const isInternalNetwork = (url: string) => {
+  if (!url) return false
   return url.includes('localhost') || /^(192\.168|10\.|172\.(1[6-9]|2\d|3[0-1]))\./.test(url)
 }
 
@@ -191,9 +192,12 @@ const checkNetwork = async () => {
     await fetch(pingUrl, { method: 'GET', cache: 'no-cache' })
     const end = performance.now()
     latency.value = Math.round(end - start)
-    isLanMode.value = isInternalNetwork(window.location.hostname)
+    // 判定逻辑优化：只要 Hostname 是内网 IP，或者后端检测到的 Client IP 是内网 IP，都算内网环境
+    isLanMode.value =
+      isInternalNetwork(window.location.hostname) || isInternalNetwork(ipInfo.value.clientIp)
   } catch {
-    isLanMode.value = isInternalNetwork(window.location.hostname)
+    isLanMode.value =
+      isInternalNetwork(window.location.hostname) || isInternalNetwork(ipInfo.value.clientIp)
   } finally {
     isChecking.value = false
   }
@@ -447,6 +451,26 @@ const ipInfo = ref({
   isProxy: false,
   baiduLatency: '--',
   details: [] as string[], // 用于存储所有检测到的 IP
+  clientIp: '',
+})
+
+const formattedLocation = computed(() => {
+  const loc = ipInfo.value.location
+  if (!loc) return ''
+  const parts = loc.split(' ')
+  let area = parts[0] || ''
+  let isp = parts.length > 1 ? parts[1] : ''
+
+  // Remove Province (e.g., "浙江省")
+  area = area.replace(/^.+?省/, '')
+
+  // Remove City if it's not the last part (e.g., "宁波市慈溪市" -> "慈溪市")
+  area = area.replace(/^.+?市(?=.+)/, '')
+
+  // Clean ISP (e.g., "电信ADSL" -> "电信")
+  isp = isp.replace(/ADSL|宽带|光纤/gi, '')
+
+  return `${area} ${isp}`.trim()
 })
 
 const fetchIp = async (force = false) => {
@@ -460,6 +484,10 @@ const fetchIp = async (force = false) => {
         const { timestamp, data } = JSON.parse(cached)
         if (Date.now() - timestamp < CACHE_DURATION) {
           ipInfo.value = data
+          // 恢复缓存时也要更新内网状态
+          if (data.clientIp && isInternalNetwork(data.clientIp)) {
+            isLanMode.value = true
+          }
           return
         }
       }
@@ -475,6 +503,7 @@ const fetchIp = async (force = false) => {
     isProxy: false,
     baiduLatency: '...',
     details: [],
+    clientIp: '',
   }
 
   // 检测 223.5.5.5 延迟 (通过后端 /api/ping)
@@ -501,9 +530,20 @@ const fetchIp = async (force = false) => {
     if (data.success) {
       ipInfo.value.displayIp = data.ip
       ipInfo.value.location = data.location || '未知位置'
+      ipInfo.value.clientIp = data.clientIp || ''
+
+      // 获取到 IP 后立即更新内网状态
+      if (data.clientIp && isInternalNetwork(data.clientIp)) {
+        isLanMode.value = true
+      }
     } else {
       ipInfo.value.displayIp = data.ip || '获取失败'
       ipInfo.value.location = '未知位置'
+      ipInfo.value.clientIp = data.clientIp || ''
+
+      if (data.clientIp && isInternalNetwork(data.clientIp)) {
+        isLanMode.value = true
+      }
     }
     updateCache()
   } catch (e) {
@@ -549,19 +589,37 @@ setInterval(() => {
 </script>
 
 <template>
-  <div
-    class="min-h-screen transition-all bg-cover bg-center bg-fixed"
-    :style="{
-      backgroundImage: store.appConfig.background ? `url(${store.appConfig.background})` : '',
-      backgroundColor: '#f3f4f6',
-      '--group-title-color': store.appConfig.groupTitleColor || '#ffffff',
-      '--card-bg-color': store.appConfig.cardBgColor || 'transparent',
-      '--card-border-color': store.appConfig.cardBorderColor || 'transparent',
-    }"
-  >
+  <div class="min-h-screen relative overflow-hidden">
+    <!-- ✨ Global Background Layer -->
     <div
-      class="min-h-screen p-8 transition-all pb-20"
-      :class="store.appConfig.background ? 'bg-black/30 backdrop-blur-sm' : ''"
+      v-if="store.appConfig.background"
+      class="fixed inset-0 z-0 pointer-events-none select-none"
+    >
+      <!-- Image Layer with Blur -->
+      <div
+        class="absolute inset-[-20px] bg-cover bg-center bg-no-repeat transition-all duration-300"
+        :style="{
+          backgroundImage: `url(${store.appConfig.background})`,
+          filter: `blur(${store.appConfig.backgroundBlur ?? 0}px)`,
+        }"
+      ></div>
+      <!-- Mask Layer -->
+      <div
+        class="absolute inset-0 transition-all duration-300"
+        :style="{
+          backgroundColor: `rgba(0,0,0,${store.appConfig.backgroundMask ?? 0})`,
+        }"
+      ></div>
+    </div>
+
+    <div
+      class="min-h-screen p-8 transition-all pb-20 relative z-10"
+      :style="{
+        backgroundColor: store.appConfig.background ? 'transparent' : '#f3f4f6',
+        '--group-title-color': store.appConfig.groupTitleColor || '#ffffff',
+        '--card-bg-color': store.appConfig.cardBgColor || 'transparent',
+        '--card-border-color': store.appConfig.cardBorderColor || 'transparent',
+      }"
     >
       <div class="max-w-7xl mx-auto">
         <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-6 relative">
@@ -618,11 +676,11 @@ setInterval(() => {
 
           <div
             v-if="checkVisible(store.widgets.find((w) => w.id === 'w5'))"
-            class="w-full md:absolute md:left-1/2 md:-translate-x-1/2 md:max-w-md z-20"
+            class="w-full md:absolute md:left-1/2 md:-translate-x-1/2 md:w-64 z-20"
           >
             <div
               class="mx-auto shadow-lg hover:shadow-xl transition-shadow rounded-full bg-white/90 backdrop-blur-md border border-white/40 flex items-center p-1"
-              :style="{ width: 'calc(60% + 5px)', height: '41px' }"
+              :style="{ width: '100%', height: '41px' }"
             >
               <input
                 id="main-search-input"
@@ -766,7 +824,7 @@ setInterval(() => {
                 class="text-[19px] font-bold w-full truncate flex-1 flex items-center justify-center -mt-px"
                 :title="ipInfo.location"
               >
-                {{ ipInfo.location }}
+                {{ formattedLocation }}
               </div>
               <div class="flex items-center justify-center gap-2 w-full flex-1">
                 <span class="text-[14px] opacity-70 uppercase">IP</span>
@@ -973,9 +1031,28 @@ setInterval(() => {
                       : 'var(--card-border-color)',
                 }"
               >
+                <!-- ✨ 背景图层 (高斯模糊 + 遮罩) -->
+                <div
+                  v-if="item.backgroundImage"
+                  class="absolute inset-0 z-0 pointer-events-none overflow-hidden rounded-[inherit]"
+                >
+                  <div
+                    class="absolute inset-0 bg-cover bg-center transition-all duration-300"
+                    :style="{
+                      backgroundImage: `url(${item.backgroundImage})`,
+                      filter: `blur(${item.backgroundBlur ?? 6}px)`,
+                      transform: 'scale(1.1)',
+                    }"
+                  ></div>
+                  <div
+                    class="absolute inset-0"
+                    :style="{ backgroundColor: `rgba(0,0,0,${item.backgroundMask ?? 0.3})` }"
+                  ></div>
+                </div>
+
                 <div
                   v-if="isEditMode && item.isPublic"
-                  class="absolute bottom-1 right-1 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 z-10"
+                  class="absolute bottom-1 right-1 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 z-20"
                 >
                   公开
                 </div>
@@ -992,17 +1069,21 @@ setInterval(() => {
                       : 'bg-white'
                   "
                   :icon="processIcon(item.icon || '')"
-                  class="transition-all duration-300"
+                  class="transition-all duration-300 relative z-10"
+                  :class="item.backgroundImage ? 'drop-shadow-lg' : ''"
                 />
                 <span
-                  class="font-medium truncate"
+                  class="font-medium truncate relative z-10"
                   :class="
                     (group.cardLayout || store.appConfig.cardLayout) === 'horizontal'
                       ? 'text-left text-sm flex-1'
                       : 'text-center px-2 w-full'
                   "
                   :style="{
-                    color: group.cardTitleColor || store.appConfig.cardTitleColor || '#111827',
+                    color: item.backgroundImage
+                      ? '#ffffff'
+                      : group.cardTitleColor || store.appConfig.cardTitleColor || '#111827',
+                    textShadow: item.backgroundImage ? '0 2px 4px rgba(0,0,0,0.8)' : 'none',
                   }"
                   >{{ item.title }}</span
                 >

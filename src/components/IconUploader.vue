@@ -1,9 +1,21 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { VueCropper } from 'vue-cropper'
-import 'vue-cropper/dist/index.css' // ✅ 已修正：新版叫 index.css
+import 'vue-cropper/dist/index.css'
 
-const props = defineProps<{ modelValue?: string }>()
+const props = withDefaults(
+  defineProps<{
+    modelValue?: string
+    crop?: boolean
+    previewStyle?: Record<string, string | number>
+    overlayStyle?: Record<string, string | number>
+  }>(),
+  {
+    crop: true,
+    previewStyle: () => ({}),
+    overlayStyle: () => ({}),
+  },
+)
 const emit = defineEmits(['update:modelValue'])
 
 const showCropper = ref(false)
@@ -28,12 +40,18 @@ const onFileChange = (event: Event) => {
   const reader = new FileReader()
   reader.onload = (e) => {
     uploadImgUrl.value = e.target?.result as string
-    zoom.value = 1 // Reset zoom
-    showCropper.value = true // 打开裁剪弹窗
+
+    if (props.crop) {
+      zoom.value = 1 // Reset zoom
+      showCropper.value = true // 打开裁剪弹窗
+    } else {
+      // 不裁剪，直接使用
+      emit('update:modelValue', uploadImgUrl.value)
+    }
   }
   reader.readAsDataURL(file)
-  
-  if(fileInput.value) fileInput.value.value = ''
+
+  if (fileInput.value) fileInput.value.value = ''
 }
 
 const onZoomChange = (e: Event) => {
@@ -70,35 +88,55 @@ const confirmCrop = () => {
 
 <template>
   <div class="w-full">
-    <input 
-      ref="fileInput"
-      type="file" 
-      accept="image/*" 
-      class="hidden" 
-      @change="onFileChange"
-    >
+    <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileChange" />
 
-    <div 
+    <div
       class="w-full h-32 border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all group relative overflow-hidden"
       @click="triggerSelect"
     >
-      <img 
-        v-if="modelValue && modelValue.startsWith('data:image')" 
-        :src="modelValue" 
-        class="absolute inset-0 w-full h-full object-cover z-0"
+      <!--
+         ✨ 增加一个 container div 来包裹 img，
+         方便应用 blur 等样式 (img 上应用 blur 可能会导致边缘泛白，但 container overflow hidden 可以解决一部分)
+         同时叠加 overlayStyle
+      -->
+      <div
+        v-if="modelValue && modelValue.startsWith('data:image')"
+        class="absolute inset-0 z-0 overflow-hidden"
       >
-      
-      <div class="z-10 flex flex-col items-center justify-center" :class="modelValue ? 'opacity-0 group-hover:opacity-100 bg-white/80 absolute inset-0 transition-opacity' : ''">
+        <img
+          :src="modelValue"
+          class="w-full h-full object-cover transition-all duration-300"
+          :style="previewStyle"
+        />
+        <!-- 叠加遮罩层 -->
+        <div class="absolute inset-0 transition-all duration-300" :style="overlayStyle"></div>
+      </div>
+
+      <div
+        class="z-10 flex flex-col items-center justify-center"
+        :class="
+          modelValue
+            ? 'opacity-0 group-hover:opacity-100 bg-white/80 absolute inset-0 transition-opacity'
+            : ''
+        "
+      >
         <span class="text-2xl text-gray-400 mb-1 group-hover:text-blue-500">+</span>
         <span class="text-xs text-gray-500 group-hover:text-blue-600">点击上传 / 裁剪</span>
       </div>
     </div>
 
-    <div v-if="showCropper" class="fixed inset-0 z-[999] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div class="bg-white w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[500px]">
+    <div
+      v-if="showCropper"
+      class="fixed inset-0 z-[999] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm"
+    >
+      <div
+        class="bg-white w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[500px]"
+      >
         <div class="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
           <h3 class="font-bold text-gray-700">裁剪图片</h3>
-          <button @click="showCropper = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+          <button @click="showCropper = false" class="text-gray-400 hover:text-gray-600 text-xl">
+            &times;
+          </button>
         </div>
         <div class="flex-1 bg-gray-900 relative">
           <VueCropper
@@ -108,30 +146,42 @@ const confirmCrop = () => {
             :autoCropWidth="216"
             :autoCropHeight="216"
             :fixed="true"
-            :fixedNumber="[1, 1]" 
+            :fixedNumber="[1, 1]"
             :centerBox="true"
             outputType="png"
           ></VueCropper>
         </div>
-        
+
         <!-- Zoom Slider -->
         <div class="px-4 py-2 bg-gray-800 flex items-center gap-3 border-t border-gray-700">
           <span class="text-gray-400 text-xs">🔍</span>
-          <input 
-            type="range" 
-            min="0.1" 
-            max="3" 
-            step="0.1" 
-            :value="zoom" 
-            @input="onZoomChange" 
+          <input
+            type="range"
+            min="0.1"
+            max="3"
+            step="0.1"
+            :value="zoom"
+            @input="onZoomChange"
             class="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          />
+          <span class="text-gray-400 text-xs font-mono w-10 text-right"
+            >{{ Math.round(zoom * 100) }}%</span
           >
-          <span class="text-gray-400 text-xs font-mono w-10 text-right">{{ Math.round(zoom * 100) }}%</span>
         </div>
 
         <div class="p-4 bg-gray-50 flex justify-end gap-3">
-          <button @click="showCropper = false" class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors">取消</button>
-          <button @click="confirmCrop" class="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all">确认使用</button>
+          <button
+            @click="showCropper = false"
+            class="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-200 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            @click="confirmCrop"
+            class="px-6 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all"
+          >
+            确认使用
+          </button>
         </div>
       </div>
     </div>

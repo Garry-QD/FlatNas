@@ -1,6 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import { defineStore } from 'pinia'
-import type { NavItem, NavGroup, AppConfig, WidgetConfig, RssFeed, RssCategory } from '../types'
+import type { NavItem, NavGroup, AppConfig, WidgetConfig, RssFeed, RssCategory } from '@/types'
 
 export const useMainStore = defineStore('main', () => {
   const groups = ref<NavGroup[]>([])
@@ -151,7 +151,7 @@ export const useMainStore = defineStore('main', () => {
         appConfig.value.rememberLastEngine = true
 
       const cachedShape = localStorage.getItem('flat-nas-icon-shape')
-      if (cachedShape) appConfig.value.iconShape = cachedShape as any
+      if (cachedShape) appConfig.value.iconShape = cachedShape
       const cachedColor = localStorage.getItem('flat-nas-group-title-color')
       if (cachedColor) appConfig.value.groupTitleColor = cachedColor
       const cachedCardBg = localStorage.getItem('flat-nas-card-bg-color')

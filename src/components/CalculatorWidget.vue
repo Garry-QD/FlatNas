@@ -17,9 +17,9 @@ const clear = () => {
 const calc = () => {
   try {
     expression.value = display.value
-    // eslint-disable-next-line no-new-func
+     
     display.value = new Function('return ' + display.value)()?.toString() || '0'
-  } catch (e) {
+  } catch {
     display.value = 'Error'
   }
 }
