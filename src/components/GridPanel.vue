@@ -509,7 +509,7 @@ const fetchIp = async (force = false) => {
   }
 
   // 检测 223.5.5.5 延迟 (通过后端 /api/ping)
-  fetch('http://localhost:3000/api/ping?target=223.5.5.5')
+  fetch('/api/ping?target=223.5.5.5')
     .then((res) => res.json())
     .then((data) => {
       if (data.success) {
@@ -526,7 +526,7 @@ const fetchIp = async (force = false) => {
 
   // 通过后端代理获取 IP (解决 CORS)
   try {
-    const res = await fetch('http://localhost:3000/api/ip')
+    const res = await fetch('/api/ip')
     const data = await res.json()
 
     if (data.success) {
