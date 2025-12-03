@@ -28,32 +28,45 @@ chmod +x deploy.sh
 sudo ./deploy.sh install
 ```
 
-**安装流程详情：**
-1.  **环境检查**：确认系统为 Debian 且拥有 root 权限。
-2.  **安装依赖**：自动安装 `curl`, `git`, `nginx`, 并配置 NodeSource 源安装 Node.js 20+。
-3.  **拉取代码**：克隆/更新代码到 `/opt/flatnas`。
-4.  **构建应用**：安装 npm 依赖并运行 `npm run build` 编译前端资源。
-5.  **配置服务**：创建 systemd 服务 `flatnas.service` 并启动后端。
-6.  **配置 Nginx**：自动生成反向代理配置，指向后端 API (3000端口) 和前端静态文件。
+## 2. 使用方法
 
-安装完成后，您可以通过浏览器访问服务器 IP (端口 80) 使用 FlatNas。
+### 2.1 交互式菜单 (推荐)
 
-### 2.2 更新应用 (Update)
-
-当仓库有代码更新时，运行以下命令即可自动拉取最新代码、重新构建并重启服务。
+直接运行脚本而不带任何参数，将进入交互式菜单，方便您选择安装或卸载：
 
 ```bash
-sudo ./deploy.sh update
+sudo ./deploy.sh
 ```
 
-### 2.3 推送到 GitHub (Push)
-
-如果您在服务器上修改了配置文件或代码，并希望推送到 GitHub 仓库（作为备份或版本控制）：
-
-```bash
-sudo ./deploy.sh push
+```text
+=============================================
+      FlatNas One-Click Deployment           
+=============================================
+1. Install / Redeploy FlatNas
+2. Uninstall FlatNas
+3. Update FlatNas (Keep Data)
+4. Push to GitHub
+0. Exit
+=============================================
 ```
-*注意：此功能需要您预先在服务器上配置好 Git 的 SSH Key 或凭证。*
+
+### 2.2 命令行模式
+
+您也可以通过参数直接执行特定操作：
+
+*   **安装**: `sudo ./deploy.sh install`
+*   **卸载**: `sudo ./deploy.sh uninstall`
+*   **更新**: `sudo ./deploy.sh update`
+*   **推送**: `sudo ./deploy.sh push`
+
+### 2.3 卸载说明 (Uninstall)
+
+选择卸载功能时，脚本会执行以下操作：
+1.  停止并禁用 systemd 服务。
+2.  移除 Nginx 配置文件并重载 Nginx。
+3.  **询问用户**是否删除应用程序目录（包含数据）。
+    *   输入 `y`：彻底删除所有文件（包括 `data.json`）。
+    *   输入 `n`：保留数据文件，以便后续重装。
 
 ## 3. 目录结构说明
 

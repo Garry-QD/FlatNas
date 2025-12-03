@@ -219,45 +219,139 @@ push_to_github() {
     git push origin main
 }
 
+# 7. Uninstall FlatNas
+uninstall_app() {
+    log "Uninstalling FlatNas..."
+
+    # 1. Stop and Remove Service
+    if systemctl list-units --full -all | grep -Fq "${SERVICE_NAME}.service"; then
+        log "Stopping and disabling service..."
+        systemctl stop ${SERVICE_NAME}
+        systemctl disable ${SERVICE_NAME}
+        rm -f /etc/systemd/system/${SERVICE_NAME}.service
+        systemctl daemon-reload
+    else
+        warn "Service ${SERVICE_NAME} not found."
+    fi
+
+    # 2. Remove Nginx Config
+    if [ -f "${NGINX_CONF}" ]; then
+        log "Removing Nginx configuration..."
+        rm -f ${NGINX_CONF}
+        rm -f /etc/nginx/sites-enabled/flatnas
+        nginx -t
+        systemctl reload nginx
+    else
+        warn "Nginx configuration not found."
+    fi
+
+    # 3. Remove Files
+    if [ -d "$APP_DIR" ]; then
+        echo -e "${YELLOW}Warning: This will delete the application directory.${NC}"
+        read -p "Do you want to delete ALL DATA in $APP_DIR? (y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            log "Removing application files..."
+            rm -rf "$APP_DIR"
+            log "FlatNas has been completely removed."
+        else
+            log "Application files kept at $APP_DIR."
+            log "FlatNas service and nginx config have been removed."
+        fi
+    else
+        log "Application directory not found."
+    fi
+}
+
 # Main Menu
 show_help() {
     echo "Usage: ./deploy.sh [OPTION]"
     echo "Options:"
     echo "  install    - Full installation and deployment"
+    echo "  uninstall  - Remove FlatNas service and files"
     echo "  update     - Pull latest code and rebuild"
     echo "  push       - Commit and push local changes to GitHub"
     echo "  help       - Show this help message"
 }
 
-case "$1" in
-    install)
-        check_system
-        install_dependencies
-        deploy_app
-        setup_service
-        setup_nginx
-        
-        IP_ADDR=$(hostname -I | awk '{print $1}')
-        PUBLIC_IP=$(curl -s ifconfig.me || echo "Unknown")
-        
-        log "==============================================="
-        log "   FlatNas Deployment Successful!   "
-        log "==============================================="
-        log "Access your FlatNas at:"
-        log "  Local:   http://${IP_ADDR}"
-        log "  Public:  http://${PUBLIC_IP}"
-        log "==============================================="
-        ;;
-    update)
-        check_system
-        deploy_app
-        setup_service
-        log "Update Complete!"
-        ;;
-    push)
-        push_to_github
-        ;;
-    *)
-        show_help
-        ;;
-esac
+# Function to handle installation logic
+do_install() {
+    check_system
+    install_dependencies
+    deploy_app
+    setup_service
+    setup_nginx
+    
+    IP_ADDR=$(hostname -I | awk '{print $1}')
+    PUBLIC_IP=$(curl -s ifconfig.me || echo "Unknown")
+    
+    log "==============================================="
+    log "   FlatNas Deployment Successful!   "
+    log "==============================================="
+    log "Access your FlatNas at:"
+    log "  Local:   http://${IP_ADDR}"
+    log "  Public:  http://${PUBLIC_IP}"
+    log "==============================================="
+}
+
+if [ -n "$1" ]; then
+    case "$1" in
+        install)
+            do_install
+            ;;
+        update)
+            check_system
+            deploy_app
+            setup_service
+            log "Update Complete!"
+            ;;
+        push)
+            push_to_github
+            ;;
+        uninstall)
+            check_system
+            uninstall_app
+            ;;
+        *)
+            show_help
+            ;;
+    esac
+else
+    # Interactive Menu
+    clear
+    echo -e "${GREEN}=============================================${NC}"
+    echo -e "${GREEN}      FlatNas One-Click Deployment           ${NC}"
+    echo -e "${GREEN}=============================================${NC}"
+    echo "1. Install / Redeploy FlatNas"
+    echo "2. Uninstall FlatNas"
+    echo "3. Update FlatNas (Keep Data)"
+    echo "4. Push to GitHub"
+    echo "0. Exit"
+    echo -e "${GREEN}=============================================${NC}"
+    read -p "Please enter your choice [0-4]: " choice
+    
+    case $choice in
+        1)
+            do_install
+            ;;
+        2)
+            check_system
+            uninstall_app
+            ;;
+        3)
+            check_system
+            deploy_app
+            setup_service
+            log "Update Complete!"
+            ;;
+        4)
+            push_to_github
+            ;;
+        0)
+            exit 0
+            ;;
+        *)
+            error "Invalid choice."
+            ;;
+    esac
+fi
