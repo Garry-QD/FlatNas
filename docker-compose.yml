@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  flatnas:
+    image: qdnas/flatnas:latest
+    container_name: flatnas
+    restart: unless-stopped
+    ports:
+      - '23000:3000'
+    volumes:
+      - ./data:/app/server/data #指定路径下新建data
+      - ./music:/app/server/music #映射播放器路径

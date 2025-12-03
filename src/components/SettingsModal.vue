@@ -129,7 +129,7 @@ const handleSaveAsDefault = async () => {
     try {
       const r = await fetch('/api/default/save', { method: 'POST' })
       if (!r.ok) throw new Error('save_default_failed')
-      
+
       // 移除成功弹窗，使用按钮文字反馈
       saveDefaultBtnText.value = '✅ 保存成功！'
       setTimeout(() => {
@@ -405,6 +405,43 @@ const addTagToForm = (tag: string) => {
             🔒 账户管理
           </button>
         </nav>
+
+        <div class="mt-auto flex items-center justify-center gap-4 pt-4 border-t border-gray-200">
+          <a
+            href="https://github.com/Garry-QD/FlatNas"
+            target="_blank"
+            class="text-gray-400 hover:text-gray-800 transition-colors"
+            title="GitHub"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              class="w-6 h-6"
+            >
+              <path
+                d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
+              />
+            </svg>
+          </a>
+          <a
+            href="https://hub.docker.com/r/qdnas/flatnas"
+            target="_blank"
+            class="text-gray-400 hover:text-blue-600 transition-colors"
+            title="Docker"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              class="w-6 h-6"
+            >
+              <path
+                d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954-5.43h2.119a.186.186 0 00.186-.186V3.574a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.186.185.186m-2.955 5.43h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186H8.074a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185m-2.954 5.43h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185H5.12a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m2.954 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185H8.074a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m2.955 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m2.954 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m5.908 0h2.119a.186.186 0 00.186-.186v-1.888a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .103.083.186.185.186m-5.908-5.43h2.119a.186.186 0 00.186-.185V3.574a.186.186 0 00-.186-.185h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.186.185.186m8.861 5.614c-.25-.203-1.963-1.34-4.513-1.34a11.61 11.61 0 00-2.118.223l.03-.03V9.006a.186.186 0 00-.186-.186h-2.119a.185.185 0 00-.185.185v1.888c0 .102.083.185.185.185s.185-.083.185-.185V9.19h1.749v1.523c0 .102.083.185.185.185s.185-.083.185-.185V9.19h.23c.31.066.625.144.943.233.033.009.068.014.102.014.171 0 .326-.107.382-.276.061-.182-.034-.384-.211-.455a12.71 12.71 0 00-3.174-.39c-1.58 0-3.086.273-4.5.754-.16.055-.247.226-.198.387.05.161.221.25.388.201 1.349-.459 2.789-.719 4.31-.719.304 0 .606.01.906.03v1.737c0 .102.083.185.185.185s.185-.083.185-.185V9.472c2.456.123 3.983 1.166 4.096 1.257.076.061.12.152.12.248 0 .003 0 .007-.001.01v2.515c0 .102-.083.185-.185.185H2.563a.186.186 0 00-.186.185v3.292c0 2.02 1.642 3.662 3.662 3.662h11.62c2.02 0 3.662-1.642 3.662-3.662v-3.292a.186.186 0 00-.186-.185z"
+              />
+            </svg>
+          </a>
+        </div>
       </div>
 
       <div class="flex-1 flex flex-col bg-white overflow-hidden">
@@ -492,22 +529,53 @@ const addTagToForm = (tag: string) => {
                   />
                 </div>
               </div>
+
+              <div
+                class="flex items-center justify-between mt-4 bg-purple-50 p-3 rounded-xl border border-purple-100"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="text-lg">🎵</span>
+                  <span class="text-sm font-bold text-gray-700">自动播放随机音乐</span>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    v-model="store.appConfig.autoPlayMusic"
+                    class="sr-only peer"
+                  />
+                  <div
+                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"
+                  ></div>
+                </label>
+              </div>
             </div>
           </div>
 
           <div v-if="activeTab === 'widgets'" class="space-y-4">
-            <h4 class="text-lg font-bold mb-4 text-gray-800 border-l-4 border-green-500 pl-3">
-              桌面小组件
-            </h4>
+            <div class="flex items-center justify-between mb-4 mr-8">
+              <h4 class="text-lg font-bold text-gray-800 border-l-4 border-green-500 pl-3">
+                桌面小组件
+              </h4>
+              <div class="flex items-center gap-3 text-xs mr-[10px]">
+                <div class="flex items-center gap-1">
+                  <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                  <span class="text-gray-500">公开</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                  <span class="text-gray-500">启用</span>
+                </div>
+              </div>
+            </div>
 
             <!-- Normal Widgets Grid -->
             <div class="grid grid-cols-4 gap-4">
               <template v-for="w in store.widgets" :key="w.id">
                 <div
                   v-if="w.type !== 'iframe'"
-                  class="flex flex-col items-center justify-between p-4 border border-gray-100 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all aspect-square"
+                  class="flex flex-col items-center justify-between p-3 border border-gray-100 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all aspect-square"
                 >
-                  <div class="flex flex-col items-center gap-2 flex-1 justify-center">
+                  <div class="flex flex-col items-center gap-1 flex-1 justify-center scale-90">
                     <div
                       class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm"
                     >
@@ -543,7 +611,7 @@ const addTagToForm = (tag: string) => {
                                                     : '🖥️'
                       }}
                     </div>
-                    <span class="font-bold text-gray-700 text-sm text-center">
+                    <span class="font-bold text-gray-700 text-xs text-center truncate w-full px-1">
                       {{
                         w.type === 'clock'
                           ? '时钟'
@@ -579,8 +647,9 @@ const addTagToForm = (tag: string) => {
                       }}
                     </span>
                   </div>
-                  <div class="flex items-center justify-center gap-2 w-full mt-2">
-                    <div class="flex flex-col items-center gap-1">
+                  <div class="flex items-center justify-around w-full mt-1">
+                    <div class="flex flex-col items-center gap-0.5">
+                      <span class="text-[10px] text-gray-400 scale-90">公开</span>
                       <label class="relative inline-flex items-center cursor-pointer" title="公开"
                         ><input type="checkbox" v-model="w.isPublic" class="sr-only peer" />
                         <div
@@ -588,7 +657,8 @@ const addTagToForm = (tag: string) => {
                         ></div
                       ></label>
                     </div>
-                    <div class="flex flex-col items-center gap-1">
+                    <div class="flex flex-col items-center gap-0.5">
+                      <span class="text-[10px] text-gray-400 scale-90">启用</span>
                       <label class="relative inline-flex items-center cursor-pointer" title="启用"
                         ><input type="checkbox" v-model="w.enable" class="sr-only peer" />
                         <div
@@ -654,10 +724,12 @@ const addTagToForm = (tag: string) => {
           </div>
 
           <div v-if="activeTab === 'rss'" class="space-y-6">
-            <div class="flex items-center justify-between border-l-4 border-orange-500 pl-3 mb-4">
+            <div
+              class="flex items-center justify-between border-l-4 border-orange-500 pl-3 mb-4 mr-8"
+            >
               <h4 class="text-lg font-bold text-gray-800">RSS 订阅管理</h4>
               <span
-                class="text-[10px] text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-100 flex items-center gap-1"
+                class="text-[10px] text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-100 flex items-center gap-1 mr-[10px]"
               >
                 <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                 云端同步已开启
@@ -1125,8 +1197,8 @@ const addTagToForm = (tag: string) => {
       </div>
     </div>
   </div>
-  <PasswordConfirmModal 
-    v-model:show="showPasswordConfirm" 
+  <PasswordConfirmModal
+    v-model:show="showPasswordConfirm"
     :title="confirmTitle"
     :on-success="onAuthSuccess"
   />
