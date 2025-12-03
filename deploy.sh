@@ -322,10 +322,9 @@ else
     echo -e "${GREEN}=============================================${NC}"
     echo -e "${GREEN}      FlatNas One-Click Deployment           ${NC}"
     echo -e "${GREEN}=============================================${NC}"
-    echo "1. Install / Redeploy FlatNas"
-    echo "2. Uninstall FlatNas"
-    echo "3. Update FlatNas (Keep Data)"
-    echo "4. Push to GitHub"
+    echo "1. Install安装 / Redeploy FlatNas"
+    echo "2. Uninstall卸载 FlatNas"
+    echo "3. Update更新 FlatNas (Keep Data)"
     echo "0. Exit"
     echo -e "${GREEN}=============================================${NC}"
     read -p "Please enter your choice [0-4]: " choice
