@@ -468,7 +468,9 @@ const formattedLocation = computed(() => {
   area = area.replace(/^.+?市(?=.+)/, '')
 
   // Clean ISP (e.g., "电信ADSL" -> "电信")
-  isp = isp.replace(/ADSL|宽带|光纤/gi, '')
+  if (isp) {
+    isp = isp.replace(/ADSL|宽带|光纤/gi, '')
+  }
 
   return `${area} ${isp}`.trim()
 })
