@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { VueDraggable } from 'vue-draggable-plus'
 import { useStorage } from '@vueuse/core'
 import { useMainStore } from '../stores/main'
@@ -570,6 +570,50 @@ const updateCache = () => {
 
 // --- 修复结束 ---
 
+// Visitor Stats
+const onlineDuration = ref('00:00:00')
+const totalVisitors = ref(0)
+const todayVisitors = ref(0)
+let onlineTimer: any = null
+
+const startOnlineTimer = () => {
+  const startTime = Date.now()
+  if (onlineTimer) clearInterval(onlineTimer)
+  onlineTimer = setInterval(() => {
+    const diff = Math.floor((Date.now() - startTime) / 1000)
+    const h = Math.floor(diff / 3600)
+    const m = Math.floor((diff % 3600) / 60)
+    const s = diff % 60
+    onlineDuration.value = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }, 1000)
+}
+
+const recordVisit = async () => {
+  try {
+    const res = await fetch('/api/visitor/track', { method: 'POST' })
+    const data = await res.json()
+    if (data.success) {
+      totalVisitors.value = data.totalVisitors
+      todayVisitors.value = data.todayVisitors
+    }
+  } catch (e) {
+    console.error('Failed to record visit', e)
+  }
+}
+
+watch(
+  () => store.appConfig.showFooterStats,
+  (val) => {
+    if (val) {
+      startOnlineTimer()
+      recordVisit()
+    } else {
+      if (onlineTimer) clearInterval(onlineTimer)
+    }
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
   fetchHitokoto()
 })
@@ -591,7 +635,7 @@ setInterval(() => {
 </script>
 
 <template>
-  <div class="min-h-screen relative overflow-hidden">
+  <div class="min-h-screen relative overflow-hidden flex flex-col">
     <!-- ✨ Global Background Layer -->
     <div
       v-if="store.appConfig.background"
@@ -615,7 +659,7 @@ setInterval(() => {
     </div>
 
     <div
-      class="min-h-screen p-8 transition-all pb-20 relative z-10"
+      class="flex-1 w-full p-8 transition-all pb-10 relative z-10"
       :style="{
         backgroundColor: store.appConfig.background ? 'transparent' : '#f3f4f6',
         '--group-title-color': store.appConfig.groupTitleColor || '#ffffff',
@@ -1108,25 +1152,81 @@ setInterval(() => {
       </div>
     </div>
 
-    <div
-      v-if="checkVisible(store.widgets.find((w) => w.id === 'w7'))"
-      class="fixed bottom-4 right-4 z-50 text-right max-w-md cursor-pointer hover:opacity-80 transition-opacity select-none"
-      @click="fetchHitokoto"
-      title="点击刷新"
+    <!-- Footer -->
+    <footer
+      class="w-full z-10 relative shrink-0 px-8 transition-all flex items-center"
+      :class="!store.appConfig.footerHeight ? 'py-6' : ''"
+      :style="{
+        height: store.appConfig.footerHeight ? store.appConfig.footerHeight + 'px' : 'auto',
+        marginBottom: (store.appConfig.footerMarginBottom || 0) + 'px',
+      }"
     >
-      <p
-        class="text-base font-serif italic mb-1 opacity-70"
-        :class="store.appConfig.background ? 'text-white shadow-text' : 'text-gray-600'"
+      <div
+        class="mx-auto flex justify-between items-center w-full"
+        :style="{
+          maxWidth: (store.appConfig.footerWidth || 1280) + 'px',
+          fontSize: (store.appConfig.footerFontSize || 12) + 'px',
+        }"
       >
-        “ {{ hitokoto.hitokoto }} ”
-      </p>
-      <p
-        class="text-xs opacity-70"
-        :class="store.appConfig.background ? 'text-white/80 shadow-text' : 'text-gray-400'"
-      >
-        —— {{ hitokoto.from }}
-      </p>
-    </div>
+        <!-- Left: Visitor Stats -->
+        <div class="flex-1 flex items-center justify-start">
+          <div
+            v-if="store.appConfig.showFooterStats"
+            class="flex gap-4 opacity-60 select-none"
+            :class="store.appConfig.background ? 'text-white shadow-text' : 'text-gray-500'"
+          >
+            <div class="flex flex-col gap-1">
+              <span>访客记录</span>
+              <span class="font-mono">{{ totalVisitors }}</span>
+            </div>
+            <div class="w-px bg-current opacity-30"></div>
+            <div class="flex flex-col gap-1">
+              <span>今日访客</span>
+              <span class="font-mono">{{ todayVisitors }}</span>
+            </div>
+            <div class="w-px bg-current opacity-30"></div>
+            <div class="flex flex-col gap-1">
+              <span>在线时长</span>
+              <span class="font-mono">{{ onlineDuration }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center: Custom HTML -->
+        <div class="flex-1 flex justify-center px-4">
+          <div
+            v-if="store.appConfig.footerHtml"
+            v-html="store.appConfig.footerHtml"
+            class="text-center opacity-60"
+            :class="store.appConfig.background ? 'text-white shadow-text' : 'text-gray-500'"
+          ></div>
+        </div>
+
+        <!-- Right: Quote -->
+        <div class="flex-1 flex justify-end">
+          <div
+            v-if="checkVisible(store.widgets.find((w) => w.id === 'w7'))"
+            class="text-right max-w-md cursor-pointer hover:opacity-80 transition-opacity select-none"
+            @click="fetchHitokoto"
+            title="点击刷新"
+          >
+            <p
+              class="font-serif italic mb-1 opacity-70"
+              :class="store.appConfig.background ? 'text-white shadow-text' : 'text-gray-600'"
+              style="font-size: 1.25em"
+            >
+              “ {{ hitokoto.hitokoto }} ”
+            </p>
+            <p
+              class="opacity-70"
+              :class="store.appConfig.background ? 'text-white/80 shadow-text' : 'text-gray-400'"
+            >
+              —— {{ hitokoto.from }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </footer>
 
     <!-- Group Settings Overlay -->
     <GroupSettingsModal v-model:show="showGroupSettingsModal" :groupId="activeGroupId" />

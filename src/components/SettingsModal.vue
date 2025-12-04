@@ -50,6 +50,9 @@ const handleChangePassword = () => {
   newPasswordInput.value = ''
 }
 
+onMounted(() => {
+  store.checkUpdate()
+})
 const handleExport = () => {
   try {
     const backupData = {
@@ -470,7 +473,7 @@ const addTagToForm = (tag: string) => {
               </svg>
             </a>
           </div>
-          <span class="text-xs text-gray-400 font-mono shrink-0">v1.0.5</span>
+          <span class="text-xs text-gray-400 font-mono shrink-0">v1.0.6</span>
         </div>
       </div>
 
@@ -604,6 +607,88 @@ const addTagToForm = (tag: string) => {
                 </div>
               </div>
             </div>
+
+            <div>
+              <h4 class="text-lg font-bold mb-2 text-gray-800 border-l-4 border-purple-500 pl-2">
+                页脚设置
+              </h4>
+              <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <label class="text-sm font-bold text-gray-600">显示访客统计</label>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      v-model="store.appConfig.showFooterStats"
+                      class="sr-only peer"
+                    />
+                    <div
+                      class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"
+                    ></div>
+                  </label>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="text-sm font-bold text-gray-600 mb-1 block">页脚高度 (px)</label>
+                    <div class="text-xs text-gray-400 mb-1">0 为自适应</div>
+                    <input
+                      type="number"
+                      v-model="store.appConfig.footerHeight"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-xl focus:border-purple-500 outline-none text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-sm font-bold text-gray-600 mb-1 block"
+                      >页脚内容宽度 (px)</label
+                    >
+                    <div class="text-xs text-gray-400 mb-1">默认 1280</div>
+                    <input
+                      type="number"
+                      v-model="store.appConfig.footerWidth"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-xl focus:border-purple-500 outline-none text-sm"
+                      placeholder="1280"
+                    />
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="text-sm font-bold text-gray-600 mb-1 block"
+                      >页脚距底部 (px)</label
+                    >
+                    <div class="text-xs text-gray-400 mb-1">调整页脚垂直位置</div>
+                    <input
+                      type="number"
+                      v-model="store.appConfig.footerMarginBottom"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-xl focus:border-purple-500 outline-none text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-sm font-bold text-gray-600 mb-1 block"
+                      >页脚字体大小 (px)</label
+                    >
+                    <div class="text-xs text-gray-400 mb-1">默认 12px</div>
+                    <input
+                      type="number"
+                      v-model="store.appConfig.footerFontSize"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-xl focus:border-purple-500 outline-none text-sm"
+                      placeholder="12"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label class="text-sm font-bold text-gray-600 mb-1 block"
+                    >自定义页脚内容 (HTML)</label
+                  >
+                  <textarea
+                    v-model="store.appConfig.footerHtml"
+                    rows="3"
+                    placeholder="可输入备案号等信息，支持 HTML 标签"
+                    class="w-full px-3 py-2 border border-gray-200 rounded-xl focus:border-purple-500 outline-none text-sm font-mono"
+                  ></textarea>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div v-if="activeTab === 'widgets'" class="space-y-4">
@@ -630,7 +715,7 @@ const addTagToForm = (tag: string) => {
                   v-if="w.type !== 'iframe'"
                   class="flex flex-col items-center justify-between p-3 border border-gray-100 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all aspect-square"
                 >
-                  <div class="flex flex-col items-center gap-1 flex-1 justify-center scale-90">
+                  <div class="flex flex-col items-center gap-2 flex-1 justify-center scale-100">
                     <div
                       class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm"
                     >
@@ -666,7 +751,9 @@ const addTagToForm = (tag: string) => {
                                                     : '🖥️'
                       }}
                     </div>
-                    <span class="font-bold text-gray-700 text-xs text-center truncate w-full px-1">
+                    <span
+                      class="font-bold text-gray-700 text-sm leading-snug text-center truncate w-full px-1"
+                    >
                       {{
                         w.type === 'clock'
                           ? '时钟'

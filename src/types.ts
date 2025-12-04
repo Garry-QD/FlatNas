@@ -78,6 +78,12 @@ export interface AppConfig {
   groupTitleColor: string
   autoPlayMusic?: boolean
   iconSize?: number
+  showFooterStats?: boolean
+  footerHtml?: string
+  footerHeight?: number
+  footerWidth?: number
+  footerMarginBottom?: number
+  footerFontSize?: number
 }
 
 export interface WidgetConfig {

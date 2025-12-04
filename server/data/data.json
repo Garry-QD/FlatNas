@@ -414,6 +414,13 @@
     "defaultSearchEngine": "baidu",
     "rememberLastEngine": true,
     "groupTitleColor": "#ffffff",
+    "showFooterStats": true,
+    "footerHtml": "<!-- footer.html -->\n\n<footer>\n\n\n    <p>© 2023 公司名称. <a href=\"http://www.beian.miit.gov.cn\" target=\"_blank\">备案号：京ICP备00000000号</a></p>\n\n\n</footer>",
+    "footerHeight": 49,
+    "footerWidth": 1280,
+    "footerMarginBottom": "",
+    "footerFontSize": 18,
+    "footerPadding": 0,
     "backgroundBlur": 12,
     "backgroundMask": 0.2,
     "autoPlayMusic": false

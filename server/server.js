@@ -622,6 +622,74 @@ app.all(/.*\.cgi(\/.*)?$/, (req, res) => {
   })
 })
 
+// ------------------------------------------------------------------
+// 访客统计 (IP based)
+// ------------------------------------------------------------------
+const VISITOR_FILE = path.join(DATA_DIR, 'visitors.json')
+
+async function ensureVisitorInit() {
+  try {
+    await fs.access(VISITOR_FILE)
+  } catch {
+    const init = {
+      allTimeIps: [], // 所有历史唯一IP
+      history: {}     // 每日IP记录
+    }
+    await fs.writeFile(VISITOR_FILE, JSON.stringify(init, null, 2))
+  }
+}
+ensureVisitorInit()
+
+app.post('/api/visitor/track', async (req, res) => {
+  try {
+    // 获取 IP
+    let clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || ''
+    if (clientIp.startsWith('::ffff:')) clientIp = clientIp.substring(7)
+    if (clientIp.includes(',')) clientIp = clientIp.split(',')[0].trim()
+
+    if (!clientIp) clientIp = 'unknown'
+
+    let stats
+    try {
+      stats = JSON.parse(await fs.readFile(VISITOR_FILE, 'utf-8'))
+    } catch {
+      stats = { allTimeIps: [], history: {} }
+    }
+
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    
+    if (!stats.history) stats.history = {}
+    if (!stats.allTimeIps) stats.allTimeIps = []
+
+    // 记录今日 IP
+    if (!stats.history[today]) {
+      stats.history[today] = []
+    }
+    
+    if (!stats.history[today].includes(clientIp)) {
+      stats.history[today].push(clientIp)
+    }
+
+    // 记录历史唯一 IP
+    if (!stats.allTimeIps.includes(clientIp)) {
+      stats.allTimeIps.push(clientIp)
+    }
+
+    await fs.writeFile(VISITOR_FILE, JSON.stringify(stats, null, 2))
+
+    res.json({
+      success: true,
+      totalVisitors: stats.allTimeIps.length,
+      todayVisitors: stats.history[today].length,
+      ip: clientIp
+    })
+  } catch (err) {
+    console.error('[Visitor Track Error]:', err)
+    res.status(500).json({ error: 'Failed to track visitor' })
+  }
+})
+
 // 静态文件
 app.use('/music', express.static(MUSIC_DIR))
 

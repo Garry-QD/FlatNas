@@ -99,7 +99,7 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="h-full w-full relative overflow-hidden text-white group select-none transition-all duration-500"
+    class="h-full w-full relative overflow-hidden text-white group select-none transition-all duration-500 rounded-2xl"
   >
     <!-- 动态背景层 -->
     <div class="absolute inset-0 transition-colors duration-1000 ease-in-out" :class="bgClass">

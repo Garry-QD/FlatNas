@@ -1,13 +1,14 @@
 # FlatNas
 
 [![GitHub](https://img.shields.io/badge/GitHub-FlatNas-181717?style=flat&logo=github&logoColor=white)](https://github.com/Garry-QD/FlatNas)
+[![Gitee](https://img.shields.io/badge/Gitee-FlatNas-C71D23?style=flat&logo=gitee&logoColor=white)](https://gitee.com/gjx0808/FlatNas)
 [![Docker Image](https://img.shields.io/badge/Docker-qdnas%2Fflatnas-2496ED?style=flat&logo=docker&logoColor=white)](https://hub.docker.com/r/qdnas/flatnas)
 
 FlatNas 是一个轻量级、高度可定制的个人导航页与仪表盘系统。它基于 Vue 3 和 Express 构建，旨在为 NAS 用户、极客和开发者提供一个优雅的浏览器起始页。
 
 ## ✨ 主要功能
 
-![alt text](1.png) ![alt text](2.png) ![alt text](3.png)
+![alt text](1.png) ![alt text](2.png) ![alt text](3.png) ![alt text](4.png)
 
 ### 🖥️ 仪表盘与布局
 
@@ -36,6 +37,61 @@ FlatNas 内置了多种实用的小组件，满足日常需求：
   - 本地存储配置 (`server/data/data.json`)，数据完全掌握在自己手中。
   - 简单的密码访问保护（默认密码：`admin`），保护隐私配置。
 - **CGI 扩展**: 支持通过 Node.js 编写 CGI 脚本扩展后端功能（位于 `server/cgi-bin`）。
+- **更新提醒**: 内置版本检测功能，自动检查 GitHub 最新 Release 版本，并在设置面板提示 Docker 更新。
+
+## 📅 最近更新 (v1.0.6)
+
+- **视觉体验优化**: 调整了小组件卡片的字体大小 (14px) 和间距，提升了在不同屏幕下的阅读舒适度。
+- **更新提醒功能**: 新增 Docker 版本更新检测机制。
+  - 系统会自动检查 GitHub Releases 的最新版本。
+  - 当有新版本时，设置面板会显示红色更新提醒，点击可直达 Release 页面。
+
+## 🌐 智能网络环境检测
+
+FlatNas 后端集成了智能网络环境识别功能，能够根据用户的访问来源自动切换内外网访问策略，完美解决混合网络环境下的访问难题。
+
+### 1. 功能描述
+
+- **多维度识别**: 结合 **客户端 IP**、**访问域名** 和 **网络延迟** 三个维度，精准判断用户当前所处的网络环境（局域网/互联网）。
+- **自动路由**: 当检测到用户处于局域网（LAN）时，系统会自动优先使用配置的 **内网地址 (LanUrl)**，实现高速直连；在公网环境则自动切换至 **外网地址**。
+- **无感切换**: 用户无需手动干预，无论是在家（内网）还是外出（外网），点击同一个图标即可自动跳转至最佳地址。
+
+### 2. 技术实现
+
+#### 核心检测逻辑
+
+后端 (`server/server.js`) 与前端协同工作，实现了以下检测流程：
+
+1.  **IP 来源分析**:
+    - 后端通过解析 HTTP 请求头中的 `X-Forwarded-For` 和 `Socket Remote Address` 获取真实客户端 IP。
+    - 支持 **IPv4/IPv6 双栈** 识别，自动处理 `::ffff:` 映射格式。
+2.  **网络连通性探测**:
+    - 提供 `/api/ping` 接口，后端调用系统底层 ICMP 协议探测目标主机（默认 223.5.5.5）的延迟。
+    - 用于辅助判断服务器是否具备外网访问能力。
+3.  **环境判断算法**:
+    ```javascript
+    // 前端综合判定逻辑
+    const isLanMode =
+      isInternalIp(clientIp) || // 客户端IP属于内网段 (192.168.x.x, 10.x.x.x, etc.)
+      isInternalHostname(window.location.hostname) // 访问域名属于内网 (localhost, .local)
+    ```
+
+### 3. 使用指南
+
+1.  **配置内网地址**:
+    - 在编辑模式下，右键点击任意组件选择"编辑"。
+    - 在弹出的对话框中，除了填写"链接地址"（外网）外，还可以填写 **"内网链接"**。
+2.  **典型场景**:
+    - **家庭 NAS**: 外网填 `https://nas.yourdomain.com`，内网填 `http://192.168.1.10:5000`。
+    - **开发调试**: 自动识别 `localhost` 访问，优先走本地服务端口。
+
+### 4. 注意事项
+
+- **反向代理设置**: 如果使用 Nginx/Traefik 等反向代理，务必透传真实 IP，否则后端可能无法正确识别客户端来源：
+  ```nginx
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  ```
+- **Fallback 机制**: 如果未配置内网地址，即使在内网环境也会回退使用外网地址，确保服务可用性。
 
 ## 📂 项目结构
 

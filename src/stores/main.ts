@@ -8,6 +8,28 @@ export const useMainStore = defineStore('main', () => {
   const rssFeeds = ref<RssFeed[]>([])
   const rssCategories = ref<RssCategory[]>([])
 
+  // Version Check
+  const currentVersion = '1.0.6'
+  const latestVersion = ref('')
+  const hasUpdate = computed(() => {
+    if (!latestVersion.value) return false
+    const v1 = currentVersion.replace(/^v/, '')
+    const v2 = latestVersion.value.replace(/^v/, '')
+    return v1 !== v2
+  })
+
+  const checkUpdate = async () => {
+    try {
+      const res = await fetch('https://api.github.com/repos/gjx0808/FlatNas/releases/latest')
+      if (res.ok) {
+        const data = await res.json()
+        latestVersion.value = data.tag_name
+      }
+    } catch (e) {
+      console.error('Failed to check update', e)
+    }
+  }
+
   const widgets = ref<WidgetConfig[]>([
     { id: 'w1', type: 'clock', enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
     { id: 'w2', type: 'weather', enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
@@ -84,6 +106,12 @@ export const useMainStore = defineStore('main', () => {
     defaultSearchEngine: 'google',
     rememberLastEngine: true,
     groupTitleColor: '#ffffff',
+    showFooterStats: false,
+    footerHtml: '',
+    footerHeight: 0,
+    footerWidth: 1280,
+    footerMarginBottom: 0,
+    footerFontSize: 12,
   })
 
   const password = ref('admin')
@@ -325,5 +353,9 @@ export const useMainStore = defineStore('main', () => {
     changePassword,
     saveData,
     cleanInvalidGroups,
+    checkUpdate,
+    currentVersion,
+    latestVersion,
+    hasUpdate,
   }
 })
