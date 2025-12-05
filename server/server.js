@@ -508,12 +508,19 @@ app.get('/api/music-list', async (req, res) => {
 // ------------------------------------------------------------------
 app.get('/api/icons', async (req, res) => {
   try {
-    const iconsDir = path.join(__dirname, '../public/icons')
+    // 优先查找 public/icons (开发环境)，如果不存在则查找 dist/icons (生产环境/Docker)
+    let iconsDir = path.join(__dirname, '../public/icons')
     try {
       await fs.access(iconsDir)
     } catch {
-      return res.json([])
+      iconsDir = path.join(__dirname, '../dist/icons')
+      try {
+        await fs.access(iconsDir)
+      } catch {
+        return res.json([])
+      }
     }
+    
     const files = await fs.readdir(iconsDir)
     const list = files.filter((f) => /\.(png|jpg|jpeg|svg|ico|webp)$/i.test(f))
     res.json(list)
