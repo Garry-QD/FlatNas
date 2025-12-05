@@ -31,6 +31,9 @@ export interface NavGroup {
   cardBgColor?: string
   cardTitleColor?: string
   showCardBackground?: boolean
+  backgroundImage?: string
+  backgroundBlur?: number
+  backgroundMask?: number
   // Layout config overrides
   gridGap?: number
   cardSize?: number

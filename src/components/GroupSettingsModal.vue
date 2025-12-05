@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useMainStore } from '../stores/main'
 import IconShape from './IconShape.vue'
+import IconUploader from './IconUploader.vue'
 
 const props = defineProps<{
   show: boolean
@@ -49,6 +50,9 @@ const handleReset = () => {
       cardBgColor: undefined,
       showCardBackground: undefined,
       iconShape: undefined,
+      backgroundImage: undefined,
+      backgroundBlur: undefined,
+      backgroundMask: undefined,
     })
   }
 }
@@ -336,6 +340,94 @@ const bgAlpha = computed({
                       class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
                     ></div>
                   </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Group Card Background Image -->
+            <div class="border-t border-gray-100 pt-4">
+              <label class="text-xs font-bold text-gray-500 mb-2 block">
+                卡片背景图
+                <span class="text-[10px] font-normal text-gray-400">(应用到组内所有卡片)</span>
+              </label>
+              <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                  <input
+                    :value="group.backgroundImage"
+                    @input="
+                      (e) => updateGroup({ backgroundImage: (e.target as HTMLInputElement).value })
+                    "
+                    type="text"
+                    placeholder="背景图 URL..."
+                    class="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500"
+                  />
+                  <button
+                    v-if="group.backgroundImage"
+                    @click="updateGroup({ backgroundImage: '' })"
+                    class="text-gray-400 hover:text-red-500 px-2"
+                    title="清除背景"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <IconUploader
+                  :modelValue="group.backgroundImage"
+                  @update:modelValue="(val) => updateGroup({ backgroundImage: val })"
+                  :crop="false"
+                  :previewStyle="{
+                    filter: `blur(${group.backgroundBlur ?? 6}px)`,
+                    transform: 'scale(1.1)',
+                  }"
+                  :overlayStyle="{
+                    backgroundColor: `rgba(0,0,0,${group.backgroundMask ?? 0.3})`,
+                  }"
+                />
+
+                <div
+                  v-if="group.backgroundImage"
+                  class="grid grid-cols-2 gap-4 mt-2 p-3 bg-gray-50 rounded-lg"
+                >
+                  <div>
+                    <label class="block text-[10px] text-gray-400 mb-1 flex justify-between">
+                      <span>模糊半径</span>
+                      <span>{{ group.backgroundBlur ?? 6 }}px</span>
+                    </label>
+                    <input
+                      type="range"
+                      :value="group.backgroundBlur ?? 6"
+                      @input="
+                        (e) =>
+                          updateGroup({
+                            backgroundBlur: parseInt((e.target as HTMLInputElement).value),
+                          })
+                      "
+                      min="0"
+                      max="20"
+                      step="1"
+                      class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-[10px] text-gray-400 mb-1 flex justify-between">
+                      <span>遮罩浓度</span>
+                      <span>{{ Math.round((group.backgroundMask ?? 0.3) * 100) }}%</span>
+                    </label>
+                    <input
+                      type="range"
+                      :value="group.backgroundMask ?? 0.3"
+                      @input="
+                        (e) =>
+                          updateGroup({
+                            backgroundMask: parseFloat((e.target as HTMLInputElement).value),
+                          })
+                      "
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

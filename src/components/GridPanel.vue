@@ -1093,20 +1093,22 @@ setInterval(() => {
               >
                 <!-- ✨ 背景图层 (高斯模糊 + 遮罩) -->
                 <div
-                  v-if="item.backgroundImage"
+                  v-if="item.backgroundImage || group.backgroundImage"
                   class="absolute inset-0 z-0 pointer-events-none overflow-hidden rounded-[inherit]"
                 >
                   <div
                     class="absolute inset-0 bg-cover bg-center transition-all duration-300"
                     :style="{
-                      backgroundImage: `url(${item.backgroundImage})`,
-                      filter: `blur(${item.backgroundBlur ?? 6}px)`,
+                      backgroundImage: `url(${item.backgroundImage || group.backgroundImage})`,
+                      filter: `blur(${item.backgroundImage ? (item.backgroundBlur ?? 6) : (group.backgroundBlur ?? 6)}px)`,
                       transform: 'scale(1.1)',
                     }"
                   ></div>
                   <div
                     class="absolute inset-0"
-                    :style="{ backgroundColor: `rgba(0,0,0,${item.backgroundMask ?? 0.3})` }"
+                    :style="{
+                      backgroundColor: `rgba(0,0,0,${item.backgroundImage ? (item.backgroundMask ?? 0.3) : (group.backgroundMask ?? 0.3)})`,
+                    }"
                   ></div>
                 </div>
 
@@ -1130,7 +1132,7 @@ setInterval(() => {
                   "
                   :icon="processIcon(item.icon || '')"
                   class="transition-all duration-300 relative z-10"
-                  :class="item.backgroundImage ? 'drop-shadow-lg' : ''"
+                  :class="item.backgroundImage || group.backgroundImage ? 'drop-shadow-lg' : ''"
                 />
                 <span
                   class="font-medium truncate relative z-10"
@@ -1140,10 +1142,14 @@ setInterval(() => {
                       : 'text-center px-2 w-full'
                   "
                   :style="{
-                    color: item.backgroundImage
-                      ? '#ffffff'
-                      : group.cardTitleColor || store.appConfig.cardTitleColor || '#111827',
-                    textShadow: item.backgroundImage ? '0 2px 4px rgba(0,0,0,0.8)' : 'none',
+                    color:
+                      item.backgroundImage || group.backgroundImage
+                        ? '#ffffff'
+                        : group.cardTitleColor || store.appConfig.cardTitleColor || '#111827',
+                    textShadow:
+                      item.backgroundImage || group.backgroundImage
+                        ? '0 2px 4px rgba(0,0,0,0.8)'
+                        : 'none',
                   }"
                   >{{ item.title }}</span
                 >
