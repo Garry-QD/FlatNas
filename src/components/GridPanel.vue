@@ -102,6 +102,12 @@ const draggableWidgets = computed({
 })
 
 const displayGroups = computed(() => {
+  // ✨ 性能优化：在编辑模式且无搜索时，直接返回 store.groups 引用
+  // 这样 VueDraggable 就能直接操作 store 中的数组，确保拖拽状态实时同步
+  if (isEditMode.value && !searchText.value) {
+    return store.groups
+  }
+
   return store.groups
     .map((g) => ({
       ...g,
@@ -285,6 +291,13 @@ const openSettings = () => {
 //   const val = (e.target as HTMLElement).innerText
 //   store.updateGroupTitle(id, val)
 // }
+
+const onGroupItemsChange = (groupId: string, newItems: NavItem[]) => {
+  const group = store.groups.find((g) => g.id === groupId)
+  if (group) {
+    group.items = newItems
+  }
+}
 
 // --- Context Menu Logic ---
 const showContextMenu = ref(false)
@@ -1031,10 +1044,11 @@ setInterval(() => {
             </div>
 
             <VueDraggable
-              v-model="group.items"
+              :model-value="group.items"
+              @update:model-value="(newItems) => onGroupItemsChange(group.id, newItems)"
               group="apps"
               :animation="200"
-              :disabled="!isEditMode"
+              :disabled="!isEditMode || !!searchText"
               class="grid transition-all duration-300 min-h-[100px] rounded-xl"
               :class="isEditMode ? 'bg-white/5 border-2 border-dashed border-white/20 p-4' : ''"
               :style="{

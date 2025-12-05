@@ -473,7 +473,7 @@ const addTagToForm = (tag: string) => {
               </svg>
             </a>
           </div>
-          <span class="text-xs text-gray-400 font-mono shrink-0">v1.0.6</span>
+          <span class="text-xs text-gray-400 font-mono shrink-0">v{{ store.currentVersion }}</span>
         </div>
       </div>
 
