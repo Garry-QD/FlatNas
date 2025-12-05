@@ -1093,21 +1093,21 @@ setInterval(() => {
               >
                 <!-- ✨ 背景图层 (高斯模糊 + 遮罩) -->
                 <div
-                  v-if="item.backgroundImage || group.backgroundImage"
+                  v-if="item.backgroundImage || group.backgroundImage || store.appConfig.cardBackgroundImage"
                   class="absolute inset-0 z-0 pointer-events-none overflow-hidden rounded-[inherit]"
                 >
                   <div
                     class="absolute inset-0 bg-cover bg-center transition-all duration-300"
                     :style="{
-                      backgroundImage: `url(${item.backgroundImage || group.backgroundImage})`,
-                      filter: `blur(${item.backgroundImage ? (item.backgroundBlur ?? 6) : (group.backgroundBlur ?? 6)}px)`,
+                      backgroundImage: `url(${item.backgroundImage || group.backgroundImage || store.appConfig.cardBackgroundImage})`,
+                      filter: `blur(${item.backgroundImage ? (item.backgroundBlur ?? 6) : (group.backgroundImage ? (group.backgroundBlur ?? 6) : (store.appConfig.cardBackgroundBlur ?? 6))}px)`,
                       transform: 'scale(1.1)',
                     }"
                   ></div>
                   <div
                     class="absolute inset-0"
                     :style="{
-                      backgroundColor: `rgba(0,0,0,${item.backgroundImage ? (item.backgroundMask ?? 0.3) : (group.backgroundMask ?? 0.3)})`,
+                      backgroundColor: `rgba(0,0,0,${item.backgroundImage ? (item.backgroundMask ?? 0.3) : (group.backgroundImage ? (group.backgroundMask ?? 0.3) : (store.appConfig.cardBackgroundMask ?? 0.3))})`,
                     }"
                   ></div>
                 </div>
@@ -1132,7 +1132,7 @@ setInterval(() => {
                   "
                   :icon="processIcon(item.icon || '')"
                   class="transition-all duration-300 relative z-10"
-                  :class="item.backgroundImage || group.backgroundImage ? 'drop-shadow-lg' : ''"
+                  :class="item.backgroundImage || group.backgroundImage || store.appConfig.cardBackgroundImage ? 'drop-shadow-lg' : ''"
                 />
                 <span
                   class="font-medium truncate relative z-10"
@@ -1143,11 +1143,11 @@ setInterval(() => {
                   "
                   :style="{
                     color:
-                      item.backgroundImage || group.backgroundImage
+                      item.backgroundImage || group.backgroundImage || store.appConfig.cardBackgroundImage
                         ? '#ffffff'
                         : group.cardTitleColor || store.appConfig.cardTitleColor || '#111827',
                     textShadow:
-                      item.backgroundImage || group.backgroundImage
+                      item.backgroundImage || group.backgroundImage || store.appConfig.cardBackgroundImage
                         ? '0 2px 4px rgba(0,0,0,0.8)'
                         : 'none',
                   }"

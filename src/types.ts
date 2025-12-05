@@ -65,6 +65,9 @@ export interface AppConfig {
   cardTitleColor: string
   cardBorderColor: string
   showCardBackground: boolean
+  cardBackgroundImage?: string
+  cardBackgroundBlur?: number
+  cardBackgroundMask?: number
   iconShape:
     | 'circle'
     | 'rounded'
