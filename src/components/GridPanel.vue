@@ -17,6 +17,8 @@ import ClockWeatherWidget from './ClockWeatherWidget.vue'
 import RssWidget from './RssWidget.vue'
 import IconShape from './IconShape.vue'
 
+import SizeSelector from './SizeSelector.vue'
+
 const store = useMainStore()
 
 const showEditModal = ref(false)
@@ -24,6 +26,7 @@ const showSettingsModal = ref(false)
 const showGroupSettingsModal = ref(false)
 const showLoginModal = ref(false)
 const isEditMode = ref(false)
+const activeResizeWidgetId = ref<string | null>(null)
 const currentEditItem = ref<NavItem | null>(null)
 const currentGroupId = ref<string>('')
 const isLanMode = ref(false)
@@ -43,20 +46,35 @@ const engines = computed(
       { id: 'baidu', key: 'baidu', label: '百度', urlTemplate: 'https://www.baidu.com/s?wd={q}' },
     ],
 )
+const sessionEngine = ref<string | null>(null)
 const effectiveEngine = computed({
   get: () =>
-    store.appConfig.rememberLastEngine
+    sessionEngine.value ||
+    (store.appConfig.rememberLastEngine
       ? searchEngineStored.value
-      : store.appConfig.defaultSearchEngine || engines.value[0]?.key || 'google',
+      : store.appConfig.defaultSearchEngine || engines.value[0]?.key || 'google'),
   set: (val: string) => {
+    sessionEngine.value = val
     if (store.appConfig.rememberLastEngine) {
       searchEngineStored.value = val
-    } else {
-      store.appConfig.defaultSearchEngine = val
     }
   },
 })
 const searchText = ref('')
+
+watch(
+  () => store.appConfig.defaultSearchEngine,
+  (newVal) => {
+    if (newVal) {
+      // 当默认搜索引擎改变时，重置会话选择
+      sessionEngine.value = null
+      // 如果开启了"记住上次选择"，则同步更新存储的值
+      if (store.appConfig.rememberLastEngine) {
+        searchEngineStored.value = newVal
+      }
+    }
+  },
+)
 
 // --- 核心修复逻辑开始 ---
 // 用于清洗 SVG 代码中的无效颜色类名，强制转为白色
@@ -127,26 +145,47 @@ const displayGroups = computed(() => {
 })
 
 const cycleWidgetSize = (widget: WidgetConfig) => {
-  const currentC = widget.colSpan || 1
-  const currentR = widget.rowSpan || (widget.type === 'bookmarks' ? 2 : 1)
-  if (currentC === 1 && currentR === 1) {
-    widget.colSpan = 2
-    widget.rowSpan = 1
-  } else if (currentC === 2 && currentR === 1) {
-    widget.colSpan = 1
-    widget.rowSpan = 2
-  } else if (currentC === 1 && currentR === 2) {
-    widget.colSpan = 2
-    widget.rowSpan = 2
-  } else {
-    widget.colSpan = 1
-    widget.rowSpan = 1
-  }
+  // 统一为所有组件启用 4x4 尺寸选择器
+  activeResizeWidgetId.value = activeResizeWidgetId.value === widget.id ? null : widget.id
+}
+
+const handleSizeSelect = (widget: WidgetConfig, size: { colSpan: number; rowSpan: number }) => {
+  widget.colSpan = size.colSpan
+  widget.rowSpan = size.rowSpan
+  activeResizeWidgetId.value = null
   store.saveData()
+}
+
+const getWidgetSpanClass = (widget: WidgetConfig) => {
+  const col = widget.colSpan || 1
+  const row = widget.rowSpan || (widget.type === 'bookmarks' ? 2 : 1)
+  const colClass =
+    col === 4
+      ? 'md:col-span-4'
+      : col === 3
+        ? 'md:col-span-3'
+        : col === 2
+          ? 'md:col-span-2'
+          : 'md:col-span-1'
+  const rowClass =
+    row === 4 ? 'row-span-4' : row === 3 ? 'row-span-3' : row === 2 ? 'row-span-2' : 'row-span-1'
+  return `${colClass} ${rowClass}`
 }
 
 const devtoolsClickCount = ref(0)
 const devtoolsClickTimer = ref<number | null>(null)
+
+const closeResizeSelector = () => {
+  activeResizeWidgetId.value = null
+}
+
+onMounted(() => {
+  document.addEventListener('click', closeResizeSelector)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeResizeSelector)
+})
 
 const toggleDevTools = () => {
   const style = document.getElementById('devtools-hider')
@@ -809,10 +848,7 @@ setInterval(() => {
             :key="widget.id"
             class="transition-all duration-300 relative"
             :class="[
-              (widget.colSpan || 1) === 2 ? 'md:col-span-2' : 'md:col-span-1',
-              (widget.rowSpan || (widget.type === 'bookmarks' ? 2 : 1)) === 2
-                ? 'row-span-2'
-                : 'row-span-1',
+              getWidgetSpanClass(widget),
               isEditMode
                 ? 'ring-2 ring-blue-400/50 rounded-2xl cursor-move hover:ring-blue-500'
                 : '',
@@ -832,6 +868,12 @@ setInterval(() => {
                 ></path>
               </svg>
             </button>
+            <SizeSelector
+              v-if="isEditMode && activeResizeWidgetId === widget.id"
+              :current-col="widget.colSpan || 1"
+              :current-row="widget.rowSpan || (widget.type === 'bookmarks' ? 2 : 1)"
+              @select="(size) => handleSizeSelect(widget, size)"
+            />
             <div
               v-if="widget.type === 'clock'"
               class="w-full h-full p-6 rounded-2xl bg-black/20 backdrop-blur border border-white/10 flex flex-col items-center justify-center hover:bg-black/30 transition-colors"
@@ -922,12 +964,6 @@ setInterval(() => {
               >
                 未设置 URL
               </div>
-              <input
-                v-if="store.isLogged"
-                v-model="widget.data.url"
-                class="absolute bottom-2 left-2 right-2 text-xs p-1 rounded bg-white/90 border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity"
-                placeholder="输入 https:// 网址"
-              />
             </div>
             <BookmarkWidget v-else-if="widget.type === 'bookmarks'" :widget="widget" />
             <HotWidget v-else-if="widget.type === 'hot'" :widget="widget" />
@@ -1093,21 +1129,21 @@ setInterval(() => {
               >
                 <!-- ✨ 背景图层 (高斯模糊 + 遮罩) -->
                 <div
-                  v-if="item.backgroundImage || group.backgroundImage || store.appConfig.cardBackgroundImage"
+                  v-if="item.backgroundImage || group.backgroundImage"
                   class="absolute inset-0 z-0 pointer-events-none overflow-hidden rounded-[inherit]"
                 >
                   <div
                     class="absolute inset-0 bg-cover bg-center transition-all duration-300"
                     :style="{
-                      backgroundImage: `url(${item.backgroundImage || group.backgroundImage || store.appConfig.cardBackgroundImage})`,
-                      filter: `blur(${item.backgroundImage ? (item.backgroundBlur ?? 6) : (group.backgroundImage ? (group.backgroundBlur ?? 6) : (store.appConfig.cardBackgroundBlur ?? 6))}px)`,
+                      backgroundImage: `url(${item.backgroundImage || group.backgroundImage})`,
+                      filter: `blur(${item.backgroundImage ? (item.backgroundBlur ?? 6) : (group.backgroundBlur ?? 6)}px)`,
                       transform: 'scale(1.1)',
                     }"
                   ></div>
                   <div
                     class="absolute inset-0"
                     :style="{
-                      backgroundColor: `rgba(0,0,0,${item.backgroundImage ? (item.backgroundMask ?? 0.3) : (group.backgroundImage ? (group.backgroundMask ?? 0.3) : (store.appConfig.cardBackgroundMask ?? 0.3))})`,
+                      backgroundColor: `rgba(0,0,0,${item.backgroundImage ? (item.backgroundMask ?? 0.3) : (group.backgroundMask ?? 0.3)})`,
                     }"
                   ></div>
                 </div>
@@ -1132,7 +1168,7 @@ setInterval(() => {
                   "
                   :icon="processIcon(item.icon || '')"
                   class="transition-all duration-300 relative z-10"
-                  :class="item.backgroundImage || group.backgroundImage || store.appConfig.cardBackgroundImage ? 'drop-shadow-lg' : ''"
+                  :class="item.backgroundImage || group.backgroundImage ? 'drop-shadow-lg' : ''"
                 />
                 <span
                   class="font-medium truncate relative z-10"
@@ -1143,11 +1179,11 @@ setInterval(() => {
                   "
                   :style="{
                     color:
-                      item.backgroundImage || group.backgroundImage || store.appConfig.cardBackgroundImage
+                      item.backgroundImage || group.backgroundImage
                         ? '#ffffff'
                         : group.cardTitleColor || store.appConfig.cardTitleColor || '#111827',
                     textShadow:
-                      item.backgroundImage || group.backgroundImage || store.appConfig.cardBackgroundImage
+                      item.backgroundImage || group.backgroundImage
                         ? '0 2px 4px rgba(0,0,0,0.8)'
                         : 'none',
                   }"

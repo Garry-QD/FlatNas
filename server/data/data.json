@@ -460,7 +460,7 @@
       "enable": true,
       "data": [],
       "colSpan": 1,
-      "rowSpan": 2,
+      "rowSpan": 1,
       "isPublic": true
     },
     {
@@ -468,8 +468,8 @@
       "type": "memo",
       "enable": true,
       "data": "登录后才能编辑\n编辑里面可以添加分组和删除分组\n组件在设置里面启用\n万能窗口能再当前页展开\n右击可以删除和编辑卡片\n",
-      "colSpan": 2,
-      "rowSpan": 2,
+      "colSpan": 1,
+      "rowSpan": 1,
       "isPublic": true
     },
     {
@@ -556,13 +556,13 @@
     {
       "id": "w11",
       "type": "iframe",
-      "enable": false,
+      "enable": true,
       "data": {
         "url": "https://baidu.com/"
       },
-      "colSpan": 2,
+      "colSpan": 4,
       "rowSpan": 2,
-      "isPublic": false
+      "isPublic": true
     },
     {
       "id": "player",
@@ -611,15 +611,9 @@
         "key": "bing",
         "label": "Bing",
         "urlTemplate": "https://cn.bing.com/search?q={q}"
-      },
-      {
-        "id": "1764556494741",
-        "key": "custom-1764556494741",
-        "label": "duck",
-        "urlTemplate": "https://duckduckgo.com/s?wd={q}"
       }
     ],
-    "defaultSearchEngine": "baidu",
+    "defaultSearchEngine": "bing",
     "rememberLastEngine": true,
     "groupTitleColor": "#ffffff",
     "showFooterStats": false,
