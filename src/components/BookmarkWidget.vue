@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props */
-import { ref } from 'vue'
+import { ref, nextTick } from 'vue'
 import type { WidgetConfig, BookmarkItem } from '@/types'
 import { useMainStore } from '../stores/main'
 import { isInternalDomain, processSecurityUrl } from '../utils/security'
@@ -21,14 +21,100 @@ const newTitle = ref('')
 const newUrl = ref('')
 const newIcon = ref('')
 const isFetching = ref(false)
+const isAddingCategory = ref(false)
+const newCategoryTitle = ref('')
+const categoryInputRef = ref<HTMLInputElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+// 导入书签
+const triggerImport = () => {
+  fileInputRef.value?.click()
+}
+
+const handleFileUpload = (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const content = e.target?.result as string
+    parseBookmarks(content)
+  }
+  reader.readAsText(file)
+  // Reset input so the same file can be selected again if needed
+  if (event.target) (event.target as HTMLInputElement).value = ''
+}
+
+const parseBookmarks = (html: string) => {
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, 'text/html')
+    const links = doc.querySelectorAll('a')
+
+    const newItems: BookmarkItem[] = []
+    links.forEach((link) => {
+      const url = link.href
+      if (!url.startsWith('http')) return // Skip non-http links (e.g. chrome://)
+
+      let icon = link.getAttribute('icon')
+      if (!icon) {
+        try {
+          icon = `https://api.iowen.cn/favicon/${new URL(url).hostname}.png`
+        } catch {
+          icon = ''
+        }
+      }
+
+      newItems.push({
+        id: Date.now() + Math.random().toString(36).substr(2, 9),
+        title: link.textContent || url,
+        url: url,
+        icon: icon,
+      })
+    })
+
+    if (newItems.length > 0) {
+      if (!props.widget.data) props.widget.data = []
+      props.widget.data.push({
+        id: Date.now().toString(),
+        title: `导入收藏 ${new Date().toLocaleDateString()}`,
+        collapsed: false,
+        children: newItems,
+      })
+      alert(`成功导入 ${newItems.length} 个书签`)
+    } else {
+      alert('未找到可导入的书签')
+    }
+  } catch (error) {
+    console.error('Import failed', error)
+    alert('导入失败，请检查文件格式')
+  }
+}
 
 // 添加分类
 const addCategory = () => {
-  const title = prompt('请输入分类名称')
-  if (title) {
+  isAddingCategory.value = true
+  newCategoryTitle.value = ''
+  nextTick(() => {
+    categoryInputRef.value?.focus()
+  })
+}
+
+const confirmAddCategory = () => {
+  if (newCategoryTitle.value) {
     if (!props.widget.data) props.widget.data = []
-    props.widget.data.push({ id: Date.now().toString(), title, collapsed: false, children: [] })
+    props.widget.data.push({
+      id: Date.now().toString(),
+      title: newCategoryTitle.value,
+      collapsed: false,
+      children: [],
+    })
+    isAddingCategory.value = false
   }
+}
+
+const cancelAddCategory = () => {
+  isAddingCategory.value = false
 }
 
 // 图片检测
@@ -49,39 +135,20 @@ const checkImageExists = (url: string): Promise<boolean> => {
   })
 }
 
-// 自动获取图标
+// 自动获取标题和图标
 const autoFetchIcon = async () => {
-  if (!newUrl.value) return alert('请先填写网址！')
+  if (!newUrl.value) return
   isFetching.value = true
 
   try {
-    const urlObj = new URL(
-      newUrl.value.startsWith('http') ? newUrl.value : 'https://' + newUrl.value,
-    )
-    const origin = urlObj.origin
-    const hostname = urlObj.hostname
-
-    const candidates = [
-      `${origin}/favicon.ico`,
-      `${origin}/logo.svg`,
-      `${origin}/logo.png`,
-      `${origin}/icon.png`,
-      `https://api.iowen.cn/favicon/${hostname}.png`,
-      `https://api.uomg.com/api/favicon?url=${encodeURIComponent(origin)}`,
-      `https://icons.duckduckgo.com/ip3/${hostname}.ico`,
-    ]
-
-    let found = false
-    for (const src of candidates) {
-      if (await checkImageExists(src)) {
-        newIcon.value = src
-        found = true
-        break
-      }
+    const res = await fetch(`/api/fetch-meta?url=${encodeURIComponent(newUrl.value)}`)
+    if (res.ok) {
+      const data = await res.json()
+      if (data.title) newTitle.value = data.title
+      if (data.icon) newIcon.value = data.icon
     }
-    if (!found) newIcon.value = `https://icon.horse/icon/${hostname}`
-  } catch {
-    // 忽略错误
+  } catch (e) {
+    console.error(e)
   } finally {
     isFetching.value = false
   }
@@ -176,6 +243,20 @@ const openUrl = (url: string) => {
         v-if="store.isLogged"
         class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
       >
+        <input
+          type="file"
+          ref="fileInputRef"
+          accept=".html"
+          class="hidden"
+          @change="handleFileUpload"
+        />
+        <button
+          @click="triggerImport"
+          class="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded hover:bg-blue-200"
+          title="导入浏览器收藏夹HTML"
+        >
+          导入
+        </button>
         <button
           @click="addCategory"
           class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded hover:bg-green-200"
@@ -186,6 +267,34 @@ const openUrl = (url: string) => {
     </div>
 
     <div class="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
+      <div
+        v-if="isAddingCategory"
+        class="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-100 animate-fade-in"
+      >
+        <div class="text-xs font-bold text-blue-500 mb-2">添加新分类</div>
+        <div class="flex gap-2">
+          <input
+            ref="categoryInputRef"
+            v-model="newCategoryTitle"
+            placeholder="分类名称"
+            class="flex-1 text-sm px-3 py-2 rounded-lg border bg-white text-gray-900 focus:outline-none focus:border-blue-300"
+            @keyup.enter="confirmAddCategory"
+          />
+          <button
+            @click="confirmAddCategory"
+            class="bg-blue-500 text-white text-xs px-3 py-2 rounded-lg hover:bg-blue-600 whitespace-nowrap"
+          >
+            确定
+          </button>
+          <button
+            @click="cancelAddCategory"
+            class="bg-gray-200 text-gray-600 text-xs px-3 py-2 rounded-lg hover:bg-gray-300 whitespace-nowrap"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+
       <div v-for="(cat, catIdx) in widget.data" :key="cat.id">
         <div class="flex items-center justify-between mb-3 group/cat border-b border-gray-100 pb-1">
           <span
@@ -215,22 +324,30 @@ const openUrl = (url: string) => {
           </div>
         </div>
 
-        <div v-if="!cat.collapsed" class="flex flex-wrap gap-3">
+        <div v-if="!cat.collapsed" class="flex flex-col gap-2">
           <div
             v-for="(link, linkIdx) in cat.children"
             :key="link.id"
-            class="flex items-center gap-3 px-5 py-3 bg-gray-100 hover:bg-blue-50 hover:text-blue-600 rounded-xl cursor-pointer transition-all border border-gray-100 hover:border-blue-200 group/link min-w-[140px]"
+            class="flex items-center gap-3 p-2 hover:bg-gray-100 rounded-xl cursor-pointer transition-all group/link border border-transparent hover:border-gray-200"
             @click.stop="openUrl(link.url)"
             title="点击跳转"
           >
-            <img
-              :src="link.icon"
-              class="w-8 h-8 rounded object-cover bg-white shadow-sm"
-              @error="link.icon = 'https://api.iowen.cn/favicon/unknown.png'"
-            />
-            <span class="font-medium text-gray-700 text-base group-hover:text-blue-600">{{
-              link.title
-            }}</span>
+            <div
+              class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 overflow-hidden border border-gray-200"
+            >
+              <img
+                :src="link.icon"
+                class="w-6 h-6 object-cover"
+                @error="link.icon = 'https://api.iowen.cn/favicon/unknown.png'"
+              />
+            </div>
+
+            <div class="flex flex-col min-w-0 flex-1">
+              <span class="font-medium text-gray-700 text-sm truncate group-hover:text-blue-600">{{
+                link.title
+              }}</span>
+              <span class="text-xs text-gray-400 truncate">{{ link.url }}</span>
+            </div>
 
             <div
               v-if="store.isLogged"
@@ -271,25 +388,27 @@ const openUrl = (url: string) => {
           <div class="grid grid-cols-1 gap-3 mb-3">
             <div class="flex gap-2">
               <input
-                v-model="newTitle"
-                placeholder="标题"
+                v-model="newUrl"
+                placeholder="网址 (例如: www.example.com)"
                 class="flex-1 text-sm px-3 py-2 rounded-lg border bg-gray-50 text-gray-900 focus:bg-white outline-none transition-all"
+                @blur="autoFetchIcon"
               />
               <button
                 @click="autoFetchIcon"
                 :disabled="isFetching"
                 class="px-3 bg-blue-50 text-blue-600 text-xs rounded-lg font-bold hover:bg-blue-100 transition-colors flex items-center gap-1"
+                title="自动获取标题和图标"
               >
                 <span
                   v-if="isFetching"
                   class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"
                 ></span>
-                {{ isFetching ? '获取中' : '⚡ 抓取' }}
+                {{ isFetching ? '获取中' : '⚡' }}
               </button>
             </div>
             <input
-              v-model="newUrl"
-              placeholder="网址"
+              v-model="newTitle"
+              placeholder="标题 (自动获取)"
               class="w-full text-sm px-3 py-2 rounded-lg border bg-gray-50 text-gray-900 focus:bg-white outline-none transition-all"
             />
             <div class="flex gap-2 items-center">
@@ -301,7 +420,7 @@ const openUrl = (url: string) => {
               </div>
               <input
                 v-model="newIcon"
-                placeholder="图标地址 (选填)"
+                placeholder="图标地址 (自动获取)"
                 class="flex-1 text-sm px-3 py-2 rounded-lg border bg-gray-50 text-gray-900 focus:bg-white outline-none transition-all"
               />
             </div>

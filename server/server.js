@@ -454,7 +454,62 @@ app.get('/api/hot/github', async (req, res) => {
   } catch (err) {
     const entry = HOT_CACHE.rss.get(String(req.query.url || ''))
     if (entry) return res.json(entry.data)
-    res.status(502).json({ error: String(err) })
+    res.status(500).json({ error: String(err) })
+  }
+})
+
+// ------------------------------------------------------------------
+// 网页元数据抓取
+// ------------------------------------------------------------------
+app.get('/api/fetch-meta', async (req, res) => {
+  try {
+    let url = req.query.url
+    if (!url) return res.status(400).json({ error: 'Missing url' })
+    
+    if (!/^https?:\/\//i.test(url)) {
+      url = 'https://' + url
+    }
+
+    const r = await fetch(url, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+        },
+        redirect: 'follow'
+    })
+    
+    if (!r.ok) throw new Error(`Status ${r.status}`)
+    
+    const html = await r.text()
+    
+    // 简单正则提取 Title
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+    const title = titleMatch ? titleMatch[1].trim() : ''
+    
+    // 简单正则提取 Icon
+    let icon = ''
+    const iconMatch = html.match(/<link[^>]*rel=["'](?:shortcut )?icon["'][^>]*href=["']([^"']+)["'][^>]*>/i)
+    if (iconMatch) {
+        icon = iconMatch[1]
+        // 处理相对路径
+        if (icon && !/^https?:\/\//i.test(icon)) {
+             try {
+                icon = new URL(icon, url).href
+             } catch {}
+        }
+    }
+    
+    // 如果没找到 icon，尝试默认路径
+    if (!icon) {
+        try {
+            const u = new URL(url)
+            icon = `${u.origin}/favicon.ico`
+        } catch {}
+    }
+
+    res.json({ title, icon })
+  } catch (err) {
+    console.error('[Meta Fetch Error]:', err.message)
+    res.status(500).json({ error: 'Failed to fetch meta' })
   }
 })
 
