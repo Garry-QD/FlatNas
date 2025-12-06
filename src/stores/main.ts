@@ -9,7 +9,7 @@ export const useMainStore = defineStore('main', () => {
   const rssCategories = ref<RssCategory[]>([])
 
   // Version Check
-  const currentVersion = '1.0.11'
+  const currentVersion = '1.0.12'
   const latestVersion = ref('')
   const hasUpdate = computed(() => {
     if (!latestVersion.value) return false
@@ -119,7 +119,9 @@ export const useMainStore = defineStore('main', () => {
 
   const init = async () => {
     try {
-      const res = await fetch(`/api/data?t=${Date.now()}`)
+      // 移除 t=${Date.now()} 参数，允许浏览器使用协商缓存(304)
+      // 配合后端的 ETag 支持，如果数据未变，将极大减少传输量
+      const res = await fetch(`/api/data`)
       const data = await res.json()
 
       if (data.items && data.items.length > 0 && (!data.groups || data.groups.length === 0)) {
