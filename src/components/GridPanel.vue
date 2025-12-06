@@ -16,6 +16,7 @@ import HotWidget from './HotWidget.vue'
 import ClockWeatherWidget from './ClockWeatherWidget.vue'
 import RssWidget from './RssWidget.vue'
 import IconShape from './IconShape.vue'
+import IframeWidget from './IframeWidget.vue'
 
 import SizeSelector from './SizeSelector.vue'
 
@@ -270,8 +271,11 @@ const openAddModal = (groupId: string) => {
   currentGroupId.value = groupId
   showEditModal.value = true
 }
-const openEditModal = (item: NavItem) => {
+const openEditModal = (item: NavItem, groupId?: string) => {
   currentEditItem.value = item
+  if (groupId) {
+    currentGroupId.value = groupId
+  }
   showEditModal.value = true
 }
 const handleSave = (payload: { item: NavItem; groupId?: string }) => {
@@ -342,12 +346,14 @@ const onGroupItemsChange = (groupId: string, newItems: NavItem[]) => {
 const showContextMenu = ref(false)
 const contextMenuPosition = ref({ x: 0, y: 0 })
 const contextMenuItem = ref<NavItem | null>(null)
+const contextMenuGroupId = ref<string | undefined>(undefined)
 
-const handleContextMenu = (e: MouseEvent, item: NavItem) => {
+const handleContextMenu = (e: MouseEvent, item: NavItem, groupId?: string) => {
   if (!store.isLogged) return
 
   e.preventDefault()
   contextMenuItem.value = item
+  contextMenuGroupId.value = groupId
 
   // Prevent menu from going off-screen (basic logic)
   const menuWidth = 150
@@ -383,7 +389,7 @@ const handleMenuLanOpen = () => {
 
 const handleMenuEdit = () => {
   if (contextMenuItem.value) {
-    openEditModal(contextMenuItem.value)
+    openEditModal(contextMenuItem.value, contextMenuGroupId.value)
   }
   closeContextMenu()
 }
@@ -450,25 +456,37 @@ const getLayoutConfig = (group: NavGroup) => {
   const modeScale = isNoBg ? 0.6 : 1.0
   const finalScale = ratio * modeScale
 
-  const v_w = 120 * finalScale
-  const v_h = 128 * finalScale
-
-  const h_w = 220 * finalScale
-  const h_h = 80 * finalScale
-
   // Icon Size Logic
   const customIconSize = group.iconSize || store.appConfig.iconSize
   let v_icon, h_icon
 
   if (customIconSize) {
-    // If explicit icon size is set, use it as base, but still apply modeScale (compact mode)
-    v_icon = customIconSize * modeScale
+    // If explicit icon size is set, use it as base
+    // Optimization: In vertical mode without card background, use the custom size directly
+    if (isNoBg && !isHorizontal) {
+      v_icon = customIconSize
+    } else {
+      v_icon = customIconSize * modeScale
+    }
     h_icon = customIconSize * (40 / 48) * modeScale
   } else {
     // Legacy behavior: scale with card size
     v_icon = 48 * finalScale
     h_icon = 40 * finalScale
   }
+
+  let v_w = 120 * finalScale
+  let v_h = 128 * finalScale
+
+  // Optimization: Ensure container fits the icon in vertical no-bg mode
+  if (isNoBg && !isHorizontal) {
+    if (v_icon > v_w) v_w = v_icon + 8
+    const minH = v_icon + 32 // Icon + Text space
+    if (minH > v_h) v_h = minH
+  }
+
+  const h_w = 220 * finalScale
+  const h_h = 80 * finalScale
 
   return {
     minWidth: isHorizontal ? h_w : v_w,
@@ -626,7 +644,7 @@ const updateCache = () => {
 const onlineDuration = ref('00:00:00')
 const totalVisitors = ref(0)
 const todayVisitors = ref(0)
-let onlineTimer: any = null
+let onlineTimer: ReturnType<typeof setInterval> | null = null
 
 const startOnlineTimer = () => {
   const startTime = Date.now()
@@ -820,7 +838,18 @@ setInterval(() => {
               @click="openSettings"
               class="w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white flex items-center justify-center backdrop-blur transition-all border border-white/20 shadow-sm"
             >
-              ⚙️
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                class="w-6 h-6"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567l-.091.549a.798.798 0 01-.517.608 7.45 7.45 0 00-.478.198.798.798 0 01-.796-.064l-.453-.324a1.875 1.875 0 00-2.416.2l-.043.044a1.875 1.875 0 00-.204 2.416l.325.454a.798.798 0 01.064.796 7.448 7.448 0 00-.198.478.798.798 0 01-.608.517l-.55.092a1.875 1.875 0 00-1.566 1.849v.044c0 .917.663 1.699 1.567 1.85l.549.091c.281.047.508.25.608.517.06.162.127.321.198.478a.798.798 0 01-.064.796l-.324.453a1.875 1.875 0 00.2 2.416l.044.043a1.875 1.875 0 002.416.204l.454-.325a.798.798 0 01.796-.064c.157.071.316.137.478.198.267.1.47.327.517.608l.092.55c.15.903.932 1.566 1.849 1.566h.044c.917 0 1.699-.663 1.85-1.567l.091-.549a.798.798 0 01.517-.608 7.52 7.52 0 00.478-.198.798.798 0 01.796.064l.453.324a1.875 1.875 0 002.416-.2l.043-.044a1.875 1.875 0 00.204-2.416l-.325-.454a.798.798 0 01-.064-.796c.071-.157.137-.316.198-.478.1-.267.327-.47.608-.517l.55-.092a1.875 1.875 0 001.566-1.849v-.044c0-.917-.663-1.699-1.567-1.85l-.549-.091a.798.798 0 01-.608-.517 7.507 7.507 0 00-.198-.478.798.798 0 01.064-.796l.324-.453a1.875 1.875 0 00-.2-2.416l-.044-.043a1.875 1.875 0 00-2.416-.204l-.454.325a.798.798 0 01-.796.064 7.462 7.462 0 00-.478-.198.798.798 0 01-.517-.608l-.092-.55a1.875 1.875 0 00-1.849-1.566h-.044zM12 15.75a3.75 3.75 0 100-7.5 3.75 3.75 0 000 7.5z"
+                  clip-rule="evenodd"
+                />
+              </svg>
             </button>
             <button
               v-if="store.isLogged"
@@ -949,22 +978,11 @@ setInterval(() => {
                 </button>
               </div>
             </div>
-            <div
+            <IframeWidget
               v-else-if="widget.type === 'iframe'"
-              class="w-full h-full rounded-2xl bg-white backdrop-blur border border-white/10 overflow-hidden relative group"
-            >
-              <iframe
-                v-if="widget.data.url"
-                :src="widget.data.url"
-                class="w-full h-full border-0"
-              ></iframe>
-              <div
-                v-else
-                class="absolute inset-0 flex items-center justify-center text-gray-400 text-xs"
-              >
-                未设置 URL
-              </div>
-            </div>
+              :widget="widget"
+              :is-lan-mode="isLanMode"
+            />
             <BookmarkWidget v-else-if="widget.type === 'bookmarks'" :widget="widget" />
             <HotWidget v-else-if="widget.type === 'hot'" :widget="widget" />
             <ClockWeatherWidget v-else-if="widget.type === 'clockweather'" />
@@ -1081,7 +1099,7 @@ setInterval(() => {
 
             <VueDraggable
               :model-value="group.items"
-              @update:model-value="(newItems) => onGroupItemsChange(group.id, newItems)"
+              @update:model-value="(newItems: NavItem[]) => onGroupItemsChange(group.id, newItems)"
               group="apps"
               :animation="200"
               :disabled="!isEditMode || !!searchText"
@@ -1097,7 +1115,7 @@ setInterval(() => {
                 v-for="item in group.items"
                 :key="item.id"
                 @click="handleCardClick(item)"
-                @contextmenu="handleContextMenu($event, item)"
+                @contextmenu="handleContextMenu($event, item, group.id)"
                 class="flex items-center justify-center cursor-pointer transition-all select-none relative group overflow-hidden"
                 :class="[
                   isEditMode ? 'animate-pulse cursor-move ring-2 ring-blue-400' : '',
@@ -1170,18 +1188,77 @@ setInterval(() => {
                   class="transition-all duration-300 relative z-10"
                   :class="item.backgroundImage || group.backgroundImage ? 'drop-shadow-lg' : ''"
                 />
+
+                <!-- Horizontal Mode: 3-Line Custom Text -->
+                <div
+                  v-if="(group.cardLayout || store.appConfig.cardLayout) === 'horizontal'"
+                  class="flex-1 flex flex-col h-full justify-center gap-0.5 overflow-hidden relative z-10"
+                >
+                  <!-- Line 1 (Top) -->
+                  <div
+                    class="text-xs truncate font-medium leading-tight"
+                    :style="{
+                      color:
+                        item.titleColor ||
+                        (item.backgroundImage || group.backgroundImage
+                          ? '#ffffff'
+                          : group.cardTitleColor || store.appConfig.cardTitleColor || '#111827'),
+                      textShadow:
+                        item.backgroundImage || group.backgroundImage
+                          ? '0 1px 2px rgba(0,0,0,0.8)'
+                          : 'none',
+                      opacity: item.description1 ? 1 : 0.5,
+                    }"
+                  >
+                    {{ item.description1 || item.title }}
+                  </div>
+
+                  <!-- Line 2 (Middle) -->
+                  <div
+                    class="text-[10px] truncate leading-tight opacity-80"
+                    :style="{
+                      color:
+                        item.backgroundImage || group.backgroundImage
+                          ? '#e5e7eb'
+                          : group.cardTitleColor || store.appConfig.cardTitleColor || '#4b5563',
+                      textShadow:
+                        item.backgroundImage || group.backgroundImage
+                          ? '0 1px 2px rgba(0,0,0,0.8)'
+                          : 'none',
+                    }"
+                  >
+                    {{ item.description2 || '' }}
+                  </div>
+
+                  <!-- Line 3 (Bottom) -->
+                  <div
+                    class="text-[10px] truncate leading-tight opacity-70"
+                    :style="{
+                      color:
+                        item.backgroundImage || group.backgroundImage
+                          ? '#d1d5db'
+                          : group.cardTitleColor || store.appConfig.cardTitleColor || '#6b7280',
+                      textShadow:
+                        item.backgroundImage || group.backgroundImage
+                          ? '0 1px 2px rgba(0,0,0,0.8)'
+                          : 'none',
+                    }"
+                  >
+                    {{ item.description3 || '' }}
+                  </div>
+                </div>
+
+                <!-- Vertical Mode: Standard Title -->
                 <span
+                  v-else
                   class="font-medium truncate relative z-10"
-                  :class="
-                    (group.cardLayout || store.appConfig.cardLayout) === 'horizontal'
-                      ? 'text-left text-sm flex-1'
-                      : 'text-center px-2 w-full'
-                  "
+                  :class="'text-center px-2 w-full'"
                   :style="{
                     color:
-                      item.backgroundImage || group.backgroundImage
+                      item.titleColor ||
+                      (item.backgroundImage || group.backgroundImage
                         ? '#ffffff'
-                        : group.cardTitleColor || store.appConfig.cardTitleColor || '#111827',
+                        : group.cardTitleColor || store.appConfig.cardTitleColor || '#111827'),
                     textShadow:
                       item.backgroundImage || group.backgroundImage
                         ? '0 2px 4px rgba(0,0,0,0.8)'

@@ -5,3 +5,5 @@ dist
 build
 *.log
 *.tar
+
+.trae/documents/

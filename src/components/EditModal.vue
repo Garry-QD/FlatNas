@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import type { NavItem, SimpleIcon } from '@/types'
+import { useMainStore } from '../stores/main'
 import IconUploader from './IconUploader.vue'
 import IconSelectionModal from './IconSelectionModal.vue'
+import Fuse from 'fuse.js'
 
 // 接收父组件传来的数据
 const props = defineProps<{
@@ -13,6 +15,15 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits(['update:show', 'save'])
+
+const store = useMainStore()
+
+const isVertical = computed(() => {
+  const layout = props.groupId
+    ? store.groups.find((g) => g.id === props.groupId)?.cardLayout
+    : undefined
+  return (layout || store.appConfig.cardLayout) === 'vertical'
+})
 
 // 图标模式：emoji 或 图片
 const iconType = ref<'emoji' | 'image'>('image')
@@ -31,7 +42,11 @@ const form = ref<Omit<NavItem, 'id'>>({
   url: '',
   lanUrl: '',
   icon: '',
+  description1: '',
+  description2: '',
+  description3: '',
   color: 'bg-blue-50 text-blue-600',
+  titleColor: '',
   isPublic: true,
   backgroundImage: '',
   backgroundBlur: 6,
@@ -199,20 +214,22 @@ const autoAdaptIcon = async () => {
     // Phase 1: 本地搜索
     console.log(`[Search] Starting Phase 1 (Local) for: "${searchTerm}"`)
     await fetchLocalIcons()
-    const lowerTitle = searchTerm.toLowerCase()
-
-    const localMatches = localIcons.value.filter((icon) => {
-      const parts = icon.split('/')
-      const last = parts.pop()
-      if (!last) return false
-      const fileName = last as string
-      const fileParts = fileName.split('.')
-      const firstPart = fileParts[0]
-      if (!firstPart) return false
-      const name = firstPart.toLowerCase()
-      // 简单的模糊匹配
-      return name.includes(lowerTitle)
+    // 使用 Fuse.js 进行本地搜索
+    const localIconList = localIcons.value.map((path) => {
+      const parts = path.split('/')
+      const filename = parts[parts.length - 1]
+      const name = filename ? filename.split('.')[0] : ''
+      return { path, name }
     })
+
+    const localFuse = new Fuse(localIconList, {
+      keys: ['name'],
+      threshold: 0.3,
+      ignoreLocation: true,
+    })
+
+    const localResults = localFuse.search(searchTerm)
+    const localMatches = localResults.map((result) => result.item.path)
 
     console.log(`[Search] Phase 1 found ${localMatches.length} matches`)
 
@@ -233,13 +250,16 @@ const autoAdaptIcon = async () => {
     console.log(`[Search] Phase 1 failed. Starting Phase 2 (API) for: "${searchTerm}"`)
     await fetchSimpleIconsData()
     if (simpleIconsData.value) {
-      const apiMatches = simpleIconsData.value
-        .filter(
-          (icon: SimpleIcon) =>
-            icon.title.toLowerCase().includes(lowerTitle) ||
-            (icon.slug && icon.slug.includes(lowerTitle)),
-        )
-        .map((icon: SimpleIcon) => `https://cdn.simpleicons.org/${icon.slug}`)
+      const apiFuse = new Fuse(simpleIconsData.value, {
+        keys: ['title', 'slug'],
+        threshold: 0.3,
+        ignoreLocation: true,
+      })
+
+      const apiResults = apiFuse.search(searchTerm)
+      const apiMatches = apiResults.map(
+        (result) => `https://cdn.simpleicons.org/${result.item.slug}`,
+      )
 
       console.log(`[Search] Phase 2 found ${apiMatches.length} matches`)
 
@@ -333,6 +353,10 @@ watch(
         // 编辑模式：回填数据
         form.value = {
           ...props.data,
+          description1: props.data.description1 || '',
+          description2: props.data.description2 || '',
+          description3: props.data.description3 || '',
+          titleColor: props.data.titleColor || '',
           backgroundImage: props.data.backgroundImage || '',
           backgroundBlur: props.data.backgroundBlur ?? 6,
           backgroundMask: props.data.backgroundMask ?? 0.3,
@@ -366,6 +390,7 @@ watch(
           lanUrl: '',
           icon: '',
           color: 'bg-blue-50 text-blue-600',
+          titleColor: '',
           isPublic: true,
           backgroundImage: '',
           backgroundBlur: 6,
@@ -426,16 +451,67 @@ const submit = () => {
           </label>
         </div>
 
-        <div>
-          <label class="block text-sm font-medium text-gray-600 mb-1"
-            >标题 <span class="text-red-500">*</span></label
-          >
-          <input
-            v-model="form.title"
-            type="text"
-            class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-blue-500 outline-none transition-colors"
-            placeholder="例如：我的博客"
-          />
+        <div class="flex gap-3">
+          <div class="flex-1">
+            <label class="block text-sm font-medium text-gray-600 mb-1"
+              >标题 <span class="text-red-500">*</span></label
+            >
+            <input
+              v-model="form.title"
+              type="text"
+              class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-blue-500 outline-none transition-colors"
+              placeholder="例如：我的博客"
+            />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-600 mb-1">标题颜色</label>
+            <div class="flex items-center h-[42px] px-2 border border-gray-200 rounded-lg bg-white">
+              <input
+                v-model="form.titleColor"
+                type="color"
+                class="w-8 h-8 rounded cursor-pointer border-none p-0 bg-transparent"
+                title="选择标题颜色"
+              />
+              <button
+                v-if="form.titleColor"
+                @click="form.titleColor = ''"
+                class="ml-2 text-xs text-gray-400 hover:text-red-500"
+                title="清除颜色"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2" v-if="!isVertical">
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">描述行 1 (上)</label>
+            <input
+              v-model="form.description1"
+              type="text"
+              class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 outline-none transition-colors text-sm"
+              placeholder="水平模式显示"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">描述行 2 (中)</label>
+            <input
+              v-model="form.description2"
+              type="text"
+              class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 outline-none transition-colors text-sm"
+              placeholder="水平模式显示"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">描述行 3 (下)</label>
+            <input
+              v-model="form.description3"
+              type="text"
+              class="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-blue-500 outline-none transition-colors text-sm"
+              placeholder="水平模式显示"
+            />
+          </div>
         </div>
 
         <div>

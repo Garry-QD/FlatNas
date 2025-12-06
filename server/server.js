@@ -7,6 +7,7 @@ import cors from 'cors'
 import RSSParser from 'rss-parser'
 import os from 'os'
 import querystring from 'querystring'
+import multer from 'multer'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -21,6 +22,19 @@ const DATA_FILE = path.join(DATA_DIR, 'data.json')
 const DEFAULT_FILE = path.join(__dirname, 'default.json')
 const MUSIC_DIR = path.join(__dirname, 'music')
 
+// 配置 multer 上传
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, MUSIC_DIR)
+  },
+  filename: function (req, file, cb) {
+    // 尝试修复中文乱码问题
+    const name = Buffer.from(file.originalname, 'latin1').toString('utf8')
+    cb(null, name)
+  },
+})
+const upload = multer({ storage: storage })
+
 // 确保数据目录存在
 try {
   await fs.access(DATA_DIR)
@@ -29,6 +43,16 @@ try {
 }
 const CACHE_TTL_MS = 60 * 60 * 1000
 const HOT_CACHE = { weibo: { ts: 0, data: [] }, news: { ts: 0, data: [] }, rss: new Map() }
+
+// 内存缓存，避免频繁读盘
+let cachedData = null
+
+// 原子写入辅助函数
+async function atomicWrite(filePath, content) {
+  const tempFile = filePath + '.tmp'
+  await fs.writeFile(tempFile, content)
+  await fs.rename(tempFile, filePath)
+}
 
 // ------------------------------------------------------------------
 // 全局中间件
@@ -43,10 +67,14 @@ app.use(express.urlencoded({ extended: true }))
 async function ensureInit() {
   try {
     await fs.access(DATA_FILE)
+    // 启动时加载数据到内存
+    const fileContent = await fs.readFile(DATA_FILE, 'utf-8')
+    cachedData = JSON.parse(fileContent)
   } catch {
     try {
       const def = await fs.readFile(DEFAULT_FILE, 'utf-8')
       await fs.writeFile(DATA_FILE, def)
+      cachedData = JSON.parse(def)
     } catch {
       const initData = {
         groups: [{ id: 'default', title: '常用', items: [] }],
@@ -55,6 +83,7 @@ async function ensureInit() {
         password: 'admin',
       }
       await fs.writeFile(DATA_FILE, JSON.stringify(initData, null, 2))
+      cachedData = initData
     }
   }
 
@@ -72,17 +101,20 @@ ensureInit()
 // ------------------------------------------------------------------
 app.get('/api/data', async (req, res) => {
   try {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
-    res.setHeader('Pragma', 'no-cache')
-    res.setHeader('Expires', '0')
+    // 移除强制禁用缓存的 headers，允许 ETag 生效
+    // 如果内存中没有数据（异常情况），尝试重新读取
+    if (!cachedData) {
+      const json = await fs.readFile(DATA_FILE, 'utf-8')
+      cachedData = JSON.parse(json)
+    }
 
     // 修复 Ping 请求数据泄露：如果是 ping 请求，只返回简单状态，不返回数据文件
     if (req.query.ping) {
       return res.json({ success: true, ts: Date.now() })
     }
 
-    const json = await fs.readFile(DATA_FILE, 'utf-8')
-    res.json(JSON.parse(json))
+    // 直接返回内存数据
+    res.json(cachedData)
   } catch (err) {
     console.error('[读取配置失败]:', err)
     res.status(500).json({ error: 'Failed to read data.json' })
@@ -100,7 +132,12 @@ app.post('/api/save', async (req, res) => {
       console.warn('[Save] Empty body received, skipping save.')
       return res.status(400).json({ error: 'Empty body' })
     }
-    await fs.writeFile(DATA_FILE, JSON.stringify(body, null, 2))
+
+    // 更新内存缓存
+    cachedData = body
+    // 原子写入
+    await atomicWrite(DATA_FILE, JSON.stringify(body, null, 2))
+
     console.log('[Save] Successfully wrote to data.json')
     res.json({ success: true })
   } catch (err) {
@@ -238,7 +275,9 @@ app.get('/api/ip', async (req, res) => {
 // ------------------------------------------------------------------
 app.post('/api/data', async (req, res) => {
   try {
-    await fs.writeFile(DATA_FILE, JSON.stringify(req.body, null, 2))
+    const body = req.body
+    cachedData = body
+    await atomicWrite(DATA_FILE, JSON.stringify(body, null, 2))
     res.json({ success: true })
   } catch (err) {
     console.error('[导入配置失败]:', err)
@@ -250,7 +289,8 @@ app.post('/api/reset', async (req, res) => {
   try {
     try {
       const def = await fs.readFile(DEFAULT_FILE, 'utf-8')
-      await fs.writeFile(DATA_FILE, def)
+      cachedData = JSON.parse(def)
+      await atomicWrite(DATA_FILE, def)
     } catch {
       const init = {
         groups: [{ id: 'g1', title: '常用', items: [] }],
@@ -308,6 +348,15 @@ app.post('/api/reset', async (req, res) => {
             isPublic: true,
             data: { rssUrl: 'https://www.v2ex.com/feed/' },
           },
+          {
+            id: 'clockweather',
+            type: 'clockweather',
+            enable: true,
+            colSpan: 1,
+            rowSpan: 1,
+            isPublic: true,
+          },
+          { id: 'rss-reader', type: 'rss', enable: false, colSpan: 1, rowSpan: 2, isPublic: true },
         ],
         appConfig: {
           background: '',
@@ -319,11 +368,15 @@ app.post('/api/reset', async (req, res) => {
           cardSize: 120,
           gridGap: 24,
           cardBgColor: 'rgba(255, 255, 255, 0.8)',
+          cardTitleColor: '#111827',
+          cardBorderColor: 'transparent',
+          showCardBackground: true,
           iconShape: 'rounded',
         },
         password: 'admin',
       }
-      await fs.writeFile(DATA_FILE, JSON.stringify(init, null, 2))
+      cachedData = init
+      await atomicWrite(DATA_FILE, JSON.stringify(init, null, 2))
     }
     res.json({ success: true })
   } catch (err) {
@@ -465,45 +518,47 @@ app.get('/api/fetch-meta', async (req, res) => {
   try {
     let url = req.query.url
     if (!url) return res.status(400).json({ error: 'Missing url' })
-    
+
     if (!/^https?:\/\//i.test(url)) {
       url = 'https://' + url
     }
 
     const r = await fetch(url, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
-        },
-        redirect: 'follow'
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+      },
+      redirect: 'follow',
     })
-    
+
     if (!r.ok) throw new Error(`Status ${r.status}`)
-    
+
     const html = await r.text()
-    
+
     // 简单正则提取 Title
     const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
     const title = titleMatch ? titleMatch[1].trim() : ''
-    
+
     // 简单正则提取 Icon
     let icon = ''
-    const iconMatch = html.match(/<link[^>]*rel=["'](?:shortcut )?icon["'][^>]*href=["']([^"']+)["'][^>]*>/i)
+    const iconMatch = html.match(
+      /<link[^>]*rel=["'](?:shortcut )?icon["'][^>]*href=["']([^"']+)["'][^>]*>/i,
+    )
     if (iconMatch) {
-        icon = iconMatch[1]
-        // 处理相对路径
-        if (icon && !/^https?:\/\//i.test(icon)) {
-             try {
-                icon = new URL(icon, url).href
-             } catch {}
-        }
+      icon = iconMatch[1]
+      // 处理相对路径
+      if (icon && !/^https?:\/\//i.test(icon)) {
+        try {
+          icon = new URL(icon, url).href
+        } catch {}
+      }
     }
-    
+
     // 如果没找到 icon，尝试默认路径
     if (!icon) {
-        try {
-            const u = new URL(url)
-            icon = `${u.origin}/favicon.ico`
-        } catch {}
+      try {
+        const u = new URL(url)
+        icon = `${u.origin}/favicon.ico`
+      } catch {}
     }
 
     res.json({ title, icon })
@@ -575,7 +630,7 @@ app.get('/api/icons', async (req, res) => {
         return res.json([])
       }
     }
-    
+
     const files = await fs.readdir(iconsDir)
     const list = files.filter((f) => /\.(png|jpg|jpeg|svg|ico|webp)$/i.test(f))
     res.json(list)
@@ -695,7 +750,7 @@ async function ensureVisitorInit() {
   } catch {
     const init = {
       allTimeIps: [], // 所有历史唯一IP
-      history: {}     // 每日IP记录
+      history: {}, // 每日IP记录
     }
     await fs.writeFile(VISITOR_FILE, JSON.stringify(init, null, 2))
   }
@@ -720,7 +775,7 @@ app.post('/api/visitor/track', async (req, res) => {
 
     const now = new Date()
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    
+
     if (!stats.history) stats.history = {}
     if (!stats.allTimeIps) stats.allTimeIps = []
 
@@ -728,7 +783,7 @@ app.post('/api/visitor/track', async (req, res) => {
     if (!stats.history[today]) {
       stats.history[today] = []
     }
-    
+
     if (!stats.history[today].includes(clientIp)) {
       stats.history[today].push(clientIp)
     }
@@ -744,11 +799,26 @@ app.post('/api/visitor/track', async (req, res) => {
       success: true,
       totalVisitors: stats.allTimeIps.length,
       todayVisitors: stats.history[today].length,
-      ip: clientIp
+      ip: clientIp,
     })
   } catch (err) {
     console.error('[Visitor Track Error]:', err)
     res.status(500).json({ error: 'Failed to track visitor' })
+  }
+})
+
+// ------------------------------------------------------------------
+// 音乐上传
+// ------------------------------------------------------------------
+app.post('/api/music/upload', upload.array('files'), (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' })
+    }
+    res.json({ success: true, count: req.files.length })
+  } catch (err) {
+    console.error('Upload error:', err)
+    res.status(500).json({ error: 'Upload failed' })
   }
 })
 

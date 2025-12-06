@@ -240,7 +240,7 @@ onUnmounted(() => {
         <div class="flex items-center gap-0.5 flex-shrink-0 origin-right">
           <button
             @click="playPrev"
-            class="w-5 h-5 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+            class="w-6 h-6 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 transition-all disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
             title="上一首"
             :disabled="historyIndex <= 0"
           >
@@ -248,7 +248,7 @@ onUnmounted(() => {
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
               fill="currentColor"
-              class="w-3 h-3"
+              class="w-4 h-4"
             >
               <path
                 d="M9.195 18.44c1.25.713 2.805-.19 2.805-1.629v-2.81l7.82 4.466c1.25.713 2.805-.19 2.805-1.629V7.162c0-1.44-1.555-2.342-2.805-1.628l-7.82 4.466v-2.81c0-1.44-1.555-2.343-2.805-1.629l-7.108 4.062c-1.26.72-1.26 2.536 0 3.256l7.108 4.061z"
@@ -257,14 +257,14 @@ onUnmounted(() => {
           </button>
           <button
             @click="playNext"
-            class="w-5 h-5 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all"
+            class="w-6 h-6 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 transition-all"
             title="下一首"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
               fill="currentColor"
-              class="w-3 h-3"
+              class="w-4 h-4"
             >
               <path
                 d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.342 2.805 1.628L12.875 14v2.81c0 1.44 1.555 2.343 2.805 1.629l7.108-4.061c1.26-.72 1.26-2.536 0-3.256l-7.108-4.062c-1.25-.713-2.805.19-2.805 1.629V11.5L5.055 7.06z"

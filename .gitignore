@@ -112,3 +112,6 @@ jspm_packages/
 
 # FlatNas specific
 server/data/visitors.json
+
+dist/
+.trae/documents/

@@ -1,0 +1,18 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "removeResponseHeaders",
+      "removeResponseHeaders": {
+        "headers": [
+          {"header": "content-security-policy"},
+          {"header": "x-frame-options"}
+        ]
+      }
+    },
+    "condition": {
+      "resourceTypes": ["sub_frame"]
+    }
+  }
+]

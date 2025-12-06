@@ -4,7 +4,12 @@ export interface NavItem {
   url: string
   lanUrl?: string
   icon: string
+  // Horizontal mode custom text lines
+  description1?: string
+  description2?: string
+  description3?: string
   color?: string
+  titleColor?: string
   isPublic: boolean
   backgroundImage?: string
   backgroundBlur?: number

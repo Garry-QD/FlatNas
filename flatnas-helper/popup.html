@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        width: 300px;
+        padding: 15px;
+        font-family: sans-serif;
+      }
+      h3 {
+        margin-top: 0;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        box-sizing: border-box;
+        margin-bottom: 10px;
+      }
+      button {
+        width: 100%;
+        padding: 8px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      .note {
+        font-size: 12px;
+        color: #666;
+        margin-top: 10px;
+      }
+      #status {
+        margin-top: 10px;
+        color: green;
+        font-weight: bold;
+        display: none;
+      }
+      #checking {
+        text-align: center;
+        padding: 20px;
+        color: #666;
+      }
+      #error-msg {
+        display: none;
+        color: #d32f2f;
+        text-align: center;
+        margin-top: 20px;
+        line-height: 1.5;
+      }
+      #app-content {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="checking">正在检查 FlatNas 环境...</div>
+
+    <div id="app-content">
+      <h3>FlatNas 设置</h3>
+      <label>输入你的 NAS 域名或 IP：</label>
+      <input type="text" id="domainInput" placeholder="例如: localhost:5173 或 192.168.1.5" />
+      <button id="saveBtn">保存并生效</button>
+      <div id="status">设置已保存！</div>
+
+      <p class="note">
+        说明：<br />
+        1. 支持内网 IP (如 192.168.1.100)<br />
+        2. 支持反代域名 (如 mynas.com)<br />
+        3. 多个地址请用逗号隔开
+      </p>
+    </div>
+
+    <div id="error-msg">
+      <p>未检测到 FlatNas 配置页面。</p>
+      <p class="note" style="color: #666; margin: 10px 0">
+        请确保：<br />
+        1. 已打开 FlatNas 网页<br />
+        2. 已点击右上角设置(⚙️)按钮<br />
+        3. 已添加或展开"万能窗口"配置卡片
+      </p>
+      <button id="retryBtn" style="background-color: #2196f3; margin-top: 10px">重试</button>
+      <div style="margin-top: 15px; text-align: center">
+        <a href="#" id="forceBtn" style="color: #999; font-size: 12px; text-decoration: underline"
+          >手动填写/修改地址</a
+        >
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
