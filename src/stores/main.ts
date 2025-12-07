@@ -9,7 +9,7 @@ export const useMainStore = defineStore('main', () => {
   const rssCategories = ref<RssCategory[]>([])
 
   // Version Check
-  const currentVersion = '1.0.12'
+  const currentVersion = '1.0.13'
   const latestVersion = ref('')
   const hasUpdate = computed(() => {
     if (!latestVersion.value) return false

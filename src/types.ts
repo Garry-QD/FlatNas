@@ -92,6 +92,7 @@ export interface AppConfig {
   footerWidth?: number
   footerMarginBottom?: number
   footerFontSize?: number
+  weatherApiUrl?: string
 }
 
 export interface WidgetConfig {

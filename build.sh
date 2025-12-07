@@ -1,13 +1,31 @@
 #!/bin/bash
 
-# Build the Docker image
-docker build -t qdnas/flatnas:1.0.11 .
+# Build and push for AMD64
+echo "Building for linux/amd64..."
+docker build --platform linux/amd64 -t qdnas/flatnas:1.0.13-amd64 .
+docker push qdnas/flatnas:1.0.13-amd64
 
-# Tag as latest
-docker tag qdnas/flatnas:1.0.11 qdnas/flatnas:latest
+# Build and push for ARM64
+echo "Building for linux/arm64..."
+docker build --platform linux/arm64 -t qdnas/flatnas:1.0.13-arm64 .
+docker push qdnas/flatnas:1.0.13-arm64
 
-# Push to Docker Hub
-docker push qdnas/flatnas:1.0.11
-docker push qdnas/flatnas:latest
+# Build and push for ARMv7
+echo "Building for linux/arm/v7..."
+# Use legacy builder for ARMv7 to avoid buildx issues in some environments
+export DOCKER_BUILDKIT=0
+docker build --no-cache --platform linux/arm/v7 -t qdnas/flatnas:1.0.13-armv7 .
+export DOCKER_BUILDKIT=1
+docker push qdnas/flatnas:1.0.13-armv7
 
-echo "Docker image built, tagged, and pushed as qdnas/flatnas:1.0.11 and qdnas/flatnas:latest"
+# Create and push manifest for 1.0.13
+echo "Creating manifest for 1.0.13..."
+docker manifest create qdnas/flatnas:1.0.13 qdnas/flatnas:1.0.13-amd64 qdnas/flatnas:1.0.13-arm64 qdnas/flatnas:1.0.13-armv7
+docker manifest push qdnas/flatnas:1.0.13
+
+# Create and push manifest for latest
+echo "Creating manifest for latest..."
+docker manifest create qdnas/flatnas:latest qdnas/flatnas:1.0.13-amd64 qdnas/flatnas:1.0.13-arm64 qdnas/flatnas:1.0.13-armv7
+docker manifest push qdnas/flatnas:latest
+
+echo "Done!"

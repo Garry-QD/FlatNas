@@ -4,8 +4,6 @@ import { useMainStore } from "../stores/main";
 
 const store = useMainStore();
 
-const time = ref("");
-const date = ref("");
 const weather = ref({
   temp: "--",
   city: "定位中...",
@@ -47,51 +45,29 @@ const bgClass = computed(() => {
   }
 });
 
-// 更新时间
 const updateTime = () => {
-  const now = new Date();
-  time.value = now.toLocaleTimeString("zh-CN", {
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  date.value = now.toLocaleDateString("zh-CN", {
-    month: "short",
-    day: "numeric",
-    weekday: "short",
-  });
-
-  const hour = now.getHours();
+  const hour = new Date().getHours();
   isNight.value = hour < 6 || hour >= 18;
 };
 
 // 获取天气
 const fetchWeather = async () => {
   try {
-    // 改用后端接口获取位置，解决 HTTPS 下 Mixed Content 问题
     const ipRes = await fetch("/api/ip");
     if (!ipRes.ok) throw new Error("IP API Error");
     const ipData = await ipRes.json();
 
     let city = "本地";
     if (ipData.success && ipData.location) {
-      // 1. 去除运营商信息
       let loc = ipData.location.split(" ")[0];
-
-      // 2. 去除省份、自治区、特别行政区前缀
       loc = loc.replace(/^(?:.*?省|.*?自治区|.*?特别行政区)/, "");
-
-      // 3. 保留第一级城市 (如 "宁波市慈溪市" -> "宁波市")
-      //    只匹配第一个 "市/州/盟/地区"
       const match = loc.match(/^(.*?[市州盟地区])/);
       if (match) {
         loc = match[1];
       }
-
       city = loc;
     }
 
-    // 调用后端天气接口或自定义接口
     let url = `/api/weather?city=${encodeURIComponent(city)}`;
     if (store.appConfig.weatherApiUrl) {
       url = store.appConfig.weatherApiUrl;
@@ -112,19 +88,17 @@ const fetchWeather = async () => {
         humidity: weatherData.data.humidity,
         today: weatherData.data.today,
       };
-    } else {
-      throw new Error("Weather data invalid");
     }
   } catch (e) {
     console.warn("[Weather] 获取失败，转为离线模式", e);
-    weather.value = { temp: "22", city: "本地", text: "舒适" };
+    weather.value = { ...weather.value, temp: "22", city: "本地", text: "舒适" };
   }
 };
 
 onMounted(() => {
   updateTime();
   fetchWeather();
-  timer = setInterval(updateTime, 1000);
+  timer = setInterval(updateTime, 60000); // 每分钟更新一次昼夜状态
 });
 
 onUnmounted(() => {
@@ -183,13 +157,6 @@ onUnmounted(() => {
             />
           </svg>
         </div>
-        <div class="absolute bottom-8 left-[-10%] w-24 h-16 opacity-30 animate-float-slower">
-          <svg viewBox="0 0 24 24" fill="currentColor" class="text-white">
-            <path
-              d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"
-            />
-          </svg>
-        </div>
       </div>
 
       <!-- 下雨动画 -->
@@ -237,77 +204,26 @@ onUnmounted(() => {
     ></div>
 
     <!-- 内容区域 -->
-    <div class="relative z-10 h-full flex flex-col justify-between p-2 sm:p-3">
-      <!-- 顶部：日期与城市 -->
-      <div class="flex items-start justify-between">
-        <!-- 日期 -->
-        <span
-          class="text-[10px] sm:text-xs font-bold tracking-widest uppercase bg-white/10 px-1.5 py-0.5 rounded backdrop-blur-md border border-white/10 shadow-sm"
-          >{{ date }}</span
-        >
-        <!-- 城市 -->
-        <div class="flex items-center gap-1 opacity-90">
-          <svg class="w-3 h-3 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-            />
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-            />
-          </svg>
-          <span class="text-xs font-medium truncate max-w-[60px]">{{ weather.city }}</span>
-        </div>
+    <div class="relative z-10 h-full flex flex-col items-center justify-center p-4">
+      <div class="text-4xl sm:text-5xl font-bold tracking-tighter drop-shadow-lg mb-2">
+        {{ weather.temp }}°
       </div>
-
-      <!-- 中部：绝对居中的时间 -->
-      <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div
-          class="text-3xl sm:text-4xl font-bold tracking-tighter drop-shadow-lg font-mono leading-none bg-gradient-to-b from-white to-white/80 bg-clip-text text-transparent"
-        >
-          {{ time }}
-        </div>
+      <div class="text-sm sm:text-base font-medium opacity-90 flex items-center gap-2">
+        <span>{{ weather.text }}</span>
+        <span class="w-1 h-1 rounded-full bg-white/50"></span>
+        <span>{{ weather.city }}</span>
       </div>
-
-      <!-- 底部：天气详情 (优化对齐) -->
-      <div class="flex items-end justify-between pb-0.5">
-        <!-- 左侧：天气状况 + 大温度 -->
-        <div class="flex flex-col justify-end">
-          <div class="flex items-center gap-2 mb-0.5">
-            <span class="text-sm sm:text-base font-medium opacity-90">{{ weather.text }}</span>
-            <div
-              v-if="weatherType === 'sunny' || weatherType === 'clear-night'"
-              class="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]"
-            ></div>
-          </div>
-          <div class="text-2xl sm:text-3xl font-bold tracking-tight drop-shadow-md leading-none">
-            {{ weather.temp }}<span class="text-base align-top">°</span>
-          </div>
-        </div>
-
-        <!-- 右侧：详情 -->
-        <div
-          class="flex flex-col items-end gap-0.5 text-xs sm:text-sm font-medium opacity-80"
-          v-if="weather.today && weather.today.min"
-        >
-          <span>🌡️ {{ weather.today.min }}°/{{ weather.today.max }}°</span>
-          <span v-if="weather.humidity">💧 {{ weather.humidity }}%</span>
-        </div>
+      <div
+        v-if="weather.today && weather.today.min"
+        class="mt-2 text-xs opacity-75 flex items-center gap-2"
+      >
+        <span>{{ weather.today.min }}° / {{ weather.today.max }}°</span>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.font-mono {
-  font-family: "Monaco", "Consolas", monospace;
-}
-
 /* 动画定义 */
 @keyframes spin-slow {
   from {
@@ -332,19 +248,6 @@ onUnmounted(() => {
 }
 .animate-float-slow {
   animation: float-slow 8s ease-in-out infinite;
-}
-
-@keyframes float-slower {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  50% {
-    transform: translateX(15px);
-  }
-}
-.animate-float-slower {
-  animation: float-slower 12s ease-in-out infinite;
 }
 
 @keyframes rain {

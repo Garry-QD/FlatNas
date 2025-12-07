@@ -5,6 +5,7 @@
 [![Docker Image](https://img.shields.io/badge/Docker-qdnas%2Fflatnas-2496ED?style=flat&logo=docker&logoColor=white)](https://hub.docker.com/r/qdnas/flatnas)
 
 FlatNas 是一个轻量级、高度可定制的个人导航页与仪表盘系统。它基于 Vue 3 和 Express 构建，旨在为 NAS 用户、极客和开发者提供一个优雅的浏览器起始页。
+交流QQ群:613835409
 
 ## ✨ 主要功能
 
@@ -41,7 +42,16 @@ FlatNas 内置了多种实用的小组件，满足日常需求：
 - **CGI 扩展**: 支持通过 Node.js 编写 CGI 脚本扩展后端功能（位于 `server/cgi-bin`）。
 - **更新提醒**: 内置版本检测功能，自动检查 GitHub 最新 Release 版本，并在设置面板提示 Docker 更新。
 
-## 📅 最近更新 (v1.0.12)
+## 📅 最近更新 (v1.0.13)
+
+- **功能新增**:
+  - **自定义天气源**: 天气组件支持配置自定义 API 源，满足个性化数据需求。
+  - **设置分类优化**: "万能窗口"相关设置独立为单独的标签页，管理更加便捷清晰。
+- **体验优化**:
+  - **界面调整**: 优化了万能窗口设置页的按钮布局，防止遮挡。
+  - **引导提示**: 在相关设置项增加了关于浏览器插件的引导提示，帮助解决跨域访问问题。
+
+## 📅 历史更新 (v1.0.12)
 
 - **功能新增**:
   - **音乐上传**: 添加了音乐文件的上传入口，支持批量添加音乐文件。
@@ -114,7 +124,7 @@ FlatNas 后端集成了智能网络环境识别功能，能够根据用户的访
     // 前端综合判定逻辑
     const isLanMode =
       isInternalIp(clientIp) || // 客户端IP属于内网段 (192.168.x.x, 10.x.x.x, etc.)
-      isInternalHostname(window.location.hostname) // 访问域名属于内网 (localhost, .local)
+      isInternalHostname(window.location.hostname); // 访问域名属于内网 (localhost, .local)
     ```
 
 ### 3. 使用指南

@@ -1,118 +1,118 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { useMainStore } from '../stores/main'
-import type { RssFeed, WidgetConfig, RssCategory, SearchEngine, NavGroup } from '@/types'
-import IconUploader from './IconUploader.vue'
-import PasswordConfirmModal from './PasswordConfirmModal.vue'
-import { VueDraggable } from 'vue-draggable-plus'
+import { ref, onMounted, computed } from "vue";
+import { useMainStore } from "../stores/main";
+import type { RssFeed, WidgetConfig, RssCategory, SearchEngine, NavGroup } from "@/types";
+import IconUploader from "./IconUploader.vue";
+import PasswordConfirmModal from "./PasswordConfirmModal.vue";
+import { VueDraggable } from "vue-draggable-plus";
 
-defineProps<{ show: boolean }>()
-const emit = defineEmits(['update:show'])
-const store = useMainStore()
+defineProps<{ show: boolean }>();
+const emit = defineEmits(["update:show"]);
+const store = useMainStore();
 
-const activeTab = ref('style')
-const searchWidget = computed(() => store.widgets.find((w) => w.id === 'w5'))
+const activeTab = ref("style");
+const searchWidget = computed(() => store.widgets.find((w) => w.id === "w5"));
 const sortedWidgets = computed(() => {
-  const list = [...store.widgets]
-  const playerIndex = list.findIndex((w) => w.type === 'player')
+  const list = [...store.widgets];
+  const playerIndex = list.findIndex((w) => w.type === "player");
   if (playerIndex > -1) {
-    const [player] = list.splice(playerIndex, 1)
+    const [player] = list.splice(playerIndex, 1);
     if (player) {
-      list.unshift(player)
+      list.unshift(player);
     }
   }
-  return list
-})
-const passwordInput = ref('')
-const newPasswordInput = ref('')
+  return list;
+});
+const passwordInput = ref("");
+const newPasswordInput = ref("");
 
 // Delete Confirmation Logic
-const showDeleteWidgetConfirm = ref(false)
-const widgetToDeleteId = ref('')
+const showDeleteWidgetConfirm = ref(false);
+const widgetToDeleteId = ref("");
 
 const confirmRemoveWidget = () => {
-  const index = store.widgets.findIndex((w) => w.id === widgetToDeleteId.value)
+  const index = store.widgets.findIndex((w) => w.id === widgetToDeleteId.value);
   if (index > -1) {
-    store.widgets.splice(index, 1)
-    store.saveData()
+    store.widgets.splice(index, 1);
+    store.saveData();
   }
-  showDeleteWidgetConfirm.value = false
-  widgetToDeleteId.value = ''
-}
-const fileInput = ref<HTMLInputElement | null>(null)
-const uploadStatus = ref('')
+  showDeleteWidgetConfirm.value = false;
+  widgetToDeleteId.value = "";
+};
+const fileInput = ref<HTMLInputElement | null>(null);
+const uploadStatus = ref("");
 
 const uploadMusic = async (event: Event) => {
-  const files = (event.target as HTMLInputElement).files
-  if (!files || files.length === 0) return
+  const files = (event.target as HTMLInputElement).files;
+  if (!files || files.length === 0) return;
 
-  const formData = new FormData()
+  const formData = new FormData();
   for (let i = 0; i < files.length; i++) {
-    const file = files[i]
+    const file = files[i];
     if (file) {
-      formData.append('files', file)
+      formData.append("files", file);
     }
   }
 
-  uploadStatus.value = `正在上传 ${files.length} 个文件...`
+  uploadStatus.value = `正在上传 ${files.length} 个文件...`;
   try {
-    const res = await fetch('/api/music/upload', {
-      method: 'POST',
+    const res = await fetch("/api/music/upload", {
+      method: "POST",
       body: formData,
-    })
-    const data = await res.json()
+    });
+    const data = await res.json();
     if (data.success) {
-      uploadStatus.value = `成功上传 ${data.count} 个文件！`
+      uploadStatus.value = `成功上传 ${data.count} 个文件！`;
       setTimeout(() => {
-        uploadStatus.value = ''
-      }, 3000)
+        uploadStatus.value = "";
+      }, 3000);
     } else {
-      uploadStatus.value = '上传失败: ' + (data.error || '未知错误')
+      uploadStatus.value = "上传失败: " + (data.error || "未知错误");
     }
   } catch (e) {
-    console.error(e)
-    uploadStatus.value = '上传出错'
+    console.error(e);
+    uploadStatus.value = "上传出错";
   }
-}
+};
 
 // Password Confirm Logic
-const showPasswordConfirm = ref(false)
-const pendingAction = ref<(() => void) | null>(null)
-const confirmTitle = ref('')
+const showPasswordConfirm = ref(false);
+const pendingAction = ref<(() => void) | null>(null);
+const confirmTitle = ref("");
 
 const requestAuth = (action: () => void, title: string) => {
-  pendingAction.value = action
-  confirmTitle.value = title
-  showPasswordConfirm.value = true
-}
+  pendingAction.value = action;
+  confirmTitle.value = title;
+  showPasswordConfirm.value = true;
+};
 
 const onAuthSuccess = () => {
   if (pendingAction.value) {
-    pendingAction.value()
-    pendingAction.value = null
+    pendingAction.value();
+    pendingAction.value = null;
   }
-}
+};
 
-const close = () => emit('update:show', false)
+const close = () => emit("update:show", false);
 
 const handleLogin = () => {
   if (store.login(passwordInput.value)) {
-    alert('登录成功！')
-    passwordInput.value = ''
+    alert("登录成功！");
+    passwordInput.value = "";
   } else {
-    alert('密码错误！')
+    alert("密码错误！");
   }
-}
+};
 const handleChangePassword = () => {
-  if (!newPasswordInput.value || newPasswordInput.value.length < 4) return alert('密码至少4位')
-  store.changePassword(newPasswordInput.value)
-  alert('密码修改成功')
-  newPasswordInput.value = ''
-}
+  if (!newPasswordInput.value || newPasswordInput.value.length < 4) return alert("密码至少4位");
+  store.changePassword(newPasswordInput.value);
+  alert("密码修改成功");
+  newPasswordInput.value = "";
+};
 
 onMounted(() => {
-  store.checkUpdate()
-})
+  store.checkUpdate();
+});
 const handleExport = () => {
   try {
     const backupData = {
@@ -121,63 +121,63 @@ const handleExport = () => {
       appConfig: store.appConfig,
       password: store.password,
       groups: store.groups,
-    }
-    const jsonString = JSON.stringify(backupData, null, 2)
-    const blob = new Blob([jsonString], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `flat-nas-backup-${new Date().toISOString().substring(0, 10).replace(/-/g, '')}.json`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+    };
+    const jsonString = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `flat-nas-backup-${new Date().toISOString().substring(0, 10).replace(/-/g, "")}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   } catch (e) {
-    alert('导出失败')
-    console.error('[SettingsModal][Export] failed', e)
+    alert("导出失败");
+    console.error("[SettingsModal][Export] failed", e);
   }
-}
+};
 
 const triggerImport = () => {
-  fileInput.value?.click()
-}
+  fileInput.value?.click();
+};
 const handleFileChange = (event: Event) => {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  const reader = new FileReader()
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
   reader.onload = async (e: ProgressEvent<FileReader>) => {
     try {
-      const content = e.target?.result as string
-      let data = JSON.parse(content)
+      const content = e.target?.result as string;
+      let data = JSON.parse(content);
 
       // SunPanel format support
-      if (data.appName === 'Sun-Panel-Config' && Array.isArray(data.icons)) {
+      if (data.appName === "Sun-Panel-Config" && Array.isArray(data.icons)) {
         const newGroups: NavGroup[] = data.icons.map(
           (
             g: {
-              title?: string
-              children?: { title?: string; url?: string; lanUrl?: string }[]
+              title?: string;
+              children?: { title?: string; url?: string; lanUrl?: string }[];
             },
             gIdx: number,
           ) => ({
-            id: Date.now().toString() + '_' + gIdx,
-            title: g.title || 'New Group',
+            id: Date.now().toString() + "_" + gIdx,
+            title: g.title || "New Group",
             items: (g.children || []).map(
               (c: { title?: string; url?: string; lanUrl?: string }, cIdx: number) => ({
-                id: Date.now().toString() + '_' + gIdx + '_' + cIdx,
-                title: c.title || 'New Item',
-                url: c.url || '',
-                lanUrl: c.lanUrl || '',
-                icon: '',
+                id: Date.now().toString() + "_" + gIdx + "_" + cIdx,
+                title: c.title || "New Item",
+                url: c.url || "",
+                lanUrl: c.lanUrl || "",
+                icon: "",
                 isPublic: true,
               }),
             ),
           }),
-        )
+        );
 
         // Preserve existing config, append new groups
-        const existingGroups = store.groups
-        const finalGroups = [...existingGroups, ...newGroups]
+        const existingGroups = store.groups;
+        const finalGroups = [...existingGroups, ...newGroups];
 
         data = {
           groups: finalGroups,
@@ -185,129 +185,129 @@ const handleFileChange = (event: Event) => {
           widgets: store.widgets,
           appConfig: store.appConfig,
           password: store.password,
-        }
+        };
       } else if (!data.groups && data.items) {
-        data.groups = [{ id: Date.now().toString(), title: '默认分组', items: data.items }]
+        data.groups = [{ id: Date.now().toString(), title: "默认分组", items: data.items }];
       }
-      const r = await fetch('/api/data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const r = await fetch("/api/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
-      })
-      if (!r.ok) throw new Error('import_post_failed:' + r.status)
-      alert('✅ 导入成功！')
-      window.location.reload()
+      });
+      if (!r.ok) throw new Error("import_post_failed:" + r.status);
+      alert("✅ 导入成功！");
+      window.location.reload();
     } catch (err) {
-      alert('❌ 导入失败，请检查文件格式是否为 JSON。')
-      console.error('[SettingsModal][Import] failed', err)
+      alert("❌ 导入失败，请检查文件格式是否为 JSON。");
+      console.error("[SettingsModal][Import] failed", err);
     } finally {
-      if (fileInput.value) fileInput.value.value = ''
+      if (fileInput.value) fileInput.value.value = "";
     }
-  }
-  reader.readAsText(file)
-}
+  };
+  reader.readAsText(file);
+};
 
-const saveDefaultBtnText = ref('💾 设为默认模板')
+const saveDefaultBtnText = ref("💾 设为默认模板");
 
 const handleReset = async () => {
   requestAuth(async () => {
     // 密码验证通过后直接执行
     try {
-      const r = await fetch('/api/reset', { method: 'POST' })
-      if (!r.ok) throw new Error('reset_failed')
+      const r = await fetch("/api/reset", { method: "POST" });
+      if (!r.ok) throw new Error("reset_failed");
       // 移除成功弹窗，直接刷新
-      window.location.reload()
+      window.location.reload();
     } catch (e) {
-      alert('❌ 恢复失败')
-      console.error('[SettingsModal][Reset] failed', e)
+      alert("❌ 恢复失败");
+      console.error("[SettingsModal][Reset] failed", e);
     }
-  }, '请输入密码以确认恢复初始化')
-}
+  }, "请输入密码以确认恢复初始化");
+};
 
 const handleSaveAsDefault = async () => {
   requestAuth(async () => {
     // 密码验证通过后直接执行
     try {
-      const r = await fetch('/api/default/save', { method: 'POST' })
-      if (!r.ok) throw new Error('save_default_failed')
+      const r = await fetch("/api/default/save", { method: "POST" });
+      if (!r.ok) throw new Error("save_default_failed");
 
       // 移除成功弹窗，使用按钮文字反馈
-      saveDefaultBtnText.value = '✅ 保存成功！'
+      saveDefaultBtnText.value = "✅ 保存成功！";
       setTimeout(() => {
-        saveDefaultBtnText.value = '💾 设为默认模板'
-      }, 2000)
+        saveDefaultBtnText.value = "💾 设为默认模板";
+      }, 2000);
     } catch (e) {
-      alert('❌ 保存失败')
-      console.error('[SettingsModal][SaveDefault] failed', e)
+      alert("❌ 保存失败");
+      console.error("[SettingsModal][SaveDefault] failed", e);
     }
-  }, '请输入密码以确认保存默认模板')
-}
+  }, "请输入密码以确认保存默认模板");
+};
 
 // 修复：移除 computed 中的副作用，改用 onMounted 初始化
 onMounted(() => {
   store.widgets.forEach((w: WidgetConfig) => {
-    if (w.type === 'iframe' && !w.data) {
-      w.data = { url: '' }
+    if (w.type === "iframe" && !w.data) {
+      w.data = { url: "" };
     }
-  })
-})
+  });
+});
 
 const addSearchEngine = () => {
-  const id = Date.now().toString()
-  const key = 'custom-' + id
-  const label = '新搜索引擎'
-  const urlTemplate = 'https://example.com/search?q={q}'
+  const id = Date.now().toString();
+  const key = "custom-" + id;
+  const label = "新搜索引擎";
+  const urlTemplate = "https://example.com/search?q={q}";
 
   if (!store.appConfig.searchEngines) {
-    store.appConfig.searchEngines = []
+    store.appConfig.searchEngines = [];
   }
-  store.appConfig.searchEngines.push({ id, key, label, urlTemplate })
-}
+  store.appConfig.searchEngines.push({ id, key, label, urlTemplate });
+};
 const removeSearchEngine = (key: string) => {
-  const list = (store.appConfig.searchEngines || []).filter((e: SearchEngine) => e.key !== key)
-  store.appConfig.searchEngines = list
+  const list = (store.appConfig.searchEngines || []).filter((e: SearchEngine) => e.key !== key);
+  store.appConfig.searchEngines = list;
   if (store.appConfig.defaultSearchEngine === key) {
-    store.appConfig.defaultSearchEngine = list[0]?.key || ''
+    store.appConfig.defaultSearchEngine = list[0]?.key || "";
   }
-}
+};
 
 // RSS Logic
 const rssForm = ref({
-  id: '',
-  title: '',
-  url: '',
-  category: '',
-  tags: '',
+  id: "",
+  title: "",
+  url: "",
+  category: "",
+  tags: "",
   enable: true,
   isPublic: true,
-})
-const editingRss = ref(false)
+});
+const editingRss = ref(false);
 
 const editRss = (feed?: RssFeed) => {
   if (feed) {
-    rssForm.value = { ...feed, category: feed.category || '', tags: (feed.tags || []).join(', ') }
-    editingRss.value = true
+    rssForm.value = { ...feed, category: feed.category || "", tags: (feed.tags || []).join(", ") };
+    editingRss.value = true;
   } else {
     rssForm.value = {
-      id: '',
-      title: '',
-      url: '',
-      category: '',
-      tags: '',
+      id: "",
+      title: "",
+      url: "",
+      category: "",
+      tags: "",
       enable: true,
       isPublic: true,
-    }
-    editingRss.value = true
+    };
+    editingRss.value = true;
   }
-}
+};
 
 const saveRss = () => {
-  if (!rssForm.value.title || !rssForm.value.url) return alert('请填写标题和 URL')
+  if (!rssForm.value.title || !rssForm.value.url) return alert("请填写标题和 URL");
 
   const tags = rssForm.value.tags
     .split(/[,，]/)
     .map((t) => t.trim())
-    .filter((t) => t)
+    .filter((t) => t);
   const newItem = {
     id: rssForm.value.id || Date.now().toString(),
     title: rssForm.value.title,
@@ -316,140 +316,140 @@ const saveRss = () => {
     tags,
     enable: rssForm.value.enable,
     isPublic: rssForm.value.isPublic,
-  }
+  };
 
-  if (!store.rssFeeds) store.rssFeeds = []
+  if (!store.rssFeeds) store.rssFeeds = [];
 
   if (rssForm.value.id) {
-    const index = store.rssFeeds.findIndex((f: RssFeed) => f.id === rssForm.value.id)
-    if (index !== -1) store.rssFeeds[index] = newItem
+    const index = store.rssFeeds.findIndex((f: RssFeed) => f.id === rssForm.value.id);
+    if (index !== -1) store.rssFeeds[index] = newItem;
   } else {
-    store.rssFeeds.push(newItem)
+    store.rssFeeds.push(newItem);
   }
 
   // Auto-add category
   if (rssForm.value.category) {
-    if (!store.rssCategories) store.rssCategories = []
-    const exists = store.rssCategories.some((c: RssCategory) => c.name === rssForm.value.category)
+    if (!store.rssCategories) store.rssCategories = [];
+    const exists = store.rssCategories.some((c: RssCategory) => c.name === rssForm.value.category);
     if (!exists) {
       store.rssCategories.push({
-        id: Date.now().toString() + '-cat',
+        id: Date.now().toString() + "-cat",
         name: rssForm.value.category,
         feeds: [],
-      })
+      });
     }
   }
 
-  store.saveData() // Trigger save
-  editingRss.value = false
-}
+  store.saveData(); // Trigger save
+  editingRss.value = false;
+};
 
 const deleteRss = (id: string) => {
-  if (!confirm('确定删除此订阅源？')) return
-  store.rssFeeds = store.rssFeeds.filter((f: RssFeed) => f.id !== id)
-}
+  if (!confirm("确定删除此订阅源？")) return;
+  store.rssFeeds = store.rssFeeds.filter((f: RssFeed) => f.id !== id);
+};
 
-const rssWidget = computed(() => store.widgets.find((w: WidgetConfig) => w.type === 'rss'))
+const rssWidget = computed(() => store.widgets.find((w: WidgetConfig) => w.type === "rss"));
 
 // RSS Category Management
-const managingCategories = ref(false)
-const newCategoryName = ref('')
-const editingCategoryId = ref<string | null>(null)
-const editCategoryName = ref('')
+const managingCategories = ref(false);
+const newCategoryName = ref("");
+const editingCategoryId = ref<string | null>(null);
+const editCategoryName = ref("");
 
 const addCategory = () => {
-  const name = newCategoryName.value.trim()
-  if (!name) return
-  if (!store.rssCategories) store.rssCategories = []
-  if (store.rssCategories.some((c: RssCategory) => c.name === name)) return alert('分类已存在')
+  const name = newCategoryName.value.trim();
+  if (!name) return;
+  if (!store.rssCategories) store.rssCategories = [];
+  if (store.rssCategories.some((c: RssCategory) => c.name === name)) return alert("分类已存在");
 
-  store.rssCategories.push({ id: Date.now().toString() + '-cat', name, feeds: [] })
-  newCategoryName.value = ''
-  store.saveData()
-}
+  store.rssCategories.push({ id: Date.now().toString() + "-cat", name, feeds: [] });
+  newCategoryName.value = "";
+  store.saveData();
+};
 
 const startEditCategory = (cat: { id: string; name: string }) => {
-  editingCategoryId.value = cat.id
-  editCategoryName.value = cat.name
-}
+  editingCategoryId.value = cat.id;
+  editCategoryName.value = cat.name;
+};
 
 const updateCategory = () => {
-  if (!editingCategoryId.value || !editCategoryName.value.trim()) return
-  const index = store.rssCategories.findIndex((c: RssCategory) => c.id === editingCategoryId.value)
+  if (!editingCategoryId.value || !editCategoryName.value.trim()) return;
+  const index = store.rssCategories.findIndex((c: RssCategory) => c.id === editingCategoryId.value);
   if (index !== -1) {
     // Update category name in feeds
-    const cat = store.rssCategories[index]
+    const cat = store.rssCategories[index];
     if (cat) {
-      const oldName = cat.name
-      const newName = editCategoryName.value.trim()
-      cat.name = newName
+      const oldName = cat.name;
+      const newName = editCategoryName.value.trim();
+      cat.name = newName;
 
       // Update associated feeds
       if (store.rssFeeds) {
         store.rssFeeds.forEach((f: RssFeed) => {
-          if (f.category === oldName) f.category = newName
-        })
+          if (f.category === oldName) f.category = newName;
+        });
       }
-      store.saveData()
+      store.saveData();
     }
   }
-  editingCategoryId.value = null
-  editCategoryName.value = ''
-}
+  editingCategoryId.value = null;
+  editCategoryName.value = "";
+};
 
 const deleteCategory = (id: string) => {
-  if (!confirm('确定删除该分类？(该分类下的订阅源将变为无分类)')) return
-  const cat = store.rssCategories.find((c: RssCategory) => c.id === id)
+  if (!confirm("确定删除该分类？(该分类下的订阅源将变为无分类)")) return;
+  const cat = store.rssCategories.find((c: RssCategory) => c.id === id);
   if (cat) {
     // Clear category from feeds
     if (store.rssFeeds) {
       store.rssFeeds.forEach((f: RssFeed) => {
-        if (f.category === cat.name) f.category = ''
-      })
+        if (f.category === cat.name) f.category = "";
+      });
     }
-    store.rssCategories = store.rssCategories.filter((c: RssCategory) => c.id !== id)
-    store.saveData()
+    store.rssCategories = store.rssCategories.filter((c: RssCategory) => c.id !== id);
+    store.saveData();
   }
-}
+};
 
 // Tag Suggestions
 const allTags = computed(() => {
-  const tags = new Set<string>()
+  const tags = new Set<string>();
   store.rssFeeds?.forEach((f: RssFeed) => {
-    f.tags?.forEach((t: string) => tags.add(t))
-  })
-  return Array.from(tags)
-})
+    f.tags?.forEach((t: string) => tags.add(t));
+  });
+  return Array.from(tags);
+});
 
 const addTagToForm = (tag: string) => {
   const currentTags = rssForm.value.tags
     .split(/[,，]/)
     .map((t) => t.trim())
-    .filter((t) => t)
+    .filter((t) => t);
   if (!currentTags.includes(tag)) {
-    currentTags.push(tag)
-    rssForm.value.tags = currentTags.join(', ')
+    currentTags.push(tag);
+    rssForm.value.tags = currentTags.join(", ");
   }
-}
+};
 
 const addIframeWidget = () => {
-  const newId = 'w-' + Date.now()
+  const newId = "w-" + Date.now();
   store.widgets.push({
     id: newId,
-    type: 'iframe',
+    type: "iframe",
     enable: true,
-    data: { url: '' },
+    data: { url: "" },
     colSpan: 2,
     rowSpan: 2,
     isPublic: true,
-  })
-  store.saveData()
-}
+  });
+  store.saveData();
+};
 
 const removeWidget = (id: string) => {
-  widgetToDeleteId.value = id
-  showDeleteWidgetConfirm.value = true
-}
+  widgetToDeleteId.value = id;
+  showDeleteWidgetConfirm.value = true;
+};
 </script>
 
 <template>
@@ -521,6 +521,17 @@ const removeWidget = (id: string) => {
             🔎 搜索引擎
           </button>
           <button
+            @click="activeTab = 'universal-window'"
+            :class="
+              activeTab === 'universal-window'
+                ? 'bg-purple-100 text-purple-700 font-bold'
+                : 'text-gray-600 hover:bg-gray-100'
+            "
+            class="w-full text-left px-4 py-2 rounded-lg text-sm transition-colors mb-1"
+          >
+            🖥️ 万能窗口
+          </button>
+          <button
             @click="activeTab = 'account'"
             :class="
               activeTab === 'account'
@@ -543,6 +554,7 @@ const removeWidget = (id: string) => {
               @click="store.checkUpdate"
             ></span>
           </div>
+          <div class="text-center text-xs text-gray-500">QQ群:613835409</div>
           <div class="flex items-center justify-center gap-4">
             <a
               href="https://github.com/Garry-QD/FlatNas"
@@ -900,72 +912,72 @@ const removeWidget = (id: string) => {
                         class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm"
                       >
                         {{
-                          w.type === 'clock'
-                            ? '⏰'
-                            : w.type === 'weather'
-                              ? '🌦️'
-                              : w.type === 'clockweather'
-                                ? '🕒🌦️'
-                                : w.type === 'calendar'
-                                  ? '📅'
-                                  : w.type === 'memo'
-                                    ? '📝'
-                                    : w.type === 'search'
-                                      ? '🔍'
-                                      : w.type === 'quote'
-                                        ? '💬'
-                                        : w.type === 'bookmarks'
-                                          ? '📑'
-                                          : w.type === 'todo'
-                                            ? '✅'
-                                            : w.type === 'calculator'
-                                              ? '🧮'
-                                              : w.type === 'ip'
-                                                ? '🌐'
-                                                : w.type === 'player'
-                                                  ? '🎵'
-                                                  : w.type === 'hot'
-                                                    ? '🔥'
-                                                    : w.type === 'rss'
-                                                      ? '📡'
-                                                      : '🖥️'
+                          w.type === "clock"
+                            ? "⏰"
+                            : w.type === "weather"
+                              ? "🌦️"
+                              : w.type === "clockweather"
+                                ? "🕒🌦️"
+                                : w.type === "calendar"
+                                  ? "📅"
+                                  : w.type === "memo"
+                                    ? "📝"
+                                    : w.type === "search"
+                                      ? "🔍"
+                                      : w.type === "quote"
+                                        ? "💬"
+                                        : w.type === "bookmarks"
+                                          ? "📑"
+                                          : w.type === "todo"
+                                            ? "✅"
+                                            : w.type === "calculator"
+                                              ? "🧮"
+                                              : w.type === "ip"
+                                                ? "🌐"
+                                                : w.type === "player"
+                                                  ? "🎵"
+                                                  : w.type === "hot"
+                                                    ? "🔥"
+                                                    : w.type === "rss"
+                                                      ? "📡"
+                                                      : "🖥️"
                         }}
                       </div>
                       <span
                         class="font-bold text-gray-700 text-sm leading-snug text-center truncate w-full px-1"
                       >
                         {{
-                          w.type === 'clock'
-                            ? '时钟'
-                            : w.type === 'weather'
-                              ? '天气'
-                              : w.type === 'clockweather'
-                                ? '时钟+天气'
-                                : w.type === 'calendar'
-                                  ? '日历'
-                                  : w.type === 'memo'
-                                    ? '备忘录'
-                                    : w.type === 'search'
-                                      ? '聚合搜索'
-                                      : w.type === 'quote'
-                                        ? '每日一言'
-                                        : w.type === 'bookmarks'
-                                          ? '收藏夹'
-                                          : w.type === 'todo'
-                                            ? '待办事项'
-                                            : w.type === 'calculator'
-                                              ? '计算器'
-                                              : w.type === 'ip'
-                                                ? 'IP 信息'
-                                                : w.type === 'player'
-                                                  ? '随机音乐'
-                                                  : w.type === 'hot'
-                                                    ? '全网热搜'
-                                                    : w.type === 'rss'
-                                                      ? 'RSS 阅读器'
-                                                      : w.type === 'iframe'
-                                                        ? '万能窗口'
-                                                        : '未知组件'
+                          w.type === "clock"
+                            ? "时钟"
+                            : w.type === "weather"
+                              ? "天气"
+                              : w.type === "clockweather"
+                                ? "时钟+天气"
+                                : w.type === "calendar"
+                                  ? "日历"
+                                  : w.type === "memo"
+                                    ? "备忘录"
+                                    : w.type === "search"
+                                      ? "聚合搜索"
+                                      : w.type === "quote"
+                                        ? "每日一言"
+                                        : w.type === "bookmarks"
+                                          ? "收藏夹"
+                                          : w.type === "todo"
+                                            ? "待办事项"
+                                            : w.type === "calculator"
+                                              ? "计算器"
+                                              : w.type === "ip"
+                                                ? "IP 信息"
+                                                : w.type === "player"
+                                                  ? "随机音乐"
+                                                  : w.type === "hot"
+                                                    ? "全网热搜"
+                                                    : w.type === "rss"
+                                                      ? "RSS 阅读器"
+                                                      : w.type === "iframe"
+                                                        ? "万能窗口"
+                                                        : "未知组件"
                         }}
                       </span>
                     </div>
@@ -1008,99 +1020,26 @@ const removeWidget = (id: string) => {
               </template>
             </div>
 
-            <!-- Universal Window (Iframe) Widgets -->
+            <!-- Weather Service Settings -->
             <div class="flex items-center justify-between mt-8 mb-4 border-t border-gray-100 pt-6">
-              <div class="flex items-center gap-2">
-                <h4 class="text-lg font-bold text-gray-800">万能窗口</h4>
-                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">可多开</span>
-              </div>
-              <button
-                @click="addIframeWidget"
-                class="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"
-              >
-                <span class="text-lg leading-none">+</span> 新增窗口
-              </button>
+              <h4 class="text-lg font-bold text-gray-800">天气服务设置</h4>
             </div>
-
-            <template v-for="w in store.widgets" :key="'iframe-' + w.id">
-              <div
-                v-if="w.type === 'iframe'"
-                class="flatnas-handshake-signal flex flex-col gap-3 p-4 border border-gray-100 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all"
-              >
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-4">
-                    <div
-                      class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm"
-                    >
-                      🖥️
-                    </div>
-                    <div class="flex flex-col">
-                      <span class="font-bold text-gray-700">万能窗口</span>
-                      <span class="text-[10px] text-gray-400 font-mono">ID: {{ w.id }}</span>
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-6">
-                    <button
-                      @click="removeWidget(w.id)"
-                      class="text-red-400 hover:text-red-600 text-xs underline px-2"
-                      title="删除此窗口"
-                    >
-                      删除
-                    </button>
-                    <div class="flex flex-col items-end gap-1">
-                      <span class="text-[10px] text-gray-400 font-medium">公开</span
-                      ><label class="relative inline-flex items-center cursor-pointer"
-                        ><input type="checkbox" v-model="w.isPublic" class="sr-only peer" />
-                        <div
-                          class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
-                        ></div
-                      ></label>
-                    </div>
-                    <div class="flex flex-col items-end gap-1">
-                      <span class="text-[10px] text-gray-400 font-medium">启用</span
-                      ><label class="relative inline-flex items-center cursor-pointer"
-                        ><input type="checkbox" v-model="w.enable" class="sr-only peer" />
-                        <div
-                          class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500"
-                        ></div
-                      ></label>
-                    </div>
-                  </div>
-                </div>
-                <div class="w-full bg-white p-3 rounded-lg border border-gray-100 space-y-3">
-                  <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1"
-                      >外网/默认地址 (URL)</label
-                    >
-                    <input
-                      v-model="w.data.url"
-                      type="url"
-                      placeholder="例如：https://example.com"
-                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-blue-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      class="block text-xs font-bold text-gray-600 mb-1 flex items-center gap-1"
-                    >
-                      <span>内网地址 (LAN URL)</span>
-                      <span class="text-[10px] font-normal text-gray-400 bg-gray-100 px-1.5 rounded"
-                        >内网优先</span
-                      >
-                    </label>
-                    <input
-                      v-model="w.data.lanUrl"
-                      type="url"
-                      placeholder="例如：http://192.168.x.x"
-                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-blue-500 outline-none"
-                    />
-                  </div>
-                  <p class="text-[10px] text-gray-400 mt-1">
-                    系统将根据当前网络环境自动切换：内网环境优先使用内网地址，外网环境使用默认地址。
+            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs font-bold text-gray-600 mb-1">自定义天气源 URL</label>
+                  <input
+                    v-model="store.appConfig.weatherApiUrl"
+                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                    placeholder="默认使用内置源，输入 URL 以自定义"
+                  />
+                  <p class="text-[10px] text-gray-500 mt-1">
+                    若填写，将直接请求该地址获取天气数据。返回格式需包含：
+                    <code>{ data: { temp, text, city, humidity, today: { min, max } } }</code>
                   </p>
                 </div>
               </div>
-            </template>
+            </div>
           </div>
 
           <div v-if="activeTab === 'rss'" class="space-y-6">
@@ -1160,7 +1099,7 @@ const removeWidget = (id: string) => {
               class="bg-orange-50 border border-orange-100 rounded-xl p-4 mb-6 animate-fade-in"
             >
               <h5 class="text-sm font-bold text-orange-800 mb-3">
-                {{ rssForm.id ? '编辑订阅源' : '新增订阅源' }}
+                {{ rssForm.id ? "编辑订阅源" : "新增订阅源" }}
               </h5>
               <div class="space-y-3">
                 <div>
@@ -1259,7 +1198,7 @@ const removeWidget = (id: string) => {
                   "
                   class="px-4 py-3 border rounded-xl text-sm font-bold transition-all"
                 >
-                  {{ managingCategories ? '返回订阅列表' : '🗂️ 管理分类' }}
+                  {{ managingCategories ? "返回订阅列表" : "🗂️ 管理分类" }}
                 </button>
               </div>
 
@@ -1397,12 +1336,12 @@ const removeWidget = (id: string) => {
                       <span
                         :class="feed.enable ? 'text-green-500' : 'text-gray-300'"
                         class="text-xs font-bold"
-                        >{{ feed.enable ? '已启用' : '已禁用' }}</span
+                        >{{ feed.enable ? "已启用" : "已禁用" }}</span
                       >
                       <span
                         :class="feed.isPublic ? 'text-blue-500' : 'text-gray-300'"
                         class="text-xs font-bold"
-                        >{{ feed.isPublic ? '公开' : '私有' }}</span
+                        >{{ feed.isPublic ? "公开" : "私有" }}</span
                       >
                     </div>
                   </div>
@@ -1496,7 +1435,7 @@ const removeWidget = (id: string) => {
                       }"
                     >
                       <span>{{
-                        store.appConfig.defaultSearchEngine === e.key ? '当前默认' : '设为默认'
+                        store.appConfig.defaultSearchEngine === e.key ? "当前默认" : "设为默认"
                       }}</span>
                       <input
                         type="radio"
@@ -1531,6 +1470,106 @@ const removeWidget = (id: string) => {
                 + 添加搜索引擎
               </button>
             </div>
+          </div>
+
+          <div v-if="activeTab === 'universal-window'" class="space-y-4">
+            <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-4">
+              <div class="flex items-center gap-2">
+                <h4 class="text-lg font-bold text-gray-800 border-l-4 border-purple-500 pl-3">
+                  万能窗口
+                </h4>
+                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">可多开</span>
+                <button
+                  @click="addIframeWidget"
+                  class="px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1 ml-2"
+                >
+                  <span class="text-lg leading-none">+</span> 新增窗口
+                </button>
+              </div>
+            </div>
+
+            <template v-for="w in store.widgets" :key="'iframe-' + w.id">
+              <div
+                v-if="w.type === 'iframe'"
+                class="flatnas-handshake-signal flex flex-col gap-3 p-4 border border-gray-100 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-4">
+                    <div
+                      class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm"
+                    >
+                      🖥️
+                    </div>
+                    <div class="flex flex-col">
+                      <span class="font-bold text-gray-700">万能窗口</span>
+                      <span class="text-[10px] text-gray-400 font-mono">ID: {{ w.id }}</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-6">
+                    <button
+                      @click="removeWidget(w.id)"
+                      class="text-red-400 hover:text-red-600 text-xs underline px-2"
+                      title="删除此窗口"
+                    >
+                      删除
+                    </button>
+                    <div class="flex flex-col items-end gap-1">
+                      <span class="text-[10px] text-gray-400 font-medium">公开</span
+                      ><label class="relative inline-flex items-center cursor-pointer"
+                        ><input type="checkbox" v-model="w.isPublic" class="sr-only peer" />
+                        <div
+                          class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
+                        ></div
+                      ></label>
+                    </div>
+                    <div class="flex flex-col items-end gap-1">
+                      <span class="text-[10px] text-gray-400 font-medium">启用</span
+                      ><label class="relative inline-flex items-center cursor-pointer"
+                        ><input type="checkbox" v-model="w.enable" class="sr-only peer" />
+                        <div
+                          class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500"
+                        ></div
+                      ></label>
+                    </div>
+                  </div>
+                </div>
+                <div class="w-full bg-white p-3 rounded-lg border border-gray-100 space-y-3">
+                  <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1"
+                      >外网/默认地址 (URL)</label
+                    >
+                    <input
+                      v-model="w.data.url"
+                      type="url"
+                      placeholder="例如：https://example.com"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      class="block text-xs font-bold text-gray-600 mb-1 flex items-center gap-1"
+                    >
+                      <span>内网地址 (LAN URL)</span>
+                      <span class="text-[10px] font-normal text-gray-400 bg-gray-100 px-1.5 rounded"
+                        >内网优先</span
+                      >
+                    </label>
+                    <input
+                      v-model="w.data.lanUrl"
+                      type="url"
+                      placeholder="例如：http://192.168.x.x"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                  <p class="text-[10px] text-gray-500 mt-1">
+                    加群下载浏览器插件可以解决无法正常访问问题
+                  </p>
+                  <p class="text-[10px] text-gray-400 mt-1">
+                    系统将根据当前网络环境自动切换：内网环境优先使用内网地址，外网环境使用默认地址。
+                  </p>
+                </div>
+              </div>
+            </template>
           </div>
 
           <div v-if="activeTab === 'account'" class="h-full flex flex-col justify-center">

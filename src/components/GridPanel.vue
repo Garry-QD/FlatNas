@@ -1,130 +1,131 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
-import { VueDraggable } from 'vue-draggable-plus'
-import { useStorage } from '@vueuse/core'
-import { useMainStore } from '../stores/main'
-import type { NavItem, WidgetConfig, NavGroup } from '@/types'
-import EditModal from './EditModal.vue'
-import SettingsModal from './SettingsModal.vue'
-import GroupSettingsModal from './GroupSettingsModal.vue'
-import LoginModal from './LoginModal.vue'
-import BookmarkWidget from './BookmarkWidget.vue'
-import TodoWidget from './TodoWidget.vue'
-import CalculatorWidget from './CalculatorWidget.vue'
-import MiniPlayer from './MiniPlayer.vue'
-import HotWidget from './HotWidget.vue'
-import ClockWeatherWidget from './ClockWeatherWidget.vue'
-import RssWidget from './RssWidget.vue'
-import IconShape from './IconShape.vue'
-import IframeWidget from './IframeWidget.vue'
+import { ref, onMounted, onUnmounted, computed, watch } from "vue";
+import { VueDraggable } from "vue-draggable-plus";
+import { useStorage } from "@vueuse/core";
+import { useMainStore } from "../stores/main";
+import type { NavItem, WidgetConfig, NavGroup } from "@/types";
+import EditModal from "./EditModal.vue";
+import SettingsModal from "./SettingsModal.vue";
+import GroupSettingsModal from "./GroupSettingsModal.vue";
+import LoginModal from "./LoginModal.vue";
+import BookmarkWidget from "./BookmarkWidget.vue";
+import TodoWidget from "./TodoWidget.vue";
+import CalculatorWidget from "./CalculatorWidget.vue";
+import MiniPlayer from "./MiniPlayer.vue";
+import HotWidget from "./HotWidget.vue";
+import ClockWeatherWidget from "./ClockWeatherWidget.vue";
+import RssWidget from "./RssWidget.vue";
+import IconShape from "./IconShape.vue";
+import IframeWidget from "./IframeWidget.vue";
+import SimpleWeatherWidget from "./SimpleWeatherWidget.vue";
 
-import SizeSelector from './SizeSelector.vue'
+import SizeSelector from "./SizeSelector.vue";
 
-const store = useMainStore()
+const store = useMainStore();
 
-const showEditModal = ref(false)
-const showSettingsModal = ref(false)
-const showGroupSettingsModal = ref(false)
-const showLoginModal = ref(false)
-const isEditMode = ref(false)
-const activeResizeWidgetId = ref<string | null>(null)
-const currentEditItem = ref<NavItem | null>(null)
-const currentGroupId = ref<string>('')
-const isLanMode = ref(false)
-const latency = ref(0)
-const isChecking = ref(true)
-const searchEngineStored = useStorage('flat-nas-engine', 'google')
+const showEditModal = ref(false);
+const showSettingsModal = ref(false);
+const showGroupSettingsModal = ref(false);
+const showLoginModal = ref(false);
+const isEditMode = ref(false);
+const activeResizeWidgetId = ref<string | null>(null);
+const currentEditItem = ref<NavItem | null>(null);
+const currentGroupId = ref<string>("");
+const isLanMode = ref(false);
+const latency = ref(0);
+const isChecking = ref(true);
+const searchEngineStored = useStorage("flat-nas-engine", "google");
 const engines = computed(
   () =>
     store.appConfig.searchEngines || [
       {
-        id: 'google',
-        key: 'google',
-        label: 'Google',
-        urlTemplate: 'https://www.google.com/search?q={q}',
+        id: "google",
+        key: "google",
+        label: "Google",
+        urlTemplate: "https://www.google.com/search?q={q}",
       },
-      { id: 'bing', key: 'bing', label: 'Bing', urlTemplate: 'https://cn.bing.com/search?q={q}' },
-      { id: 'baidu', key: 'baidu', label: '百度', urlTemplate: 'https://www.baidu.com/s?wd={q}' },
+      { id: "bing", key: "bing", label: "Bing", urlTemplate: "https://cn.bing.com/search?q={q}" },
+      { id: "baidu", key: "baidu", label: "百度", urlTemplate: "https://www.baidu.com/s?wd={q}" },
     ],
-)
-const sessionEngine = ref<string | null>(null)
+);
+const sessionEngine = ref<string | null>(null);
 const effectiveEngine = computed({
   get: () =>
     sessionEngine.value ||
     (store.appConfig.rememberLastEngine
       ? searchEngineStored.value
-      : store.appConfig.defaultSearchEngine || engines.value[0]?.key || 'google'),
+      : store.appConfig.defaultSearchEngine || engines.value[0]?.key || "google"),
   set: (val: string) => {
-    sessionEngine.value = val
+    sessionEngine.value = val;
     if (store.appConfig.rememberLastEngine) {
-      searchEngineStored.value = val
+      searchEngineStored.value = val;
     }
   },
-})
-const searchText = ref('')
+});
+const searchText = ref("");
 
 watch(
   () => store.appConfig.defaultSearchEngine,
   (newVal) => {
     if (newVal) {
       // 当默认搜索引擎改变时，重置会话选择
-      sessionEngine.value = null
+      sessionEngine.value = null;
       // 如果开启了"记住上次选择"，则同步更新存储的值
       if (store.appConfig.rememberLastEngine) {
-        searchEngineStored.value = newVal
+        searchEngineStored.value = newVal;
       }
     }
   },
-)
+);
 
 // --- 核心修复逻辑开始 ---
 // 用于清洗 SVG 代码中的无效颜色类名，强制转为白色
 const processIcon = (iconStr: string) => {
-  if (!iconStr) return ''
-  if (!iconStr.trim().startsWith('<svg')) return iconStr
-  let fixed = iconStr
-  const badColorRegex = /fill-[a-z]+-(50|100|200)/g
+  if (!iconStr) return "";
+  if (!iconStr.trim().startsWith("<svg")) return iconStr;
+  let fixed = iconStr;
+  const badColorRegex = /fill-[a-z]+-(50|100|200)/g;
   if (badColorRegex.test(fixed)) {
     fixed = fixed.replace(
       /class="([^"]*)\bfill-[a-z]+-(50|100|200)\b([^"]*)"/g,
       'class="$1 $3" style="fill: #ffffff;"',
-    )
+    );
   }
-  return fixed
-}
+  return fixed;
+};
 // --- 核心修复逻辑结束 ---
 
 const isInternalNetwork = (url: string) => {
-  if (!url) return false
-  return url.includes('localhost') || /^(192\.168|10\.|172\.(1[6-9]|2\d|3[0-1]))\./.test(url)
-}
+  if (!url) return false;
+  return url.includes("localhost") || /^(192\.168|10\.|172\.(1[6-9]|2\d|3[0-1]))\./.test(url);
+};
 
 const checkVisible = (obj?: WidgetConfig | NavItem) => {
-  if (!obj) return false
-  if ('enable' in obj && !obj.enable) return false
-  if (store.isLogged) return true
-  return !!obj.isPublic
-}
+  if (!obj) return false;
+  if ("enable" in obj && !obj.enable) return false;
+  if (store.isLogged) return true;
+  return !!obj.isPublic;
+};
 
 const draggableWidgets = computed({
   get: () =>
     store.widgets.filter(
-      (w) => checkVisible(w) && w.type !== 'player' && w.type !== 'search' && w.type !== 'quote',
+      (w) => checkVisible(w) && w.type !== "player" && w.type !== "search" && w.type !== "quote",
     ),
   set: (newOrder: WidgetConfig[]) => {
     const hiddenWidgets = store.widgets.filter(
-      (w) => !checkVisible(w) || w.type === 'player' || w.type === 'search' || w.type === 'quote',
-    )
-    store.widgets = [...newOrder, ...hiddenWidgets]
-    store.saveData()
+      (w) => !checkVisible(w) || w.type === "player" || w.type === "search" || w.type === "quote",
+    );
+    store.widgets = [...newOrder, ...hiddenWidgets];
+    store.saveData();
   },
-})
+});
 
 const displayGroups = computed(() => {
   // ✨ 性能优化：在编辑模式且无搜索时，直接返回 store.groups 引用
   // 这样 VueDraggable 就能直接操作 store 中的数组，确保拖拽状态实时同步
   if (isEditMode.value && !searchText.value) {
-    return store.groups
+    return store.groups;
   }
 
   return store.groups
@@ -134,67 +135,67 @@ const displayGroups = computed(() => {
         const isMatch =
           !searchText.value ||
           item.title.toLowerCase().includes(searchText.value.toLowerCase()) ||
-          item.url.toLowerCase().includes(searchText.value.toLowerCase())
-        const isVisible = checkVisible(item)
-        return isMatch && isVisible
+          item.url.toLowerCase().includes(searchText.value.toLowerCase());
+        const isVisible = checkVisible(item);
+        return isMatch && isVisible;
       }),
     }))
     .filter((g) => {
-      if (store.isLogged) return true
-      return g.items.length > 0 || !!g.preset
-    })
-})
+      if (store.isLogged) return true;
+      return g.items.length > 0 || !!g.preset;
+    });
+});
 
 const cycleWidgetSize = (widget: WidgetConfig) => {
   // 统一为所有组件启用 4x4 尺寸选择器
-  activeResizeWidgetId.value = activeResizeWidgetId.value === widget.id ? null : widget.id
-}
+  activeResizeWidgetId.value = activeResizeWidgetId.value === widget.id ? null : widget.id;
+};
 
 const handleSizeSelect = (widget: WidgetConfig, size: { colSpan: number; rowSpan: number }) => {
-  widget.colSpan = size.colSpan
-  widget.rowSpan = size.rowSpan
-  activeResizeWidgetId.value = null
-  store.saveData()
-}
+  widget.colSpan = size.colSpan;
+  widget.rowSpan = size.rowSpan;
+  activeResizeWidgetId.value = null;
+  store.saveData();
+};
 
 const getWidgetSpanClass = (widget: WidgetConfig) => {
-  const col = widget.colSpan || 1
-  const row = widget.rowSpan || (widget.type === 'bookmarks' ? 2 : 1)
+  const col = widget.colSpan || 1;
+  const row = widget.rowSpan || (widget.type === "bookmarks" ? 2 : 1);
   const colClass =
     col === 4
-      ? 'md:col-span-4'
+      ? "md:col-span-4"
       : col === 3
-        ? 'md:col-span-3'
+        ? "md:col-span-3"
         : col === 2
-          ? 'md:col-span-2'
-          : 'md:col-span-1'
+          ? "md:col-span-2"
+          : "md:col-span-1";
   const rowClass =
-    row === 4 ? 'row-span-4' : row === 3 ? 'row-span-3' : row === 2 ? 'row-span-2' : 'row-span-1'
-  return `${colClass} ${rowClass}`
-}
+    row === 4 ? "row-span-4" : row === 3 ? "row-span-3" : row === 2 ? "row-span-2" : "row-span-1";
+  return `${colClass} ${rowClass}`;
+};
 
-const devtoolsClickCount = ref(0)
-const devtoolsClickTimer = ref<number | null>(null)
+const devtoolsClickCount = ref(0);
+const devtoolsClickTimer = ref<number | null>(null);
 
 const closeResizeSelector = () => {
-  activeResizeWidgetId.value = null
-}
+  activeResizeWidgetId.value = null;
+};
 
 onMounted(() => {
-  document.addEventListener('click', closeResizeSelector)
-})
+  document.addEventListener("click", closeResizeSelector);
+});
 
 onUnmounted(() => {
-  document.removeEventListener('click', closeResizeSelector)
-})
+  document.removeEventListener("click", closeResizeSelector);
+});
 
 const toggleDevTools = () => {
-  const style = document.getElementById('devtools-hider')
+  const style = document.getElementById("devtools-hider");
   if (style) {
-    style.remove()
+    style.remove();
   } else {
-    const newStyle = document.createElement('style')
-    newStyle.id = 'devtools-hider'
+    const newStyle = document.createElement("style");
+    newStyle.id = "devtools-hider";
     newStyle.innerHTML = `
       #vue-devtools-anchor,
       .vue-devtools__anchor,
@@ -202,133 +203,133 @@ const toggleDevTools = () => {
       [data-v-inspector-toggle] {
         display: none !important;
       }
-    `
-    document.head.appendChild(newStyle)
+    `;
+    document.head.appendChild(newStyle);
   }
-}
+};
 
 const handleNetworkClick = async () => {
-  checkNetwork()
+  checkNetwork();
 
-  const now = Date.now()
+  const now = Date.now();
   if (!devtoolsClickTimer.value) {
-    devtoolsClickTimer.value = now
-    devtoolsClickCount.value = 1
+    devtoolsClickTimer.value = now;
+    devtoolsClickCount.value = 1;
   } else {
     if (now - devtoolsClickTimer.value > 5000) {
-      devtoolsClickTimer.value = now
-      devtoolsClickCount.value = 1
+      devtoolsClickTimer.value = now;
+      devtoolsClickCount.value = 1;
     } else {
-      devtoolsClickCount.value++
+      devtoolsClickCount.value++;
     }
   }
 
   if (devtoolsClickCount.value >= 10) {
-    toggleDevTools()
-    devtoolsClickCount.value = 0
-    devtoolsClickTimer.value = null
+    toggleDevTools();
+    devtoolsClickCount.value = 0;
+    devtoolsClickTimer.value = null;
   }
-}
+};
 
 const checkNetwork = async () => {
-  isChecking.value = true
-  const start = performance.now()
+  isChecking.value = true;
+  const start = performance.now();
   try {
-    const pingUrl = `/api/data?ping=${Date.now()}`
-    await fetch(pingUrl, { method: 'GET', cache: 'no-cache' })
-    const end = performance.now()
-    latency.value = Math.round(end - start)
+    const pingUrl = `/api/data?ping=${Date.now()}`;
+    await fetch(pingUrl, { method: "GET", cache: "no-cache" });
+    const end = performance.now();
+    latency.value = Math.round(end - start);
     // 判定逻辑优化：只要 Hostname 是内网 IP，或者后端检测到的 Client IP 是内网 IP，都算内网环境
     isLanMode.value =
-      isInternalNetwork(window.location.hostname) || isInternalNetwork(ipInfo.value.clientIp)
+      isInternalNetwork(window.location.hostname) || isInternalNetwork(ipInfo.value.clientIp);
   } catch {
     isLanMode.value =
-      isInternalNetwork(window.location.hostname) || isInternalNetwork(ipInfo.value.clientIp)
+      isInternalNetwork(window.location.hostname) || isInternalNetwork(ipInfo.value.clientIp);
   } finally {
-    isChecking.value = false
+    isChecking.value = false;
   }
-}
+};
 
 onMounted(() => {
-  setTimeout(() => checkNetwork(), 2000)
-  fetchIp()
+  setTimeout(() => checkNetwork(), 2000);
+  fetchIp();
   store.init().then(() => {
-    store.cleanInvalidGroups()
-  })
-})
+    store.cleanInvalidGroups();
+  });
+});
 
 const doSearch = () => {
-  if (!searchText.value) return
-  const eng = engines.value.find((e) => e.key === effectiveEngine.value)
-  const template = eng?.urlTemplate || 'https://www.google.com/search?q={q}'
-  const url = template.replace('{q}', encodeURIComponent(searchText.value))
-  window.open(url, '_blank')
-  searchText.value = ''
-}
+  if (!searchText.value) return;
+  const eng = engines.value.find((e) => e.key === effectiveEngine.value);
+  const template = eng?.urlTemplate || "https://www.google.com/search?q={q}";
+  const url = template.replace("{q}", encodeURIComponent(searchText.value));
+  window.open(url, "_blank");
+  searchText.value = "";
+};
 
 const openAddModal = (groupId: string) => {
-  currentEditItem.value = null
-  currentGroupId.value = groupId
-  showEditModal.value = true
-}
+  currentEditItem.value = null;
+  currentGroupId.value = groupId;
+  showEditModal.value = true;
+};
 const openEditModal = (item: NavItem, groupId?: string) => {
-  currentEditItem.value = item
+  currentEditItem.value = item;
   if (groupId) {
-    currentGroupId.value = groupId
+    currentGroupId.value = groupId;
   }
-  showEditModal.value = true
-}
+  showEditModal.value = true;
+};
 const handleSave = (payload: { item: NavItem; groupId?: string }) => {
-  if (payload.item.id) store.updateItem(payload.item)
+  if (payload.item.id) store.updateItem(payload.item);
   else if (payload.groupId)
-    store.addItem({ ...payload.item, id: Date.now().toString() }, payload.groupId)
-}
+    store.addItem({ ...payload.item, id: Date.now().toString() }, payload.groupId);
+};
 
 // const deleteItem = (id: string) => {
 //   openDeleteConfirm(id)
 // }
 const handleCardClick = (item: NavItem) => {
-  if (isEditMode.value) return
+  if (isEditMode.value) return;
 
   // 逻辑优化：
   // 1. 默认使用外网链接 (item.url)
   // 2. 只有在【已登录】且【处于内网环境】且【配置了内网链接】时，才优先使用内网链接
   // 这样实现了：未登录状态下，即使在内网，也强制使用外网链接；除非根本没有外网链接。
 
-  let targetUrl = item.url
+  let targetUrl = item.url;
 
   if (store.isLogged && isLanMode.value && item.lanUrl) {
-    targetUrl = item.lanUrl
+    targetUrl = item.lanUrl;
   }
 
   // 特殊情况：如果解析出的 targetUrl 为空（说明没有外网链接），
   // 但存在内网链接（说明是因为未登录被降级了，或者是压根没配外网链接）
   // 此时如果用户未登录，则拦截并提示登录。
   if (!targetUrl && item.lanUrl && !store.isLogged) {
-    showLoginModal.value = true
-    return
+    showLoginModal.value = true;
+    return;
   }
 
   // 如果确实没有链接可跳，则不做反应
-  if (!targetUrl) return
+  if (!targetUrl) return;
 
-  window.open(targetUrl, '_blank')
-}
+  window.open(targetUrl, "_blank");
+};
 const handleAuthAction = () => {
   if (store.isLogged) {
-    store.logout()
-    isEditMode.value = false
+    store.logout();
+    isEditMode.value = false;
   } else {
-    showLoginModal.value = true
+    showLoginModal.value = true;
   }
-}
+};
 const openSettings = () => {
   if (!store.isLogged) {
-    showLoginModal.value = true
+    showLoginModal.value = true;
   } else {
-    showSettingsModal.value = true
+    showSettingsModal.value = true;
   }
-}
+};
 
 // const updateGroupName = (id: string, e: Event) => {
 //   const val = (e.target as HTMLElement).innerText
@@ -336,165 +337,165 @@ const openSettings = () => {
 // }
 
 const onGroupItemsChange = (groupId: string, newItems: NavItem[]) => {
-  const group = store.groups.find((g) => g.id === groupId)
+  const group = store.groups.find((g) => g.id === groupId);
   if (group) {
-    group.items = newItems
+    group.items = newItems;
   }
-}
+};
 
 // --- Context Menu Logic ---
-const showContextMenu = ref(false)
-const contextMenuPosition = ref({ x: 0, y: 0 })
-const contextMenuItem = ref<NavItem | null>(null)
-const contextMenuGroupId = ref<string | undefined>(undefined)
+const showContextMenu = ref(false);
+const contextMenuPosition = ref({ x: 0, y: 0 });
+const contextMenuItem = ref<NavItem | null>(null);
+const contextMenuGroupId = ref<string | undefined>(undefined);
 
 const handleContextMenu = (e: MouseEvent, item: NavItem, groupId?: string) => {
-  if (!store.isLogged) return
+  if (!store.isLogged) return;
 
-  e.preventDefault()
-  contextMenuItem.value = item
-  contextMenuGroupId.value = groupId
+  e.preventDefault();
+  contextMenuItem.value = item;
+  contextMenuGroupId.value = groupId;
 
   // Prevent menu from going off-screen (basic logic)
-  const menuWidth = 150
-  const menuHeight = 100
-  let x = e.clientX
-  let y = e.clientY
+  const menuWidth = 150;
+  const menuHeight = 100;
+  let x = e.clientX;
+  let y = e.clientY;
 
-  if (x + menuWidth > window.innerWidth) x -= menuWidth
-  if (y + menuHeight > window.innerHeight) y -= menuHeight
+  if (x + menuWidth > window.innerWidth) x -= menuWidth;
+  if (y + menuHeight > window.innerHeight) y -= menuHeight;
 
-  contextMenuPosition.value = { x, y }
-  showContextMenu.value = true
-}
+  contextMenuPosition.value = { x, y };
+  showContextMenu.value = true;
+};
 
 const closeContextMenu = () => {
-  showContextMenu.value = false
-}
+  showContextMenu.value = false;
+};
 
 const handleMenuLanOpen = () => {
-  const item = contextMenuItem.value
-  closeContextMenu()
+  const item = contextMenuItem.value;
+  closeContextMenu();
 
-  if (!item || !item.lanUrl) return
+  if (!item || !item.lanUrl) return;
 
   // 内网访问依然需要登录权限
   if (!store.isLogged) {
-    showLoginModal.value = true
-    return
+    showLoginModal.value = true;
+    return;
   }
 
-  window.open(item.lanUrl, '_blank')
-}
+  window.open(item.lanUrl, "_blank");
+};
 
 const handleMenuEdit = () => {
   if (contextMenuItem.value) {
-    openEditModal(contextMenuItem.value, contextMenuGroupId.value)
+    openEditModal(contextMenuItem.value, contextMenuGroupId.value);
   }
-  closeContextMenu()
-}
+  closeContextMenu();
+};
 
 const handleMenuDelete = () => {
-  const item = contextMenuItem.value
-  closeContextMenu()
+  const item = contextMenuItem.value;
+  closeContextMenu();
   if (item) {
-    openDeleteConfirm(item.id)
+    openDeleteConfirm(item.id);
   }
-}
+};
 
 // --- Delete Confirmation Logic ---
-const showDeleteConfirm = ref(false)
-const itemToDelete = ref<string | null>(null)
+const showDeleteConfirm = ref(false);
+const itemToDelete = ref<string | null>(null);
 
 const openDeleteConfirm = (id: string) => {
-  itemToDelete.value = id
-  showDeleteConfirm.value = true
-}
+  itemToDelete.value = id;
+  showDeleteConfirm.value = true;
+};
 
 const confirmDelete = () => {
   if (itemToDelete.value) {
-    store.deleteItem(itemToDelete.value)
+    store.deleteItem(itemToDelete.value);
   }
-  showDeleteConfirm.value = false
-  itemToDelete.value = null
-}
+  showDeleteConfirm.value = false;
+  itemToDelete.value = null;
+};
 
 onMounted(() => {
-  document.addEventListener('click', closeContextMenu)
-  document.addEventListener('scroll', closeContextMenu, true)
-})
+  document.addEventListener("click", closeContextMenu);
+  document.addEventListener("scroll", closeContextMenu, true);
+});
 
 onUnmounted(() => {
-  document.removeEventListener('click', closeContextMenu)
-  document.removeEventListener('scroll', closeContextMenu, true)
-})
+  document.removeEventListener("click", closeContextMenu);
+  document.removeEventListener("scroll", closeContextMenu, true);
+});
 
 // --- Group Settings ---
-const activeGroupId = ref<string | null>(null)
+const activeGroupId = ref<string | null>(null);
 
 const toggleGroupSettings = (id: string) => {
-  activeGroupId.value = id
-  showGroupSettingsModal.value = true
-}
+  activeGroupId.value = id;
+  showGroupSettingsModal.value = true;
+};
 
 const checkMove = () => {
-  return true
-}
+  return true;
+};
 
 const getLayoutConfig = (group: NavGroup) => {
-  const showBg = group.showCardBackground ?? store.appConfig.showCardBackground
-  const layout = group.cardLayout || store.appConfig.cardLayout
-  const isHorizontal = layout === 'horizontal'
-  const isNoBg = showBg === false
+  const showBg = group.showCardBackground ?? store.appConfig.showCardBackground;
+  const layout = group.cardLayout || store.appConfig.cardLayout;
+  const isHorizontal = layout === "horizontal";
+  const isNoBg = showBg === false;
 
-  const baseGap = group.gridGap || store.appConfig.gridGap
-  const gap = isNoBg ? Math.max(4, Math.round(baseGap * 0.6)) : baseGap
+  const baseGap = group.gridGap || store.appConfig.gridGap;
+  const gap = isNoBg ? Math.max(4, Math.round(baseGap * 0.6)) : baseGap;
 
-  const baseSize = group.cardSize || store.appConfig.cardSize || 120
-  const ratio = baseSize / 120
+  const baseSize = group.cardSize || store.appConfig.cardSize || 120;
+  const ratio = baseSize / 120;
 
-  const modeScale = isNoBg ? 0.6 : 1.0
-  const finalScale = ratio * modeScale
+  const modeScale = isNoBg ? 0.6 : 1.0;
+  const finalScale = ratio * modeScale;
 
   // Icon Size Logic
-  const customIconSize = group.iconSize || store.appConfig.iconSize
-  let v_icon, h_icon
+  const customIconSize = group.iconSize || store.appConfig.iconSize;
+  let v_icon, h_icon;
 
   if (customIconSize) {
     // If explicit icon size is set, use it as base
     // Optimization: In vertical mode without card background, use the custom size directly
     if (isNoBg && !isHorizontal) {
-      v_icon = customIconSize
+      v_icon = customIconSize;
     } else {
-      v_icon = customIconSize * modeScale
+      v_icon = customIconSize * modeScale;
     }
-    h_icon = customIconSize * (40 / 48) * modeScale
+    h_icon = customIconSize * (40 / 48) * modeScale;
   } else {
     // Legacy behavior: scale with card size
-    v_icon = 48 * finalScale
-    h_icon = 40 * finalScale
+    v_icon = 48 * finalScale;
+    h_icon = 40 * finalScale;
   }
 
-  let v_w = 120 * finalScale
-  let v_h = 128 * finalScale
+  let v_w = 120 * finalScale;
+  let v_h = 128 * finalScale;
 
   // Optimization: Ensure container fits the icon in vertical no-bg mode
   if (isNoBg && !isHorizontal) {
-    if (v_icon > v_w) v_w = v_icon + 8
-    const minH = v_icon + 32 // Icon + Text space
-    if (minH > v_h) v_h = minH
+    if (v_icon > v_w) v_w = v_icon + 8;
+    const minH = v_icon + 32; // Icon + Text space
+    if (minH > v_h) v_h = minH;
   }
 
-  const h_w = 220 * finalScale
-  const h_h = 80 * finalScale
+  const h_w = 220 * finalScale;
+  const h_h = 80 * finalScale;
 
   return {
     minWidth: isHorizontal ? h_w : v_w,
     height: isHorizontal ? h_h : v_h,
     iconSize: isHorizontal ? h_icon : v_icon,
     gap,
-  }
-}
+  };
+};
 
 // Close settings when clicking outside
 // Note: In a real app we might use onClickOutside from @vueuse/core on the menu ref,
@@ -503,205 +504,205 @@ const getLayoutConfig = (group: NavGroup) => {
 // For now, let's use a simple window click listener or just rely on the toggle.
 // Better: Use a transparent fixed inset div when menu is open to catch clicks.
 
-const hitokoto = ref({ hitokoto: '加载中...', from: '' })
+const hitokoto = ref({ hitokoto: "加载中...", from: "" });
 const fetchHitokoto = async () => {
   try {
-    const res = await fetch('https://v1.hitokoto.cn/?c=i&c=d&c=k')
-    hitokoto.value = await res.json()
+    const res = await fetch("https://v1.hitokoto.cn/?c=i&c=d&c=k");
+    hitokoto.value = await res.json();
   } catch {
-    hitokoto.value = { hitokoto: '生活原本沉闷，但跑起来就有风。', from: '网络' }
+    hitokoto.value = { hitokoto: "生活原本沉闷，但跑起来就有风。", from: "网络" };
   }
-}
+};
 
 // --- 修复 IP 获取报错 ---
 const ipInfo = ref({
-  displayIp: '加载中...',
-  realIp: '',
-  location: '',
+  displayIp: "加载中...",
+  realIp: "",
+  location: "",
   isProxy: false,
-  baiduLatency: '--',
+  baiduLatency: "--",
   details: [] as string[], // 用于存储所有检测到的 IP
-  clientIp: '',
-})
+  clientIp: "",
+});
 
 const formattedLocation = computed(() => {
-  const loc = ipInfo.value.location
-  if (!loc) return ''
-  const parts = loc.split(' ')
-  let area = parts[0] || ''
-  let isp = parts.length > 1 ? parts[1] : ''
+  const loc = ipInfo.value.location;
+  if (!loc) return "";
+  const parts = loc.split(" ");
+  let area = parts[0] || "";
+  let isp = parts.length > 1 ? parts[1] : "";
 
   // Remove Province (e.g., "浙江省")
-  area = area.replace(/^.+?省/, '')
+  area = area.replace(/^.+?省/, "");
 
   // Remove City if it's not the last part (e.g., "宁波市慈溪市" -> "慈溪市")
-  area = area.replace(/^.+?市(?=.+)/, '')
+  area = area.replace(/^.+?市(?=.+)/, "");
 
   // Clean ISP (e.g., "电信ADSL" -> "电信")
   if (isp) {
-    isp = isp.replace(/ADSL|宽带|光纤/gi, '')
+    isp = isp.replace(/ADSL|宽带|光纤/gi, "");
   }
 
-  return `${area} ${isp}`.trim()
-})
+  return `${area} ${isp}`.trim();
+});
 
 const fetchIp = async (force = false) => {
-  const CACHE_KEY = 'flatnas_ip_cache'
-  const CACHE_DURATION = 12 * 60 * 60 * 1000 // 12 hours in ms
+  const CACHE_KEY = "flatnas_ip_cache";
+  const CACHE_DURATION = 12 * 60 * 60 * 1000; // 12 hours in ms
 
   if (!force) {
     try {
-      const cached = localStorage.getItem(CACHE_KEY)
+      const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
-        const { timestamp, data } = JSON.parse(cached)
+        const { timestamp, data } = JSON.parse(cached);
         if (Date.now() - timestamp < CACHE_DURATION) {
-          ipInfo.value = data
+          ipInfo.value = data;
           // 恢复缓存时也要更新内网状态
           if (data.clientIp && isInternalNetwork(data.clientIp)) {
-            isLanMode.value = true
+            isLanMode.value = true;
           }
-          return
+          return;
         }
       }
     } catch (e) {
-      console.warn('Failed to read IP cache', e)
+      console.warn("Failed to read IP cache", e);
     }
   }
 
   ipInfo.value = {
-    displayIp: '检测中...',
-    realIp: '',
-    location: '',
+    displayIp: "检测中...",
+    realIp: "",
+    location: "",
     isProxy: false,
-    baiduLatency: '...',
+    baiduLatency: "...",
     details: [],
-    clientIp: '',
-  }
+    clientIp: "",
+  };
 
   // 检测 223.5.5.5 延迟 (通过后端 /api/ping)
-  fetch('/api/ping?target=223.5.5.5')
+  fetch("/api/ping?target=223.5.5.5")
     .then((res) => res.json())
     .then((data) => {
       if (data.success) {
-        ipInfo.value.baiduLatency = data.latency
+        ipInfo.value.baiduLatency = data.latency;
       } else {
-        ipInfo.value.baiduLatency = 'Timeout'
+        ipInfo.value.baiduLatency = "Timeout";
       }
-      updateCache()
+      updateCache();
     })
     .catch(() => {
-      ipInfo.value.baiduLatency = 'Error'
-      updateCache()
-    })
+      ipInfo.value.baiduLatency = "Error";
+      updateCache();
+    });
 
   // 通过后端代理获取 IP (解决 CORS)
   try {
-    const res = await fetch('/api/ip')
-    const data = await res.json()
+    const res = await fetch("/api/ip");
+    const data = await res.json();
 
     if (data.success) {
-      ipInfo.value.displayIp = data.ip
-      ipInfo.value.location = data.location || '未知位置'
-      ipInfo.value.clientIp = data.clientIp || ''
+      ipInfo.value.displayIp = data.ip;
+      ipInfo.value.location = data.location || "未知位置";
+      ipInfo.value.clientIp = data.clientIp || "";
 
       // 获取到 IP 后立即更新内网状态
       if (data.clientIp && isInternalNetwork(data.clientIp)) {
-        isLanMode.value = true
+        isLanMode.value = true;
       }
     } else {
-      ipInfo.value.displayIp = data.ip || '获取失败'
-      ipInfo.value.location = '未知位置'
-      ipInfo.value.clientIp = data.clientIp || ''
+      ipInfo.value.displayIp = data.ip || "获取失败";
+      ipInfo.value.location = "未知位置";
+      ipInfo.value.clientIp = data.clientIp || "";
 
       if (data.clientIp && isInternalNetwork(data.clientIp)) {
-        isLanMode.value = true
+        isLanMode.value = true;
       }
     }
-    updateCache()
+    updateCache();
   } catch (e) {
-    console.error('IP Fetch Error', e)
-    ipInfo.value.displayIp = 'Error'
-    updateCache()
+    console.error("IP Fetch Error", e);
+    ipInfo.value.displayIp = "Error";
+    updateCache();
   }
-}
+};
 
 const updateCache = () => {
   // Only cache if we have some meaningful data
-  if (ipInfo.value.displayIp !== '检测中...' && ipInfo.value.baiduLatency !== '...') {
+  if (ipInfo.value.displayIp !== "检测中..." && ipInfo.value.baiduLatency !== "...") {
     localStorage.setItem(
-      'flatnas_ip_cache',
+      "flatnas_ip_cache",
       JSON.stringify({
         timestamp: Date.now(),
         data: ipInfo.value,
       }),
-    )
+    );
   }
-}
+};
 
 // --- 修复结束 ---
 
 // Visitor Stats
-const onlineDuration = ref('00:00:00')
-const totalVisitors = ref(0)
-const todayVisitors = ref(0)
-let onlineTimer: ReturnType<typeof setInterval> | null = null
+const onlineDuration = ref("00:00:00");
+const totalVisitors = ref(0);
+const todayVisitors = ref(0);
+let onlineTimer: ReturnType<typeof setInterval> | null = null;
 
 const startOnlineTimer = () => {
-  const startTime = Date.now()
-  if (onlineTimer) clearInterval(onlineTimer)
+  const startTime = Date.now();
+  if (onlineTimer) clearInterval(onlineTimer);
   onlineTimer = setInterval(() => {
-    const diff = Math.floor((Date.now() - startTime) / 1000)
-    const h = Math.floor(diff / 3600)
-    const m = Math.floor((diff % 3600) / 60)
-    const s = diff % 60
-    onlineDuration.value = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-  }, 1000)
-}
+    const diff = Math.floor((Date.now() - startTime) / 1000);
+    const h = Math.floor(diff / 3600);
+    const m = Math.floor((diff % 3600) / 60);
+    const s = diff % 60;
+    onlineDuration.value = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  }, 1000);
+};
 
 const recordVisit = async () => {
   try {
-    const res = await fetch('/api/visitor/track', { method: 'POST' })
-    const data = await res.json()
+    const res = await fetch("/api/visitor/track", { method: "POST" });
+    const data = await res.json();
     if (data.success) {
-      totalVisitors.value = data.totalVisitors
-      todayVisitors.value = data.todayVisitors
+      totalVisitors.value = data.totalVisitors;
+      todayVisitors.value = data.todayVisitors;
     }
   } catch (e) {
-    console.error('Failed to record visit', e)
+    console.error("Failed to record visit", e);
   }
-}
+};
 
 watch(
   () => store.appConfig.showFooterStats,
   (val) => {
     if (val) {
-      startOnlineTimer()
-      recordVisit()
+      startOnlineTimer();
+      recordVisit();
     } else {
-      if (onlineTimer) clearInterval(onlineTimer)
+      if (onlineTimer) clearInterval(onlineTimer);
     }
   },
   { immediate: true },
-)
+);
 
 onMounted(() => {
-  fetchHitokoto()
-})
+  fetchHitokoto();
+});
 
-const dateStr = ref(new Date().toLocaleDateString())
-const timeStr = ref(new Date().toLocaleTimeString())
-const now = new Date()
-const dayNum = ref(now.getDate())
-const weekDay = ref(['周日', '周一', '周二', '周三', '周四', '周五', '周六'][now.getDay()])
-const yearMonth = ref(`${now.getFullYear()}.${now.getMonth() + 1}`)
+const dateStr = ref(new Date().toLocaleDateString());
+const timeStr = ref(new Date().toLocaleTimeString());
+const now = new Date();
+const dayNum = ref(now.getDate());
+const weekDay = ref(["周日", "周一", "周二", "周三", "周四", "周五", "周六"][now.getDay()]);
+const yearMonth = ref(`${now.getFullYear()}.${now.getMonth() + 1}`);
 setInterval(() => {
-  const n = new Date()
-  timeStr.value = n.toLocaleTimeString()
+  const n = new Date();
+  timeStr.value = n.toLocaleTimeString();
   if (n.getDate() !== dayNum.value) {
-    dayNum.value = n.getDate()
-    weekDay.value = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][n.getDay()]
+    dayNum.value = n.getDate();
+    weekDay.value = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][n.getDay()];
   }
-}, 1000)
+}, 1000);
 </script>
 
 <template>
@@ -771,7 +772,7 @@ setInterval(() => {
                     :class="isLanMode ? 'bg-green-500' : 'bg-blue-500'"
                   ></div>
                   <span :class="isLanMode ? 'text-green-700' : 'text-blue-700'">{{
-                    isLanMode ? '内网' : '外网'
+                    isLanMode ? "内网" : "外网"
                   }}</span
                   ><span class="text-gray-400 border-l pl-2 ml-1">{{ latency }}ms</span></template
                 >
@@ -785,7 +786,7 @@ setInterval(() => {
                     : 'bg-gray-100 text-gray-500 hover:bg-blue-500 hover:text-white',
                 ]"
               >
-                {{ store.isLogged ? '退出' : '登录' }}
+                {{ store.isLogged ? "退出" : "登录" }}
               </button>
             </div>
           </div>
@@ -859,7 +860,7 @@ setInterval(() => {
                 isEditMode ? 'bg-red-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'
               "
             >
-              {{ isEditMode ? '完成' : '编辑' }}
+              {{ isEditMode ? "完成" : "编辑" }}
             </button>
           </div>
         </div>
@@ -910,13 +911,7 @@ setInterval(() => {
               <div class="text-4xl font-mono font-bold">{{ timeStr }}</div>
               <div class="text-sm opacity-80 mt-1">{{ dateStr }}</div>
             </div>
-            <div
-              v-else-if="widget.type === 'weather'"
-              class="w-full h-full p-6 rounded-2xl bg-blue-500/20 backdrop-blur border border-white/10 flex flex-col items-center justify-center hover:bg-blue-500/30 transition-colors"
-            >
-              <div class="text-3xl">⛅ 26°C</div>
-              <div class="text-sm">多云转晴 · {{ ipInfo.location || '未知位置' }}</div>
-            </div>
+            <SimpleWeatherWidget v-else-if="widget.type === 'weather'" />
             <div
               v-else-if="widget.type === 'calendar'"
               class="w-full h-full p-4 rounded-2xl bg-red-500/20 backdrop-blur border border-white/10 flex flex-col items-center justify-center relative overflow-hidden group hover:bg-red-500/30 transition-all"
@@ -1227,7 +1222,7 @@ setInterval(() => {
                           : 'none',
                     }"
                   >
-                    {{ item.description2 || '' }}
+                    {{ item.description2 || "" }}
                   </div>
 
                   <!-- Line 3 (Bottom) -->
@@ -1244,7 +1239,7 @@ setInterval(() => {
                           : 'none',
                     }"
                   >
-                    {{ item.description3 || '' }}
+                    {{ item.description3 || "" }}
                   </div>
                 </div>
 
@@ -1459,15 +1454,15 @@ setInterval(() => {
   transform: translateY(6px);
 }
 
-:deep(path[class*='fill-sky-100']),
-:deep(path[class*='fill-blue-100']),
-:deep(path[class*='fill-blue-50']),
-:deep(path[class*='fill-gray-100']),
-:deep(path[class*='fill-purple-100']),
-:deep(path[class*='fill-green-100']),
-:deep(path[class*='fill-red-100']),
-:deep(path[class*='fill-yellow-100']),
-:deep(path[class*='fill-orange-100']) {
+:deep(path[class*="fill-sky-100"]),
+:deep(path[class*="fill-blue-100"]),
+:deep(path[class*="fill-blue-50"]),
+:deep(path[class*="fill-gray-100"]),
+:deep(path[class*="fill-purple-100"]),
+:deep(path[class*="fill-green-100"]),
+:deep(path[class*="fill-red-100"]),
+:deep(path[class*="fill-yellow-100"]),
+:deep(path[class*="fill-orange-100"]) {
   fill: #ffffff !important;
 }
 </style>

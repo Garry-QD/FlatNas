@@ -312,10 +312,10 @@
     {
       "id": "hot-list",
       "type": "hot",
-      "enable": false,
+      "enable": true,
       "colSpan": 1,
       "rowSpan": 2,
-      "isPublic": false,
+      "isPublic": true,
       "data": {
         "rssUrl": "",
         "subscriptions": [
@@ -332,26 +332,26 @@
     {
       "id": "w1",
       "type": "clock",
-      "enable": false,
+      "enable": true,
       "colSpan": 1,
       "rowSpan": 1,
-      "isPublic": false
+      "isPublic": true
     },
     {
       "id": "w2",
       "type": "weather",
-      "enable": false,
+      "enable": true,
       "colSpan": 1,
       "rowSpan": 1,
-      "isPublic": false
+      "isPublic": true
     },
     {
       "id": "w3",
       "type": "calendar",
-      "enable": false,
+      "enable": true,
       "colSpan": 1,
       "rowSpan": 1,
-      "isPublic": false
+      "isPublic": true
     },
     {
       "id": "w5",
@@ -362,25 +362,25 @@
     {
       "id": "w6",
       "type": "bookmarks",
-      "enable": false,
+      "enable": true,
       "data": [],
       "colSpan": 1,
       "rowSpan": 2,
-      "isPublic": false
+      "isPublic": true
     },
     {
       "id": "w7",
       "type": "quote",
-      "enable": false,
-      "isPublic": false
+      "enable": true,
+      "isPublic": true
     },
     {
       "id": "w9",
       "type": "calculator",
-      "enable": false,
+      "enable": true,
       "colSpan": 1,
       "rowSpan": 1,
-      "isPublic": false
+      "isPublic": true
     },
     {
       "id": "w11",
@@ -402,10 +402,10 @@
     {
       "id": "rss-reader",
       "type": "rss",
-      "enable": false,
+      "enable": true,
       "colSpan": 2,
       "rowSpan": 2,
-      "isPublic": false
+      "isPublic": true
     }
   ],
   "appConfig": {
