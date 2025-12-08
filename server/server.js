@@ -53,7 +53,21 @@ let systemConfig = { authMode: "single" }; // default: 'single' or 'multi'
 async function atomicWrite(filePath, content) {
   const tempFile = filePath + ".tmp";
   await fs.writeFile(tempFile, content);
-  await fs.rename(tempFile, filePath);
+  try {
+    await fs.rename(tempFile, filePath);
+  } catch (err) {
+    // Windows compatibility: if rename fails, try copy and unlink
+    if (os.platform() === "win32") {
+      try {
+        await fs.copyFile(tempFile, filePath);
+        await fs.unlink(tempFile);
+        return;
+      } catch (e) {
+        // ignore copy error, throw original
+      }
+    }
+    throw err;
+  }
 }
 
 // Ensure directories and migrate data
@@ -74,32 +88,52 @@ async function ensureInit() {
     await fs.writeFile(SYSTEM_CONFIG_FILE, JSON.stringify(systemConfig, null, 2));
   }
 
-  // Migration: Check if old data.json exists
-  try {
-    await fs.access(OLD_DATA_FILE);
-    // Move it to users/admin.json
-    const adminFile = path.join(USERS_DIR, "admin.json");
+  // Migration Logic based on Auth Mode
+  const adminFile = path.join(USERS_DIR, "admin.json");
+
+  if (systemConfig.authMode === "single") {
+    // Single Mode: We prefer data.json
+    try {
+      await fs.access(OLD_DATA_FILE);
+      // data.json exists, good.
+    } catch {
+      // data.json missing. Check if we have admin.json to restore from
+      try {
+        await fs.access(adminFile);
+        console.log("Restoring users/admin.json to data.json for Single User Mode...");
+        // Copy instead of rename to be safe, or rename? Rename is better to avoid confusion.
+        await fs.rename(adminFile, OLD_DATA_FILE);
+      } catch {
+        // Neither exists, will be created later
+      }
+    }
+  } else {
+    // Multi Mode: We prefer users/admin.json
     try {
       await fs.access(adminFile);
-      // admin.json already exists, maybe do nothing or backup old data?
-      // For now, if admin.json exists, we assume migration is done.
+      // admin.json exists, good.
     } catch {
-      console.log("Migrating data.json to users/admin.json...");
-      await fs.rename(OLD_DATA_FILE, adminFile);
+      // admin.json missing. Check if we have data.json to migrate from
+      try {
+        await fs.access(OLD_DATA_FILE);
+        console.log("Migrating data.json to users/admin.json for Multi User Mode...");
+        // Copy to preserve original data.json as backup? Or just copy.
+        await fs.copyFile(OLD_DATA_FILE, adminFile);
+      } catch {
+        // Neither exists
+      }
     }
-  } catch {
-    // Old file doesn't exist, check if admin.json exists
   }
 
-  // Ensure admin.json exists
-  const adminFile = path.join(USERS_DIR, "admin.json");
+  // Load Admin Data (Active File)
+  const activeAdminFile = getUserFile("admin");
   try {
-    const content = await fs.readFile(adminFile, "utf-8");
+    const content = await fs.readFile(activeAdminFile, "utf-8");
     cachedUsersData["admin"] = JSON.parse(content);
   } catch {
     // Create default admin
     const initData = await getDefaultData();
-    await fs.writeFile(adminFile, JSON.stringify(initData, null, 2));
+    await fs.writeFile(activeAdminFile, JSON.stringify(initData, null, 2));
     cachedUsersData["admin"] = initData;
   }
 }
@@ -126,6 +160,12 @@ app.use(express.urlencoded({ extended: true }));
 
 // Helper to get user file path
 function getUserFile(username) {
+  // Single User Mode Compatibility:
+  // If mode is 'single' and user is 'admin', use the old data.json path.
+  if (username === "admin" && systemConfig.authMode === "single") {
+    return OLD_DATA_FILE;
+  }
+
   // Sanitize username to prevent directory traversal
   const safeUsername = username.replace(/[^a-zA-Z0-9_-]/g, "");
   return path.join(USERS_DIR, `${safeUsername}.json`);
@@ -714,6 +754,15 @@ app.get("/api/fetch-meta", async (req, res) => {
     console.error("Fetch meta error:", err.message);
     res.status(500).json({ error: "Failed to fetch meta" });
   }
+});
+
+// Serve static frontend files (Production/Docker)
+const DIST_DIR = path.join(__dirname, "../dist");
+app.use(express.static(DIST_DIR));
+
+// Handle SPA routing - return index.html for all other routes
+app.get(/(.*)/, (req, res) => {
+  res.sendFile(path.join(DIST_DIR, "index.html"));
 });
 
 io.on("connection", (socket) => {

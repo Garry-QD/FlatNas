@@ -1,5 +1,5 @@
 # --- 第一阶段：构建前端 (Builder Stage) ---
-FROM docker.m.daocloud.io/library/node:20-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ RUN npm run build-only
 
 # --- 第二阶段：生产环境 (Production Stage) ---
 # 我们只用一个轻量级的 Node 镜像来运行，不包含 Python，体积更小
-FROM docker.m.daocloud.io/library/node:20-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 

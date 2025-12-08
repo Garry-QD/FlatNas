@@ -2,6 +2,10 @@
 $ErrorActionPreference = "SilentlyContinue"
 $env:DOCKER_CLI_EXPERIMENTAL = "enabled"
 
+# Proxy configuration
+$env:HTTP_PROXY = "http://192.168.100.3:16888"
+$env:HTTPS_PROXY = "http://192.168.100.3:16888"
+
 function Get-RemoteDigest {
     param($ImageName, $Arch, $Os)
     
@@ -19,16 +23,24 @@ function Get-RemoteDigest {
         $p.StartInfo = $pinfo
         $p.Start() | Out-Null
         
-        # Timeout 10 seconds to avoid hanging on private/unreachable repos
-        if ($p.WaitForExit(10000)) {
+        # Timeout 30 seconds to avoid hanging on private/unreachable repos
+        if ($p.WaitForExit(30000)) {
             # Finished
         } else {
             try { $p.Kill() } catch {}
+            Write-Host "  [Error] Timeout waiting for docker manifest inspect" -ForegroundColor Red
             return $null
         }
         
         $stdout = $p.StandardOutput.ReadToEnd()
-        if (-not $stdout) { return $null }
+        $stderr = $p.StandardError.ReadToEnd()
+
+        if (-not $stdout) { 
+            if ($stderr) {
+                Write-Host "  [Error] $($stderr.Trim())" -ForegroundColor Red
+            }
+            return $null 
+        }
         
         $json = $stdout | ConvertFrom-Json
         
@@ -67,6 +79,7 @@ function Get-RemoteDigest {
 
         return $null
     } catch {
+        Write-Host "  [Error] Exception: $_" -ForegroundColor Red
         return $null
     }
 }
