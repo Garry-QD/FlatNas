@@ -62,7 +62,7 @@ async function atomicWrite(filePath, content) {
         await fs.copyFile(tempFile, filePath);
         await fs.unlink(tempFile);
         return;
-      } catch (e) {
+      } catch {
         // ignore copy error, throw original
       }
     }

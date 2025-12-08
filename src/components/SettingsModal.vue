@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { useMainStore } from "../stores/main";
-import type { RssFeed, WidgetConfig, RssCategory, SearchEngine, NavGroup } from "@/types";
+import type { RssFeed, WidgetConfig, RssCategory, SearchEngine, NavGroup, NavItem } from "@/types";
 import IconUploader from "./IconUploader.vue";
 import PasswordConfirmModal from "./PasswordConfirmModal.vue";
 import { VueDraggable } from "vue-draggable-plus";
@@ -179,7 +179,7 @@ const handleFileChange = (event: Event) => {
       let data = JSON.parse(content);
 
       // SunPanel format support
-      if (data.appName === "Sun-Panel-Config" && Array.isArray(data.icons)) {
+      if (Array.isArray(data.icons)) {
         const newGroups: NavGroup[] = data.icons.map(
           (
             g: {
@@ -214,12 +214,20 @@ const handleFileChange = (event: Event) => {
           appConfig: store.appConfig,
           password: store.password,
         };
-      } else if (!data.groups && data.items) {
-        data.groups = [{ id: Date.now().toString(), title: "默认分组", items: data.items }];
+      } else if ((!data.groups || data.groups.length === 0) && data.items) {
+        const items = data.items.map((item: NavItem) => ({
+          ...item,
+          isPublic: item.isPublic ?? true,
+        }));
+        data.groups = [{ id: Date.now().toString(), title: "默认分组", items: items }];
       }
-      const r = await fetch("/api/data", {
+      const token = localStorage.getItem("flat-nas-token");
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const r = await fetch("/api/data/import", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(data),
       });
       if (!r.ok) throw new Error("import_post_failed:" + r.status);

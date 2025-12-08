@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Continue"
 
 $IMAGE_NAME = "qdnas/flatnas"
-$TAG = "1.0.15-dev"
+$TAG = "1.0.18"
 $env:HTTP_PROXY = "http://192.168.100.3:16888"
 $env:HTTPS_PROXY = "http://192.168.100.3:16888"
 
@@ -55,7 +55,7 @@ if (-not (Run-With-Retry -Command "docker push '${IMAGE_NAME}:${TAG}-arm64'")) {
 Write-Host "Creating manifest list for ${TAG}..."
 docker manifest rm "${IMAGE_NAME}:${TAG}" 2>$null
 
-if (-not (Run-With-Retry -Command "docker manifest create '${IMAGE_NAME}:${TAG}' '${IMAGE_NAME}:${TAG}-amd64' '${IMAGE_NAME}:${TAG}-arm64'")) {
+if (-not (Run-With-Retry -Command "docker manifest create '${IMAGE_NAME}:${TAG}' --amend '${IMAGE_NAME}:${TAG}-amd64' '${IMAGE_NAME}:${TAG}-arm64'")) {
     exit 1
 }
 
@@ -67,7 +67,7 @@ if (-not (Run-With-Retry -Command "docker manifest push '${IMAGE_NAME}:${TAG}'")
 Write-Host "Creating manifest list for latest..."
 docker manifest rm "${IMAGE_NAME}:latest" 2>$null
 
-if (-not (Run-With-Retry -Command "docker manifest create '${IMAGE_NAME}:latest' '${IMAGE_NAME}:${TAG}-amd64' '${IMAGE_NAME}:${TAG}-arm64'")) {
+if (-not (Run-With-Retry -Command "docker manifest create '${IMAGE_NAME}:latest' --amend '${IMAGE_NAME}:${TAG}-amd64' '${IMAGE_NAME}:${TAG}-arm64'")) {
     exit 1
 }
 

@@ -1,54 +1,78 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, computed } from 'vue'
-import type { WidgetConfig } from '@/types'
+import { ref, watch, onMounted, computed, reactive } from "vue";
+import type { WidgetConfig } from "@/types";
+import { useElementSize } from "@vueuse/core";
 
 const props = defineProps<{
-  widget: WidgetConfig
-  isLanMode?: boolean
-}>()
+  widget: WidgetConfig;
+  isLanMode?: boolean;
+}>();
 
-const isLoading = ref(true)
-const iframeRef = ref<HTMLIFrameElement | null>(null)
-const refreshKey = ref(0)
-const currentProtocol = ref('')
+const isLoading = ref(true);
+const iframeRef = ref<HTMLIFrameElement | null>(null);
+const containerRef = ref<HTMLElement | null>(null);
+const { width: containerWidth, height: containerHeight } = useElementSize(containerRef);
+const isScaled = ref(false);
+const refreshKey = ref(0);
+const currentProtocol = ref("");
 
 onMounted(() => {
-  currentProtocol.value = window.location.protocol
-})
+  currentProtocol.value = window.location.protocol;
+});
 
 const currentUrl = computed(() => {
-  const { lanUrl, wanUrl, url } = props.widget.data || {}
+  const { lanUrl, wanUrl, url } = props.widget.data || {};
   // 兼容旧数据：如果 wanUrl 为空，使用 url
-  const effectiveWan = wanUrl || url || ''
+  const effectiveWan = wanUrl || url || "";
   // 如果 lanUrl 为空，回退到 wanUrl (避免内网访问时白屏)
-  const effectiveLan = lanUrl || effectiveWan
+  const effectiveLan = lanUrl || effectiveWan;
 
-  return props.isLanMode ? effectiveLan : effectiveWan
-})
+  return props.isLanMode ? effectiveLan : effectiveWan;
+});
+
+const scaleStyle = computed(() => {
+  if (!isScaled.value || !containerWidth.value || !containerHeight.value) return {};
+
+  const targetWidth = 1280; // Assume desktop width
+  const scale = containerWidth.value / targetWidth;
+  const targetHeight = containerHeight.value / scale;
+
+  return {
+    width: `${targetWidth}px`,
+    height: `${targetHeight}px`,
+    transform: `scale(${scale})`,
+    transformOrigin: "top left",
+  };
+});
+
+const toggleScale = () => {
+  isScaled.value = !isScaled.value;
+};
 
 const onLoad = () => {
-  isLoading.value = false
-}
+  isLoading.value = false;
+};
 
 const onError = () => {
-  isLoading.value = false
-}
+  isLoading.value = false;
+};
 
 const refresh = () => {
-  isLoading.value = true
-  refreshKey.value++
-}
+  isLoading.value = true;
+  refreshKey.value++;
+};
 
 watch(
   () => currentUrl.value,
   () => {
-    isLoading.value = true
+    isLoading.value = true;
   },
-)
+);
 </script>
 
 <template>
   <div
+    ref="containerRef"
     class="w-full h-full rounded-2xl bg-white backdrop-blur border border-white/10 overflow-hidden relative group"
   >
     <div
@@ -65,7 +89,8 @@ watch(
       :key="refreshKey"
       ref="iframeRef"
       :src="currentUrl"
-      class="w-full h-full border-0"
+      class="w-full h-full border-0 transition-all duration-300"
+      :style="scaleStyle"
       allowfullscreen
       allow="geolocation; microphone; camera; midi; vr; accelerometer; gyroscope; payment; ambient-light-sensor; encrypted-media; clipboard-write"
       sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts allow-downloads allow-pointer-lock"
@@ -104,6 +129,43 @@ watch(
             stroke-linejoin="round"
             stroke-width="2"
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+          />
+        </svg>
+      </button>
+
+      <button
+        @click="toggleScale"
+        class="p-1.5 bg-black/40 text-white rounded-full hover:bg-blue-500/80 backdrop-blur-md transition-colors shadow-sm"
+        :title="isScaled ? '恢复默认视图' : '缩放适应窗口'"
+      >
+        <svg
+          v-if="!isScaled"
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-3.5 w-3.5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7"
+          />
+        </svg>
+        <svg
+          v-else
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-3.5 w-3.5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10H7"
           />
         </svg>
       </button>
