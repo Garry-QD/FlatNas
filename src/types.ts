@@ -1,150 +1,158 @@
 export interface NavItem {
-  id: string
-  title: string
-  url: string
-  lanUrl?: string
-  icon: string
+  id: string;
+  title: string;
+  url: string;
+  lanUrl?: string;
+  icon: string;
   // Horizontal mode custom text lines
-  description1?: string
-  description2?: string
-  description3?: string
-  color?: string
-  titleColor?: string
-  isPublic: boolean
-  backgroundImage?: string
-  backgroundBlur?: number
-  backgroundMask?: number
+  description1?: string;
+  description2?: string;
+  description3?: string;
+  color?: string;
+  titleColor?: string;
+  isPublic: boolean;
+  backgroundImage?: string;
+  backgroundBlur?: number;
+  backgroundMask?: number;
 }
 
 export interface NavGroup {
-  id: string
-  title: string
-  items: NavItem[]
-  titleColor?: string
-  preset?: boolean
-  cardLayout?: 'vertical' | 'horizontal' | string
+  id: string;
+  title: string;
+  items: NavItem[];
+  titleColor?: string;
+  preset?: boolean;
+  cardLayout?: "vertical" | "horizontal" | string;
   iconShape?:
-    | 'circle'
-    | 'rounded'
-    | 'leaf'
-    | 'square'
-    | 'diamond'
-    | 'pentagon'
-    | 'hexagon'
-    | 'octagon'
-    | string
-  cardBgColor?: string
-  cardTitleColor?: string
-  showCardBackground?: boolean
-  backgroundImage?: string
-  backgroundBlur?: number
-  backgroundMask?: number
+    | "circle"
+    | "rounded"
+    | "leaf"
+    | "square"
+    | "diamond"
+    | "pentagon"
+    | "hexagon"
+    | "octagon"
+    | string;
+  cardBgColor?: string;
+  cardTitleColor?: string;
+  showCardBackground?: boolean;
+  backgroundImage?: string;
+  backgroundBlur?: number;
+  backgroundMask?: number;
   // Layout config overrides
-  gridGap?: number
-  cardSize?: number
-  gap?: number
-  minWidth?: number
-  height?: number
-  iconSize?: number
+  gridGap?: number;
+  cardSize?: number;
+  gap?: number;
+  minWidth?: number;
+  height?: number;
+  iconSize?: number;
 }
 
 export interface SearchEngine {
-  id: string
-  key: string
-  label: string
-  urlTemplate: string
+  id: string;
+  key: string;
+  label: string;
+  urlTemplate: string;
 }
 
 export interface AppConfig {
-  background: string
-  backgroundBlur?: number
-  backgroundMask?: number
-  customTitle: string
-  titleAlign: 'left' | 'center' | 'right' | string
-  titleSize: number
-  titleColor: string
-  cardLayout: 'vertical' | 'horizontal' | string
-  cardSize: number
-  gridGap: number
-  cardBgColor: string
-  cardTitleColor: string
-  cardBorderColor: string
-  showCardBackground: boolean
+  background: string;
+  backgroundBlur?: number;
+  backgroundMask?: number;
+  customTitle: string;
+  titleAlign: "left" | "center" | "right" | string;
+  titleSize: number;
+  titleColor: string;
+  cardLayout: "vertical" | "horizontal" | string;
+  cardSize: number;
+  gridGap: number;
+  cardBgColor: string;
+  cardTitleColor: string;
+  cardBorderColor: string;
+  showCardBackground: boolean;
   iconShape:
-    | 'circle'
-    | 'rounded'
-    | 'leaf'
-    | 'square'
-    | 'diamond'
-    | 'pentagon'
-    | 'hexagon'
-    | 'octagon'
-    | string
-  searchEngines: SearchEngine[]
-  defaultSearchEngine: string
-  rememberLastEngine: boolean
-  groupTitleColor: string
-  autoPlayMusic?: boolean
-  iconSize?: number
-  showFooterStats?: boolean
-  footerHtml?: string
-  footerHeight?: number
-  footerWidth?: number
-  footerMarginBottom?: number
-  footerFontSize?: number
-  weatherApiUrl?: string
+    | "circle"
+    | "rounded"
+    | "leaf"
+    | "square"
+    | "diamond"
+    | "pentagon"
+    | "hexagon"
+    | "octagon"
+    | string;
+  searchEngines: SearchEngine[];
+  defaultSearchEngine: string;
+  rememberLastEngine: boolean;
+  groupTitleColor: string;
+  groupGap?: number;
+  autoPlayMusic?: boolean;
+  iconSize?: number;
+  showFooterStats?: boolean;
+  footerHtml?: string;
+  footerHeight?: number;
+  footerWidth?: number;
+  footerMarginBottom?: number;
+  footerFontSize?: number;
+  weatherApiUrl?: string;
 }
 
 export interface WidgetConfig {
-  id: string
-  type: string
-  enable: boolean
-  colSpan?: number
-  rowSpan?: number
-  isPublic: boolean
+  id: string;
+  type: string;
+  enable: boolean;
+  colSpan?: number;
+  rowSpan?: number;
+  isPublic: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data?: any
+  data?: any;
 }
 
 export interface SimpleIcon {
-  title: string
-  slug: string
-  hex: string
-  source: string
-  svg: string
-  path: string
-  guidelines?: string
+  title: string;
+  slug: string;
+  hex: string;
+  source: string;
+  svg: string;
+  path: string;
+  guidelines?: string;
   license?: {
-    type: string
-    url: string
-  }
+    type: string;
+    url: string;
+  };
 }
 
 export interface RssFeed {
-  id: string
-  url: string
-  title: string
-  category?: string
-  tags?: string[]
-  enable: boolean
-  isPublic: boolean
+  id: string;
+  url: string;
+  title: string;
+  category?: string;
+  tags?: string[];
+  enable: boolean;
+  isPublic: boolean;
 }
 
 export interface RssCategory {
-  id: string
-  name: string
-  feeds: RssFeed[]
+  id: string;
+  name: string;
+  feeds: RssFeed[];
 }
 
 export interface BookmarkItem {
-  id: string
-  title: string
-  url: string
-  icon?: string
+  id: string;
+  title: string;
+  url: string;
+  icon?: string;
+}
+
+export interface BookmarkCategory {
+  id: string;
+  title: string;
+  collapsed?: boolean;
+  children: BookmarkItem[];
 }
 
 export interface TodoItem {
-  id: string
-  text: string
-  done: boolean
+  id: string;
+  text: string;
+  done: boolean;
 }

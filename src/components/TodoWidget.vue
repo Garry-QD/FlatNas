@@ -1,10 +1,29 @@
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props */
-import { ref } from 'vue'
+import { ref, watch, onMounted } from 'vue'
+import { useStorage } from '@vueuse/core'
 import type { WidgetConfig } from '@/types'
 
 const props = defineProps<{ widget: WidgetConfig }>()
 const newItem = ref('')
+
+// 本地持久化备份：防止网络断开时数据丢失
+const localBackup = useStorage<any[]>(`flatnas-todo-backup-${props.widget.id}`, [])
+
+watch(
+  () => props.widget.data,
+  (newVal) => {
+    if (newVal) localBackup.value = newVal
+  },
+  { deep: true },
+)
+
+onMounted(() => {
+  // 如果服务端数据为空，但本地有备份，则恢复备份
+  if ((!props.widget.data || props.widget.data.length === 0) && localBackup.value.length > 0) {
+    props.widget.data = localBackup.value
+  }
+})
 
 const add = () => {
   if (!newItem.value) return

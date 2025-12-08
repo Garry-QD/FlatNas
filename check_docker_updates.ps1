@@ -73,11 +73,20 @@ function Get-RemoteDigest {
 
 Write-Host "Checking local 'latest' images for updates..." -ForegroundColor Cyan
 
+$hasUpdate = $false
+$statusFile = Join-Path $PSScriptRoot "data/docker-status.json"
+# Ensure data directory exists
+if (-not (Test-Path (Join-Path $PSScriptRoot "data"))) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $PSScriptRoot "data") | Out-Null
+}
+
 # Find all images with :latest tag
 $images = docker images --format "{{.Repository}}:{{.Tag}}" | Select-String ":latest$"
 
 if (-not $images) {
     Write-Host "No images with ':latest' tag found."
+    # Write no update status
+    @{ hasUpdate = $false; lastCheck = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss") } | ConvertTo-Json | Set-Content -Path $statusFile -Encoding UTF8
     exit
 }
 
@@ -109,6 +118,7 @@ foreach ($line in $images) {
              Write-Host " [Single Arch - Cannot Verify]" -ForegroundColor DarkGray
         }
         elseif ($localDigest -ne $remoteDigest) {
+            $hasUpdate = $true
             Write-Host " [UPDATE AVAILABLE]" -ForegroundColor Yellow
             Write-Host "    Local:  $localDigest" -ForegroundColor DarkGray
             Write-Host "    Remote: $remoteDigest" -ForegroundColor DarkGray
@@ -124,3 +134,9 @@ foreach ($line in $images) {
         Write-Host " [Skipped (Check failed or unknown format)]" -ForegroundColor DarkGray
     }
 }
+
+# Write final status to file for the web app to consume
+@{ 
+    hasUpdate = $hasUpdate
+    lastCheck = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss") 
+} | ConvertTo-Json | Set-Content -Path $statusFile -Encoding UTF8

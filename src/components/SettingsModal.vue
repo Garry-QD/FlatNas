@@ -95,12 +95,16 @@ const onAuthSuccess = () => {
 
 const close = () => emit("update:show", false);
 
-const handleLogin = () => {
-  if (store.login(passwordInput.value)) {
-    alert("登录成功！");
-    passwordInput.value = "";
-  } else {
-    alert("密码错误！");
+const handleLogin = async () => {
+  try {
+    const success = await store.login("admin", passwordInput.value);
+    if (success) {
+      alert("登录成功！");
+      passwordInput.value = "";
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "密码错误！";
+    alert(msg);
   }
 };
 const handleChangePassword = () => {
@@ -110,17 +114,41 @@ const handleChangePassword = () => {
   newPasswordInput.value = "";
 };
 
+const toggleAuthMode = async () => {
+  const currentMode = store.systemConfig.authMode;
+  const newMode = currentMode === "single" ? "multi" : "single";
+
+  if (newMode === "single") {
+    if (!confirm("确定要切换到单用户模式吗？\n切换后将隐藏注册入口，默认登录 Admin 账户。")) return;
+  } else {
+    if (!confirm("确定要切换到多用户模式吗？\n切换后将允许新用户注册，登录时需输入用户名。"))
+      return;
+  }
+
+  const success = await store.updateSystemConfig({ authMode: newMode });
+  if (success) {
+    alert(`已切换为${newMode === "single" ? "单用户模式" : "多用户模式"}`);
+  } else {
+    alert("切换失败，请检查权限");
+  }
+};
+
 onMounted(() => {
   store.checkUpdate();
 });
-const handleExport = () => {
+const handleExport = async () => {
   try {
+    // 强制立即保存，确保后端数据也是最新的
+    await store.saveData(true);
+
     const backupData = {
       items: store.items,
       widgets: store.widgets,
       appConfig: store.appConfig,
       password: store.password,
       groups: store.groups,
+      rssFeeds: store.rssFeeds,
+      rssCategories: store.rssCategories,
     };
     const jsonString = JSON.stringify(backupData, null, 2);
     const blob = new Blob([jsonString], { type: "application/json" });
@@ -548,7 +576,7 @@ const removeWidget = (id: string) => {
           <div class="text-center flex items-center justify-center gap-1">
             <span class="text-xs text-gray-400 font-mono">v{{ store.currentVersion }}</span>
             <span
-              v-if="store.hasUpdate"
+              v-if="store.hasUpdate && store.isLogged"
               class="w-2 h-2 bg-red-500 rounded-full cursor-pointer"
               title="发现新版本"
               @click="store.checkUpdate"
@@ -727,6 +755,22 @@ const removeWidget = (id: string) => {
                     class="w-10 h-10 rounded cursor-pointer border-0 p-0"
                   />
                 </div>
+                <div>
+                  <h4 class="text-sm font-bold text-gray-600 mb-1">分组垂直间距</h4>
+                  <div class="flex items-center gap-2">
+                    <input
+                      type="range"
+                      v-model.number="store.appConfig.groupGap"
+                      min="0"
+                      max="100"
+                      step="5"
+                      class="flex-1 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+                    />
+                    <span class="text-xs text-gray-500 w-6">{{
+                      store.appConfig.groupGap ?? 30
+                    }}</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -734,7 +778,7 @@ const removeWidget = (id: string) => {
               <h4 class="text-lg font-bold mb-2 text-gray-800 border-l-4 border-purple-500 pl-2">
                 页脚设置
               </h4>
-              <div class="space-y-4">
+              <div class="space-y-2">
                 <div class="flex items-center justify-between">
                   <label class="text-sm font-bold text-gray-600">显示访客统计</label>
                   <label class="relative inline-flex items-center cursor-pointer">
@@ -940,7 +984,9 @@ const removeWidget = (id: string) => {
                                                     ? "🔥"
                                                     : w.type === "rss"
                                                       ? "📡"
-                                                      : "🖥️"
+                                                      : w.type === "sidebar"
+                                                        ? "⬅️"
+                                                        : "🖥️"
                         }}
                       </div>
                       <span
@@ -953,31 +999,33 @@ const removeWidget = (id: string) => {
                               ? "天气"
                               : w.type === "clockweather"
                                 ? "时钟+天气"
-                                : w.type === "calendar"
-                                  ? "日历"
-                                  : w.type === "memo"
-                                    ? "备忘录"
-                                    : w.type === "search"
-                                      ? "聚合搜索"
-                                      : w.type === "quote"
-                                        ? "每日一言"
-                                        : w.type === "bookmarks"
-                                          ? "收藏夹"
-                                          : w.type === "todo"
-                                            ? "待办事项"
-                                            : w.type === "calculator"
-                                              ? "计算器"
-                                              : w.type === "ip"
-                                                ? "IP 信息"
-                                                : w.type === "player"
-                                                  ? "随机音乐"
-                                                  : w.type === "hot"
-                                                    ? "全网热搜"
-                                                    : w.type === "rss"
-                                                      ? "RSS 阅读器"
-                                                      : w.type === "iframe"
-                                                        ? "万能窗口"
-                                                        : "未知组件"
+                                : w.type === "sidebar"
+                                  ? "侧边栏"
+                                  : w.type === "calendar"
+                                    ? "日历"
+                                    : w.type === "memo"
+                                      ? "备忘录"
+                                      : w.type === "search"
+                                        ? "聚合搜索"
+                                        : w.type === "quote"
+                                          ? "每日一言"
+                                          : w.type === "bookmarks"
+                                            ? "收藏夹"
+                                            : w.type === "todo"
+                                              ? "待办事项"
+                                              : w.type === "calculator"
+                                                ? "计算器"
+                                                : w.type === "ip"
+                                                  ? "IP 信息"
+                                                  : w.type === "player"
+                                                    ? "随机音乐"
+                                                    : w.type === "hot"
+                                                      ? "全网热搜"
+                                                      : w.type === "rss"
+                                                        ? "RSS 阅读器"
+                                                        : w.type === "iframe"
+                                                          ? "万能窗口"
+                                                          : "未知组件"
                         }}
                       </span>
                     </div>
@@ -1472,7 +1520,7 @@ const removeWidget = (id: string) => {
             </div>
           </div>
 
-          <div v-if="activeTab === 'universal-window'" class="space-y-4">
+          <div v-if="activeTab === 'universal-window'" class="flatnas-handshake-signal space-y-4">
             <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-4">
               <div class="flex items-center gap-2">
                 <h4 class="text-lg font-bold text-gray-800 border-l-4 border-purple-500 pl-3">
@@ -1572,7 +1620,7 @@ const removeWidget = (id: string) => {
             </template>
           </div>
 
-          <div v-if="activeTab === 'account'" class="h-full flex flex-col justify-center">
+          <div v-if="activeTab === 'account'" class="min-h-full flex flex-col justify-center">
             <div v-if="!store.isLogged" class="text-center">
               <h4 class="text-xl font-bold mb-6 text-gray-800">管理员登录</h4>
               <input
@@ -1625,6 +1673,42 @@ const removeWidget = (id: string) => {
                     @change="handleFileChange"
                   />
                 </div>
+              </div>
+              <div
+                v-if="store.username === 'admin'"
+                class="bg-purple-50 p-5 rounded-xl border border-purple-200 mb-6"
+              >
+                <h5 class="text-sm font-bold text-purple-800 mb-3">⚙️ 系统模式</h5>
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-gray-700"
+                    >当前模式：{{
+                      store.systemConfig.authMode === "single" ? "单用户模式" : "多用户模式"
+                    }}</span
+                  >
+                  <button
+                    @click="toggleAuthMode"
+                    class="px-4 py-2 rounded-lg text-sm font-bold text-white transition-all"
+                    :class="
+                      store.systemConfig.authMode === 'single'
+                        ? 'bg-purple-500 hover:bg-purple-600'
+                        : 'bg-blue-500 hover:bg-blue-600'
+                    "
+                  >
+                    切换为{{
+                      store.systemConfig.authMode === "single" ? "多用户模式" : "单用户模式"
+                    }}
+                  </button>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">
+                  {{
+                    store.systemConfig.authMode === "single"
+                      ? "单用户模式下，登录界面简化，仅需输入密码即可登录 Admin 账户。"
+                      : "多用户模式下，允许多个用户注册和登录，数据相互隔离。"
+                  }}
+                </p>
+                <p class="text-xs text-gray-500 mt-1">
+                  单用户默认密码:admin 多用户模式用户名密码都默认：admin
+                </p>
               </div>
               <div class="bg-gray-50 p-5 rounded-xl border border-gray-200 mb-6">
                 <h5 class="text-sm font-bold text-gray-700 mb-3">🔑 修改密码</h5>

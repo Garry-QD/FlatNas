@@ -9,6 +9,7 @@ import SettingsModal from "./SettingsModal.vue";
 import GroupSettingsModal from "./GroupSettingsModal.vue";
 import LoginModal from "./LoginModal.vue";
 import BookmarkWidget from "./BookmarkWidget.vue";
+import MemoWidget from "./MemoWidget.vue";
 import TodoWidget from "./TodoWidget.vue";
 import CalculatorWidget from "./CalculatorWidget.vue";
 import MiniPlayer from "./MiniPlayer.vue";
@@ -18,6 +19,7 @@ import RssWidget from "./RssWidget.vue";
 import IconShape from "./IconShape.vue";
 import IframeWidget from "./IframeWidget.vue";
 import SimpleWeatherWidget from "./SimpleWeatherWidget.vue";
+import AppSidebar from "./AppSidebar.vue";
 
 import SizeSelector from "./SizeSelector.vue";
 
@@ -34,6 +36,19 @@ const currentGroupId = ref<string>("");
 const isLanMode = ref(false);
 const latency = ref(0);
 const isChecking = ref(true);
+const forceMode = useStorage<"auto" | "lan" | "wan">("flat-nas-network-mode", "auto");
+
+const sidebarCollapsed = ref(true);
+const isSidebarEnabled = computed(() =>
+  store.widgets.find((w) => w.type === "sidebar" && w.enable),
+);
+
+const toggleForceMode = () => {
+  if (forceMode.value === "auto") forceMode.value = "lan";
+  else if (forceMode.value === "lan") forceMode.value = "wan";
+  else forceMode.value = "auto";
+};
+
 const searchEngineStored = useStorage("flat-nas-engine", "google");
 const engines = computed(
   () =>
@@ -110,11 +125,21 @@ const checkVisible = (obj?: WidgetConfig | NavItem) => {
 const draggableWidgets = computed({
   get: () =>
     store.widgets.filter(
-      (w) => checkVisible(w) && w.type !== "player" && w.type !== "search" && w.type !== "quote",
+      (w) =>
+        checkVisible(w) &&
+        w.type !== "player" &&
+        w.type !== "search" &&
+        w.type !== "quote" &&
+        w.type !== "sidebar",
     ),
   set: (newOrder: WidgetConfig[]) => {
     const hiddenWidgets = store.widgets.filter(
-      (w) => !checkVisible(w) || w.type === "player" || w.type === "search" || w.type === "quote",
+      (w) =>
+        !checkVisible(w) ||
+        w.type === "player" ||
+        w.type === "search" ||
+        w.type === "quote" ||
+        w.type === "sidebar",
     );
     store.widgets = [...newOrder, ...hiddenWidgets];
     store.saveData();
@@ -294,12 +319,21 @@ const handleCardClick = (item: NavItem) => {
   // 逻辑优化：
   // 1. 默认使用外网链接 (item.url)
   // 2. 只有在【已登录】且【处于内网环境】且【配置了内网链接】时，才优先使用内网链接
-  // 这样实现了：未登录状态下，即使在内网，也强制使用外网链接；除非根本没有外网链接。
+  // 3. 支持强制切换模式
 
   let targetUrl = item.url;
 
-  if (store.isLogged && isLanMode.value && item.lanUrl) {
-    targetUrl = item.lanUrl;
+  if (forceMode.value === "lan") {
+    // 强制内网模式：优先使用内网链接
+    if (item.lanUrl) targetUrl = item.lanUrl;
+  } else if (forceMode.value === "wan") {
+    // 强制外网模式：只使用外网链接
+    targetUrl = item.url;
+  } else {
+    // 自动模式
+    if (store.isLogged && isLanMode.value && item.lanUrl) {
+      targetUrl = item.lanUrl;
+    }
   }
 
   // 特殊情况：如果解析出的 targetUrl 为空（说明没有外网链接），
@@ -405,19 +439,31 @@ const handleMenuDelete = () => {
 
 // --- Delete Confirmation Logic ---
 const showDeleteConfirm = ref(false);
+const deleteType = ref<"item" | "group">("item");
 const itemToDelete = ref<string | null>(null);
+const groupToDelete = ref<string | null>(null);
 
 const openDeleteConfirm = (id: string) => {
+  deleteType.value = "item";
   itemToDelete.value = id;
   showDeleteConfirm.value = true;
 };
 
+const openGroupDeleteConfirm = (id: string) => {
+  deleteType.value = "group";
+  groupToDelete.value = id;
+  showDeleteConfirm.value = true;
+};
+
 const confirmDelete = () => {
-  if (itemToDelete.value) {
+  if (deleteType.value === "item" && itemToDelete.value) {
     store.deleteItem(itemToDelete.value);
+  } else if (deleteType.value === "group" && groupToDelete.value) {
+    store.deleteGroup(groupToDelete.value, true);
   }
   showDeleteConfirm.value = false;
   itemToDelete.value = null;
+  groupToDelete.value = null;
 };
 
 onMounted(() => {
@@ -729,6 +775,14 @@ setInterval(() => {
       ></div>
     </div>
 
+    <AppSidebar
+      v-if="isSidebarEnabled"
+      v-model:collapsed="sidebarCollapsed"
+      class="fixed left-0 top-0 h-full z-40"
+      :onOpenSettings="() => (showSettingsModal = true)"
+      :onOpenEdit="() => (isEditMode = !isEditMode)"
+    />
+
     <div
       class="flex-1 w-full p-8 transition-all pb-10 relative z-10"
       :style="{
@@ -736,12 +790,13 @@ setInterval(() => {
         '--group-title-color': store.appConfig.groupTitleColor || '#ffffff',
         '--card-bg-color': store.appConfig.cardBgColor || 'transparent',
         '--card-border-color': store.appConfig.cardBorderColor || 'transparent',
+        paddingLeft: isSidebarEnabled ? (sidebarCollapsed ? '100px' : '288px') : undefined,
       }"
     >
       <div class="max-w-7xl mx-auto">
         <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-6 relative">
           <div
-            class="flex items-center gap-4 flex-shrink-0 z-30 transition-all duration-500"
+            class="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 flex-shrink-0 z-30 transition-all duration-500"
             :style="{ order: store.appConfig.titleAlign === 'right' ? 2 : 0 }"
           >
             <h1
@@ -757,6 +812,17 @@ setInterval(() => {
             <div
               class="flex items-center bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-full p-1 gap-1 h-8"
             >
+              <button
+                @click="toggleForceMode"
+                class="px-3 h-6 rounded-full text-[10px] font-bold transition-all"
+                :class="{
+                  'bg-gray-100 text-gray-400 hover:bg-gray-200': forceMode === 'auto',
+                  'bg-green-100 text-green-600 hover:bg-green-200': forceMode === 'lan',
+                  'bg-blue-100 text-blue-600 hover:bg-blue-200': forceMode === 'wan',
+                }"
+              >
+                {{ forceMode === "auto" ? "自动" : forceMode === "lan" ? "强制内网" : "强制外网" }}
+              </button>
               <div
                 class="flex items-center gap-2 px-3 h-full rounded-full text-[10px] font-medium cursor-pointer hover:bg-gray-100 transition-all select-none"
                 @click="handleNetworkClick"
@@ -795,16 +861,18 @@ setInterval(() => {
             v-if="checkVisible(store.widgets.find((w) => w.id === 'w5'))"
             class="w-full md:absolute md:left-1/2 md:-translate-x-1/2 md:w-64 z-20"
           >
-            <div
+            <form
               class="mx-auto shadow-lg hover:shadow-xl transition-shadow rounded-full bg-white/90 backdrop-blur-md border border-white/40 flex items-center p-1"
               :style="{ width: '100%', height: '41px' }"
+              @submit.prevent="doSearch"
+              action="."
             >
               <input
                 id="main-search-input"
                 name="q"
                 v-model="searchText"
                 @keyup.enter="doSearch"
-                type="text"
+                type="search"
                 role="searchbox"
                 aria-label="搜索框"
                 autocomplete="off"
@@ -820,15 +888,16 @@ setInterval(() => {
                   aria-label="搜索引擎"
                   class="h-[34px] px-3 py-0 bg-white rounded-full border border-gray-200 focus:border-blue-400 outline-none"
                   :style="{ width: 'calc(100%)', fontSize: '15px' }"
+                  @click.stop
                 >
                   <option v-for="e in engines" :key="e.key" :value="e.key">{{ e.label }}</option>
                 </select>
               </div>
-            </div>
+            </form>
           </div>
 
           <div
-            class="flex gap-3 flex-shrink-0 z-10 items-center transition-all duration-500"
+            class="flex gap-3 flex-shrink-0 z-10 items-center transition-all duration-500 flatnas-handshake-signal"
             :style="{ order: store.appConfig.titleAlign === 'right' ? 0 : 2 }"
           >
             <MiniPlayer
@@ -911,7 +980,7 @@ setInterval(() => {
               <div class="text-4xl font-mono font-bold">{{ timeStr }}</div>
               <div class="text-sm opacity-80 mt-1">{{ dateStr }}</div>
             </div>
-            <SimpleWeatherWidget v-else-if="widget.type === 'weather'" />
+            <SimpleWeatherWidget v-else-if="widget.type === 'weather'" :widget="widget" />
             <div
               v-else-if="widget.type === 'calendar'"
               class="w-full h-full p-4 rounded-2xl bg-red-500/20 backdrop-blur border border-white/10 flex flex-col items-center justify-center relative overflow-hidden group hover:bg-red-500/30 transition-all"
@@ -927,17 +996,7 @@ setInterval(() => {
                 {{ weekDay }}
               </div>
             </div>
-            <div
-              v-else-if="widget.type === 'memo'"
-              class="w-full h-full p-4 rounded-2xl bg-yellow-100/90 backdrop-blur border border-white/10 text-gray-700 relative group"
-            >
-              <textarea
-                :readonly="!store.isLogged"
-                v-model="widget.data"
-                class="w-full h-full bg-transparent resize-none outline-none text-sm placeholder-gray-600 font-medium"
-                :placeholder="store.isLogged ? '写点什么...' : '暂无内容'"
-              ></textarea>
-            </div>
+            <MemoWidget v-else-if="widget.type === 'memo'" :widget="widget" />
             <TodoWidget v-else-if="widget.type === 'todo'" :widget="widget" />
             <CalculatorWidget v-else-if="widget.type === 'calculator'" />
             <div
@@ -980,10 +1039,22 @@ setInterval(() => {
             />
             <BookmarkWidget v-else-if="widget.type === 'bookmarks'" :widget="widget" />
             <HotWidget v-else-if="widget.type === 'hot'" :widget="widget" />
-            <ClockWeatherWidget v-else-if="widget.type === 'clockweather'" />
+            <ClockWeatherWidget v-else-if="widget.type === 'clockweather'" :widget="widget" />
             <RssWidget v-else-if="widget.type === 'rss'" :widget="widget" />
           </div>
         </VueDraggable>
+
+        <Transition name="fade">
+          <div v-if="store.isLogged && isEditMode" class="flex justify-center mb-4">
+            <button
+              data-testid="add-group-btn"
+              @click="store.addGroup"
+              class="bg-white/10 hover:bg-white/20 text-white backdrop-blur border border-white/20 px-6 py-2 rounded-full font-bold transition-all flex items-center gap-2 shadow-lg"
+            >
+              <span>➕</span> 新建分组
+            </button>
+          </div>
+        </Transition>
 
         <VueDraggable
           v-model="store.groups"
@@ -991,10 +1062,11 @@ setInterval(() => {
           :move="checkMove"
           :animation="300"
           :disabled="!isEditMode"
-          class="space-y-8 pb-20"
+          class="pb-20 flex flex-col"
+          :style="{ gap: (store.appConfig.groupGap ?? 30) + 'px' }"
         >
           <div v-for="group in displayGroups" :key="group.id" class="group-container">
-            <div class="flex items-center gap-3 mb-4 group-header relative">
+            <div class="flex items-center gap-3 mb-2 group-header relative">
               <div
                 v-if="isEditMode"
                 class="group-handle cursor-move text-white/50 hover:text-white p-1 select-none text-xl"
@@ -1066,7 +1138,7 @@ setInterval(() => {
 
                 <button
                   v-if="store.isLogged && isEditMode"
-                  @click="store.deleteGroup(group.id)"
+                  @click="openGroupDeleteConfirm(group.id)"
                   class="w-7 h-7 rounded-full bg-white/10 hover:bg-red-500 hover:text-white text-white/50 flex items-center justify-center transition-all shadow-sm border border-white/10"
                   title="删除分组"
                 >
@@ -1265,18 +1337,6 @@ setInterval(() => {
             </VueDraggable>
           </div>
         </VueDraggable>
-
-        <Transition name="fade">
-          <div v-if="store.isLogged && isEditMode" class="flex justify-center pb-20">
-            <button
-              data-testid="add-group-btn"
-              @click="store.addGroup"
-              class="bg-white/10 hover:bg-white/20 text-white backdrop-blur border border-white/20 px-6 py-2 rounded-full font-bold transition-all flex items-center gap-2 shadow-lg"
-            >
-              <span>➕</span> 新建分组
-            </button>
-          </div>
-        </Transition>
       </div>
     </div>
 
@@ -1297,7 +1357,28 @@ setInterval(() => {
         }"
       >
         <!-- Left: Visitor Stats -->
-        <div class="flex-1 flex items-center justify-start">
+        <div class="flex-1 flex items-center justify-start gap-4">
+          <!-- Connection Status -->
+          <div
+            v-if="false"
+            class="flex items-center gap-2 opacity-80 select-none"
+            :title="store.isConnected ? '已连接到服务器' : '与服务器断开连接'"
+          >
+            <div
+              class="w-2 h-2 rounded-full transition-colors duration-300"
+              :class="
+                store.isConnected
+                  ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.8)]'
+                  : 'bg-red-500 animate-pulse'
+              "
+            ></div>
+            <span
+              class="text-xs font-mono font-bold"
+              :class="store.appConfig.background ? 'text-white shadow-text' : 'text-gray-500'"
+              >{{ store.isConnected ? "LIVE" : "OFFLINE" }}</span
+            >
+          </div>
+
           <div
             v-if="store.appConfig.showFooterStats"
             class="flex gap-4 opacity-60 select-none"
@@ -1410,7 +1491,9 @@ setInterval(() => {
         <h3 class="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
           <span class="text-red-500 text-xl">⚠️</span> 删除确认
         </h3>
-        <p class="text-gray-600 mb-6">确定要删除这个卡片吗？此操作无法撤销。</p>
+        <p class="text-gray-600 mb-6">
+          确定要删除这个{{ deleteType === "group" ? "分组" : "卡片" }}吗？此操作无法撤销。
+        </p>
         <div class="flex justify-end gap-3">
           <button
             @click="showDeleteConfirm = false"

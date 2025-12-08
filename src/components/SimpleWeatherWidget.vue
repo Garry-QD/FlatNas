@@ -1,18 +1,62 @@
 <script setup lang="ts">
+/* eslint-disable vue/no-mutating-props */
 import { ref, onMounted, onUnmounted, computed } from "vue";
 import { useMainStore } from "../stores/main";
+import type { WidgetConfig } from "@/types";
+import { cityData } from "@/utils/cityData";
+
+const props = defineProps<{
+  widget?: WidgetConfig;
+}>();
 
 const store = useMainStore();
+const showCityInput = ref(false);
+const customCityInput = ref("");
+const selectedProvince = ref("");
+
+const getInitialCity = () => {
+  if (props.widget?.data?.city) return props.widget.data.city;
+  try {
+    const cachedCity = localStorage.getItem("flatnas_auto_city");
+    if (cachedCity) {
+      const data = JSON.parse(cachedCity);
+      return data.city;
+    }
+  } catch (e) {
+    // ignore error
+  }
+  return "定位中...";
+};
 
 const weather = ref({
   temp: "--",
-  city: "定位中...",
+  city: getInitialCity(),
   text: "...",
   humidity: "",
   today: { min: "", max: "" },
 });
 const isNight = ref(false);
 let timer: ReturnType<typeof setInterval> | null = null;
+
+// Initialize input
+if (props.widget?.data?.city) {
+  customCityInput.value = props.widget.data.city;
+}
+
+const saveCity = () => {
+  try {
+    if (props.widget) {
+      if (!props.widget.data) props.widget.data = {};
+      const newCity = customCityInput.value.trim();
+      props.widget.data.city = newCity;
+      fetchWeather();
+    }
+  } catch (e) {
+    console.error("Failed to save city", e);
+  } finally {
+    showCityInput.value = false;
+  }
+};
 
 // 映射天气类型
 const weatherType = computed(() => {
@@ -50,22 +94,73 @@ const updateTime = () => {
   isNight.value = hour < 6 || hour >= 18;
 };
 
+const isCacheValid = (timestamp: number, duration: number) => {
+  return Date.now() - timestamp < duration;
+};
+
 // 获取天气
 const fetchWeather = async () => {
   try {
-    const ipRes = await fetch("/api/ip");
-    if (!ipRes.ok) throw new Error("IP API Error");
-    const ipData = await ipRes.json();
-
     let city = "本地";
-    if (ipData.success && ipData.location) {
-      let loc = ipData.location.split(" ")[0];
-      loc = loc.replace(/^(?:.*?省|.*?自治区|.*?特别行政区)/, "");
-      const match = loc.match(/^(.*?[市州盟地区])/);
-      if (match) {
-        loc = match[1];
+
+    // 优先使用自定义城市
+    if (props.widget?.data?.city) {
+      city = props.widget.data.city;
+    } else {
+      // 尝试从缓存读取自动定位城市 (缓存 1 小时)
+      const cachedCity = localStorage.getItem("flatnas_auto_city");
+      let useCache = false;
+      if (cachedCity) {
+        try {
+          const data = JSON.parse(cachedCity);
+          if (isCacheValid(data.timestamp, 60 * 60 * 1000)) {
+            city = data.city;
+            useCache = true;
+          }
+        } catch (e) {
+          localStorage.removeItem("flatnas_auto_city");
+        }
       }
-      city = loc;
+
+      if (!useCache) {
+        // 否则使用 IP 定位
+        const ipRes = await fetch("/api/ip");
+        if (!ipRes.ok) throw new Error("IP API Error");
+        const ipData = await ipRes.json();
+
+        if (ipData.success && ipData.location) {
+          let loc = ipData.location.split(" ")[0];
+          loc = loc.replace(/^(?:.*?省|.*?自治区|.*?特别行政区)/, "");
+          const match = loc.match(/^(.*?[市州盟地区])/);
+          if (match) {
+            loc = match[1];
+          }
+          city = loc;
+
+          // 保存定位缓存
+          localStorage.setItem(
+            "flatnas_auto_city",
+            JSON.stringify({
+              city: city,
+              timestamp: Date.now(),
+            }),
+          );
+        }
+      }
+    }
+
+    // 检查天气缓存 (缓存 20 分钟)
+    const cachedWeather = localStorage.getItem(`flatnas_weather_${city}`);
+    if (cachedWeather) {
+      try {
+        const data = JSON.parse(cachedWeather);
+        if (isCacheValid(data.timestamp, 20 * 60 * 1000)) {
+          weather.value = data.weather;
+          return;
+        }
+      } catch (e) {
+        localStorage.removeItem(`flatnas_weather_${city}`);
+      }
     }
 
     let url = `/api/weather?city=${encodeURIComponent(city)}`;
@@ -88,6 +183,15 @@ const fetchWeather = async () => {
         humidity: weatherData.data.humidity,
         today: weatherData.data.today,
       };
+
+      // 保存天气缓存
+      localStorage.setItem(
+        `flatnas_weather_${city}`,
+        JSON.stringify({
+          weather: weather.value,
+          timestamp: Date.now(),
+        }),
+      );
     }
   } catch (e) {
     console.warn("[Weather] 获取失败，转为离线模式", e);
@@ -220,6 +324,121 @@ onUnmounted(() => {
         <span>{{ weather.today.min }}° / {{ weather.today.max }}°</span>
       </div>
     </div>
+
+    <!-- 设置按钮 -->
+    <div
+      v-if="props.widget && store.isLogged"
+      class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-20"
+    >
+      <button
+        @click.stop="showCityInput = true"
+        class="p-1.5 bg-black/10 text-white/70 hover:text-white rounded-full hover:bg-black/30 backdrop-blur-md transition-colors"
+        title="设置城市"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+          />
+        </svg>
+      </button>
+    </div>
+
+    <!-- 城市输入弹窗 -->
+    <Teleport to="body">
+      <div
+        v-if="showCityInput"
+        class="fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex flex-col items-center justify-center p-4"
+        @click.stop
+      >
+        <div
+          class="bg-gray-900/90 p-6 rounded-2xl border border-white/10 shadow-2xl max-w-sm w-full backdrop-blur-xl"
+        >
+          <div class="text-lg font-medium mb-4 text-white">设置城市</div>
+          <input
+            v-model="customCityInput"
+            @keyup.enter="saveCity"
+            placeholder="输入城市 (为空自动)"
+            class="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder-white/40 text-left outline-none focus:bg-white/20 focus:border-white/40 mb-4 transition-all"
+            autofocus
+          />
+
+          <!-- 城市选择区域 -->
+          <div class="mb-6 w-full">
+            <!-- 模式切换/面包屑 -->
+            <div class="flex items-center gap-2 mb-2 text-sm">
+              <button
+                @click="selectedProvince = ''"
+                class="text-white/50 hover:text-white transition-colors"
+                :class="{ 'font-bold text-white': !selectedProvince }"
+              >
+                省份/地区
+              </button>
+              <span v-if="selectedProvince" class="text-white/30">/</span>
+              <span v-if="selectedProvince" class="text-white font-bold">{{
+                selectedProvince
+              }}</span>
+            </div>
+
+            <!-- 省份列表 -->
+            <div
+              v-if="!selectedProvince"
+              class="grid grid-cols-5 gap-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar"
+            >
+              <button
+                v-for="(cities, province) in cityData"
+                :key="province"
+                @click="selectedProvince = province"
+                class="px-1 py-1.5 bg-white/5 hover:bg-white/20 text-white/70 hover:text-white rounded text-xs transition-colors truncate border border-white/5 hover:border-white/20"
+              >
+                {{ province }}
+              </button>
+            </div>
+
+            <!-- 城市列表 -->
+            <div
+              v-else
+              class="grid grid-cols-4 gap-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar"
+            >
+              <button
+                v-for="city in cityData[selectedProvince]"
+                :key="city"
+                @click="
+                  customCityInput = city;
+                  saveCity();
+                "
+                class="px-1 py-1.5 bg-white/5 hover:bg-white/20 text-white/70 hover:text-white rounded text-xs transition-colors truncate border border-white/5 hover:border-white/20"
+              >
+                {{ city }}
+              </button>
+            </div>
+          </div>
+
+          <div class="flex gap-3 justify-end">
+            <button
+              @click="showCityInput = false"
+              class="px-4 py-2 bg-white/5 hover:bg-white/10 text-white/80 rounded-lg text-sm transition-colors"
+            >
+              取消
+            </button>
+            <button
+              @click="saveCity"
+              class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm transition-colors font-medium shadow-lg shadow-blue-900/20"
+            >
+              确定
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 

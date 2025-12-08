@@ -1,67 +1,81 @@
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props */
-import { ref, nextTick } from 'vue'
-import type { WidgetConfig, BookmarkItem } from '@/types'
-import { useMainStore } from '../stores/main'
-import { isInternalDomain, processSecurityUrl } from '../utils/security'
+import { ref, nextTick, watch, onMounted } from "vue";
+import { useStorage } from "@vueuse/core";
+import type { WidgetConfig, BookmarkItem, BookmarkCategory } from "@/types";
+import { useMainStore } from "../stores/main";
+import { isInternalDomain, processSecurityUrl } from "../utils/security";
 
-const props = defineProps<{ widget: WidgetConfig }>()
-const store = useMainStore()
+const props = defineProps<{ widget: WidgetConfig }>();
+const store = useMainStore();
 
-interface BookmarkCategory {
-  id: string
-  title: string
-  collapsed?: boolean
-  children: BookmarkItem[]
-}
+// Local Backup
+const localBackup = useStorage<BookmarkCategory[]>(
+  `flatnas-bookmark-backup-${props.widget.id}`,
+  [],
+);
 
-const showInput = ref<string | null>(null)
-const editingLinkId = ref<string | null>(null)
-const newTitle = ref('')
-const newUrl = ref('')
-const newIcon = ref('')
-const isFetching = ref(false)
-const isAddingCategory = ref(false)
-const newCategoryTitle = ref('')
-const categoryInputRef = ref<HTMLInputElement | null>(null)
-const fileInputRef = ref<HTMLInputElement | null>(null)
+watch(
+  () => props.widget.data,
+  (newVal) => {
+    if (newVal && newVal.length > 0) localBackup.value = newVal;
+  },
+  { deep: true },
+);
+
+onMounted(() => {
+  if ((!props.widget.data || props.widget.data.length === 0) && localBackup.value.length > 0) {
+    props.widget.data = localBackup.value;
+  }
+});
+
+const showInput = ref<string | null>(null);
+const editingLinkId = ref<string | null>(null);
+const newTitle = ref("");
+const newUrl = ref("");
+const newIcon = ref("");
+const isFetching = ref(false);
+const isAddingCategory = ref(false);
+const newCategoryTitle = ref("");
+const categoryInputRef = ref<HTMLInputElement | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
 
 // 导入书签
 const triggerImport = () => {
-  fileInputRef.value?.click()
-}
+  fileInputRef.value?.click();
+};
 
 const handleFileUpload = (event: Event) => {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file) return
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
 
-  const reader = new FileReader()
+  const reader = new FileReader();
   reader.onload = (e) => {
-    const content = e.target?.result as string
-    parseBookmarks(content)
-  }
-  reader.readAsText(file)
+    const content = e.target?.result as string;
+    parseBookmarks(content);
+  };
+  reader.readAsText(file);
   // Reset input so the same file can be selected again if needed
-  if (event.target) (event.target as HTMLInputElement).value = ''
-}
+  if (event.target) (event.target as HTMLInputElement).value = "";
+};
 
 const parseBookmarks = (html: string) => {
   try {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(html, 'text/html')
-    const links = doc.querySelectorAll('a')
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const links = doc.querySelectorAll("a");
 
-    const newItems: BookmarkItem[] = []
+    const newItems: BookmarkItem[] = [];
     links.forEach((link) => {
-      const url = link.href
-      if (!url.startsWith('http')) return // Skip non-http links (e.g. chrome://)
+      const url = link.href;
+      if (!url.startsWith("http")) return; // Skip non-http links (e.g. chrome://)
 
-      let icon = link.getAttribute('icon')
+      let icon = link.getAttribute("icon");
       if (!icon) {
         try {
-          icon = `https://api.iowen.cn/favicon/${new URL(url).hostname}.png`
+          icon = `https://api.iowen.cn/favicon/${new URL(url).hostname}.png`;
         } catch {
-          icon = ''
+          icon = "";
         }
       }
 
@@ -70,125 +84,107 @@ const parseBookmarks = (html: string) => {
         title: link.textContent || url,
         url: url,
         icon: icon,
-      })
-    })
+      });
+    });
 
     if (newItems.length > 0) {
-      if (!props.widget.data) props.widget.data = []
+      if (!props.widget.data) props.widget.data = [];
       props.widget.data.push({
         id: Date.now().toString(),
         title: `导入收藏 ${new Date().toLocaleDateString()}`,
         collapsed: false,
         children: newItems,
-      })
-      alert(`成功导入 ${newItems.length} 个书签`)
+      });
+      alert(`成功导入 ${newItems.length} 个书签`);
     } else {
-      alert('未找到可导入的书签')
+      alert("未找到可导入的书签");
     }
   } catch (error) {
-    console.error('Import failed', error)
-    alert('导入失败，请检查文件格式')
+    console.error("Import failed", error);
+    alert("导入失败，请检查文件格式");
   }
-}
+};
 
 // 添加分类
 const addCategory = () => {
-  isAddingCategory.value = true
-  newCategoryTitle.value = ''
+  isAddingCategory.value = true;
+  newCategoryTitle.value = "";
   nextTick(() => {
-    categoryInputRef.value?.focus()
-  })
-}
+    categoryInputRef.value?.focus();
+  });
+};
 
 const confirmAddCategory = () => {
   if (newCategoryTitle.value) {
-    if (!props.widget.data) props.widget.data = []
+    if (!props.widget.data) props.widget.data = [];
     props.widget.data.push({
       id: Date.now().toString(),
       title: newCategoryTitle.value,
       collapsed: false,
       children: [],
-    })
-    isAddingCategory.value = false
+    });
+    isAddingCategory.value = false;
   }
-}
+};
 
 const cancelAddCategory = () => {
-  isAddingCategory.value = false
-}
-
-// 图片检测
-const checkImageExists = (url: string): Promise<boolean> => {
-  return new Promise((resolve) => {
-    const img = new Image()
-    const timer = setTimeout(() => resolve(false), 3000)
-    img.onload = () => {
-      clearTimeout(timer)
-      if (img.width > 1) resolve(true)
-      else resolve(false)
-    }
-    img.onerror = () => {
-      clearTimeout(timer)
-      resolve(false)
-    }
-    img.src = url
-  })
-}
+  isAddingCategory.value = false;
+};
 
 // 自动获取标题和图标
 const autoFetchIcon = async () => {
-  if (!newUrl.value) return
-  isFetching.value = true
+  if (!newUrl.value) return;
+  isFetching.value = true;
 
   try {
-    const res = await fetch(`/api/fetch-meta?url=${encodeURIComponent(newUrl.value)}`)
+    const res = await fetch(`/api/fetch-meta?url=${encodeURIComponent(newUrl.value)}`);
     if (res.ok) {
-      const data = await res.json()
-      if (data.title) newTitle.value = data.title
-      if (data.icon) newIcon.value = data.icon
+      const data = await res.json();
+      if (data.title) newTitle.value = data.title;
+      if (data.icon) newIcon.value = data.icon;
     }
   } catch (e) {
-    console.error(e)
+    console.error(e);
   } finally {
-    isFetching.value = false
+    isFetching.value = false;
   }
-}
+};
 
 const startAdd = (catId: string) => {
-  showInput.value = catId
-  editingLinkId.value = null
-  newTitle.value = ''
-  newUrl.value = ''
-  newIcon.value = ''
-}
+  showInput.value = catId;
+  editingLinkId.value = null;
+  newTitle.value = "";
+  newUrl.value = "";
+  newIcon.value = "";
+};
 
 const startEdit = (catId: string, link: BookmarkItem) => {
-  showInput.value = catId
-  editingLinkId.value = link.id
-  newTitle.value = link.title
-  newUrl.value = link.url
-  newIcon.value = link.icon || ''
-}
+  showInput.value = catId;
+  editingLinkId.value = link.id;
+  newTitle.value = link.title;
+  newUrl.value = link.url;
+  newIcon.value = link.icon || "";
+};
 
 const confirmSubmit = (cat: BookmarkCategory) => {
   if (newTitle.value && newUrl.value) {
-    let finalUrl = newUrl.value
-    if (!finalUrl.startsWith('http')) finalUrl = 'https://' + finalUrl
+    let finalUrl = newUrl.value;
+    if (!finalUrl.startsWith("http")) finalUrl = "https://" + finalUrl;
 
     if (!newIcon.value) {
       try {
-        newIcon.value = `https://api.iowen.cn/favicon/${new URL(finalUrl).hostname}.png`
+        newIcon.value = `https://api.iowen.cn/favicon/${new URL(finalUrl).hostname}.png`;
       } catch {
         // ignore
       }
     }
 
     if (editingLinkId.value) {
-      const target = cat.children.find((l: BookmarkItem) => l.id === editingLinkId.value)
+      const target = cat.children.find((l: BookmarkItem) => l.id === editingLinkId.value);
       if (target) {
-        target.title = newTitle.value
-        target.url = finalUrl
-        target.icon = newIcon.value
+        target.title = newTitle.value;
+        target.url = finalUrl;
+        target.icon = newIcon.value;
       }
     } else {
       cat.children.push({
@@ -196,39 +192,39 @@ const confirmSubmit = (cat: BookmarkCategory) => {
         title: newTitle.value,
         url: finalUrl,
         icon: newIcon.value,
-      })
+      });
     }
 
-    showInput.value = null
-    editingLinkId.value = null
+    showInput.value = null;
+    editingLinkId.value = null;
   }
-}
+};
 
 const deleteItem = (catIndex: number, childIndex?: number) => {
-  if (!confirm('确定删除吗？')) return
-  if (typeof childIndex === 'number') {
-    props.widget.data[catIndex].children.splice(childIndex, 1)
+  if (!confirm("确定删除吗？")) return;
+  if (typeof childIndex === "number") {
+    props.widget.data[catIndex].children.splice(childIndex, 1);
   } else {
-    props.widget.data.splice(catIndex, 1)
+    props.widget.data.splice(catIndex, 1);
   }
-}
+};
 
 const openUrl = (url: string) => {
-  if (!url) return
+  if (!url) return;
 
   // Security Rule: Intercept unlogged users
   if (!store.isLogged) {
     if (isInternalDomain(url)) {
-      alert('为了您的安全，未登录状态下禁止访问内网资源')
-      return
+      alert("为了您的安全，未登录状态下禁止访问内网资源");
+      return;
     }
-    const targetUrl = processSecurityUrl(url)
-    window.location.href = targetUrl
-    return
+    const targetUrl = processSecurityUrl(url);
+    window.location.href = targetUrl;
+    return;
   }
 
-  window.open(url, '_blank')
-}
+  window.open(url, "_blank");
+};
 </script>
 
 <template>
@@ -383,7 +379,7 @@ const openUrl = (url: string) => {
           class="mt-3 p-4 bg-white rounded-xl border border-blue-200 shadow-lg animate-fade-in z-10 relative"
         >
           <div class="text-xs font-bold text-blue-500 mb-2">
-            {{ editingLinkId ? '编辑书签' : '添加新书签' }}
+            {{ editingLinkId ? "编辑书签" : "添加新书签" }}
           </div>
           <div class="grid grid-cols-1 gap-3 mb-3">
             <div class="flex gap-2">
@@ -403,7 +399,7 @@ const openUrl = (url: string) => {
                   v-if="isFetching"
                   class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"
                 ></span>
-                {{ isFetching ? '获取中' : '⚡' }}
+                {{ isFetching ? "获取中" : "⚡" }}
               </button>
             </div>
             <input
@@ -436,7 +432,7 @@ const openUrl = (url: string) => {
               @click="confirmSubmit(cat)"
               class="text-sm bg-blue-600 text-white px-4 py-1.5 rounded hover:bg-blue-700 shadow-md transition-all"
             >
-              {{ editingLinkId ? '保存' : '添加' }}
+              {{ editingLinkId ? "保存" : "添加" }}
             </button>
           </div>
         </div>

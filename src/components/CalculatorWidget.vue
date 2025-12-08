@@ -1,8 +1,27 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, onMounted } from 'vue'
+import { useStorage } from '@vueuse/core'
 
 const display = ref('0')
 const expression = ref('')
+
+// Persist state
+const storageKey = 'flatnas-calculator-state'
+const savedState = useStorage(storageKey, { display: '0', expression: '' })
+
+watch(
+  [display, expression],
+  () => {
+    savedState.value = { display: display.value, expression: expression.value }
+  }
+)
+
+onMounted(() => {
+  if (savedState.value) {
+    display.value = savedState.value.display || '0'
+    expression.value = savedState.value.expression || ''
+  }
+})
 
 const append = (char: string) => {
   if (display.value === '0' && char !== '.') display.value = ''
