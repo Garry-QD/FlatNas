@@ -276,38 +276,60 @@
   ],
   "widgets": [
     {
-      "id": "clockweather",
-      "type": "clockweather",
+      "id": "w1",
+      "type": "clock",
       "enable": true,
-      "colSpan": 1,
-      "rowSpan": 1,
-      "isPublic": true
-    },
-    {
-      "id": "w8",
-      "type": "todo",
-      "enable": true,
-      "data": [],
       "colSpan": 1,
       "rowSpan": 2,
-      "isPublic": true
+      "isPublic": true,
+      "data": {
+        "style": "retro"
+      }
+    },
+    {
+      "id": "w3",
+      "type": "calendar",
+      "enable": true,
+      "colSpan": 1,
+      "rowSpan": 2,
+      "isPublic": true,
+      "data": {
+        "style": "month"
+      }
     },
     {
       "id": "w4",
       "type": "memo",
       "enable": true,
       "data": "登录后才能编辑\n编辑里面可以添加分组和删除分组\n组件在设置里面启用\n万能窗口能再当前页展开\n右击可以删除和编辑卡片\n1添加了水平模式下备注功能\n2添加了音乐文件的上传入口\n3添加了图标的模糊搜寻组件\n4增加了批量添加音乐文件功能\n5优化垂直模式下无卡片的尺寸逻辑\n6添加原子写入优化缓存机制减少缓存问题\n7支持jason文件新增项目（指定格式）\n8优化万能窗口 浏览器插件（内测中）",
-      "colSpan": 2,
+      "colSpan": 1,
       "rowSpan": 2,
       "isPublic": true
     },
     {
+      "id": "w8",
+      "type": "todo",
+      "enable": false,
+      "data": [],
+      "colSpan": 1,
+      "rowSpan": 2,
+      "isPublic": false
+    },
+    {
       "id": "w10",
       "type": "ip",
-      "enable": true,
+      "enable": false,
       "colSpan": 1,
       "rowSpan": 1,
-      "isPublic": true
+      "isPublic": false
+    },
+    {
+      "id": "clockweather",
+      "type": "clockweather",
+      "enable": false,
+      "colSpan": 1,
+      "rowSpan": 1,
+      "isPublic": false
     },
     {
       "id": "hot-list",
@@ -330,24 +352,8 @@
       }
     },
     {
-      "id": "w1",
-      "type": "clock",
-      "enable": false,
-      "colSpan": 1,
-      "rowSpan": 1,
-      "isPublic": false
-    },
-    {
       "id": "w2",
       "type": "weather",
-      "enable": false,
-      "colSpan": 1,
-      "rowSpan": 1,
-      "isPublic": false
-    },
-    {
-      "id": "w3",
-      "type": "calendar",
       "enable": false,
       "colSpan": 1,
       "rowSpan": 1,
@@ -377,10 +383,10 @@
     {
       "id": "w9",
       "type": "calculator",
-      "enable": false,
+      "enable": true,
       "colSpan": 1,
-      "rowSpan": 1,
-      "isPublic": false
+      "rowSpan": 2,
+      "isPublic": true
     },
     {
       "id": "w11",
@@ -405,6 +411,12 @@
       "enable": false,
       "colSpan": 2,
       "rowSpan": 2,
+      "isPublic": false
+    },
+    {
+      "id": "sidebar",
+      "type": "sidebar",
+      "enable": false,
       "isPublic": false
     }
   ],
@@ -451,6 +463,7 @@
     "defaultSearchEngine": "baidu",
     "rememberLastEngine": true,
     "groupTitleColor": "#ffffff",
+    "groupGap": 30,
     "showFooterStats": false,
     "footerHtml": "",
     "footerHeight": 0,
@@ -460,8 +473,5 @@
     "backgroundBlur": 12,
     "backgroundMask": 0.2,
     "autoPlayMusic": false
-  },
-  "password": "admin",
-  "rssFeeds": [],
-  "rssCategories": []
+  }
 }

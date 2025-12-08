@@ -19,6 +19,8 @@ import RssWidget from "./RssWidget.vue";
 import IconShape from "./IconShape.vue";
 import IframeWidget from "./IframeWidget.vue";
 import SimpleWeatherWidget from "./SimpleWeatherWidget.vue";
+import CalendarWidget from "./CalendarWidget.vue";
+import ClockWidget from "./ClockWidget.vue";
 import AppSidebar from "./AppSidebar.vue";
 
 import SizeSelector from "./SizeSelector.vue";
@@ -260,7 +262,7 @@ const checkNetwork = async () => {
   isChecking.value = true;
   const start = performance.now();
   try {
-    const pingUrl = `/api/data?ping=${Date.now()}`;
+    const pingUrl = `/api/ping?target=localhost&ts=${Date.now()}`;
     await fetch(pingUrl, { method: "GET", cache: "no-cache" });
     const end = performance.now();
     latency.value = Math.round(end - start);
@@ -734,21 +736,6 @@ watch(
 onMounted(() => {
   fetchHitokoto();
 });
-
-const dateStr = ref(new Date().toLocaleDateString());
-const timeStr = ref(new Date().toLocaleTimeString());
-const now = new Date();
-const dayNum = ref(now.getDate());
-const weekDay = ref(["周日", "周一", "周二", "周三", "周四", "周五", "周六"][now.getDay()]);
-const yearMonth = ref(`${now.getFullYear()}.${now.getMonth() + 1}`);
-setInterval(() => {
-  const n = new Date();
-  timeStr.value = n.toLocaleTimeString();
-  if (n.getDate() !== dayNum.value) {
-    dayNum.value = n.getDate();
-    weekDay.value = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][n.getDay()];
-  }
-}, 1000);
 </script>
 
 <template>
@@ -973,29 +960,9 @@ setInterval(() => {
               :current-row="widget.rowSpan || (widget.type === 'bookmarks' ? 2 : 1)"
               @select="(size) => handleSizeSelect(widget, size)"
             />
-            <div
-              v-if="widget.type === 'clock'"
-              class="w-full h-full p-6 rounded-2xl bg-black/20 backdrop-blur border border-white/10 flex flex-col items-center justify-center hover:bg-black/30 transition-colors"
-            >
-              <div class="text-4xl font-mono font-bold">{{ timeStr }}</div>
-              <div class="text-sm opacity-80 mt-1">{{ dateStr }}</div>
-            </div>
+            <ClockWidget v-if="widget.type === 'clock'" :widget="widget" />
             <SimpleWeatherWidget v-else-if="widget.type === 'weather'" :widget="widget" />
-            <div
-              v-else-if="widget.type === 'calendar'"
-              class="w-full h-full p-4 rounded-2xl bg-red-500/20 backdrop-blur border border-white/10 flex flex-col items-center justify-center relative overflow-hidden group hover:bg-red-500/30 transition-all"
-            >
-              <div
-                class="absolute -right-4 -bottom-6 text-9xl font-bold opacity-5 pointer-events-none"
-              >
-                {{ dayNum }}
-              </div>
-              <div class="text-xs opacity-70 tracking-widest uppercase mb-1">{{ yearMonth }}</div>
-              <div class="text-5xl font-bold shadow-text">{{ dayNum }}</div>
-              <div class="text-sm mt-1 bg-white/20 px-3 py-0.5 rounded-full backdrop-blur-md">
-                {{ weekDay }}
-              </div>
-            </div>
+            <CalendarWidget v-else-if="widget.type === 'calendar'" :widget="widget" />
             <MemoWidget v-else-if="widget.type === 'memo'" :widget="widget" />
             <TodoWidget v-else-if="widget.type === 'todo'" :widget="widget" />
             <CalculatorWidget v-else-if="widget.type === 'calculator'" />

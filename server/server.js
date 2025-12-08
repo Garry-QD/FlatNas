@@ -8,6 +8,7 @@ import { spawn } from "child_process";
 import cors from "cors";
 import RSSParser from "rss-parser";
 import os from "os";
+import multer from "multer";
 
 const rssParser = new RSSParser();
 import bcrypt from "bcrypt";
@@ -25,8 +26,16 @@ const io = new Server(httpServer, {
   },
 });
 
+import crypto from "crypto";
+
 const PORT = 3000;
-const SECRET_KEY = process.env.SECRET_KEY || "flat-nas-secret-key-change-this"; // In production, use ENV. Fallback for development.
+const SECRET_KEY = process.env.SECRET_KEY || crypto.randomBytes(32).toString("hex");
+
+if (!process.env.SECRET_KEY) {
+  console.warn(
+    "⚠️  WARNING: No SECRET_KEY environment variable set. Using a random generated key. Sessions will be invalidated on restart.",
+  );
+}
 
 // Login Attempts { ip: { count: 0, lockUntil: 0 } }
 const loginAttempts = {};
@@ -39,9 +48,32 @@ const SYSTEM_CONFIG_FILE = path.join(DATA_DIR, "system.json");
 const DEFAULT_FILE = path.join(__dirname, "default.json");
 const MUSIC_DIR = path.join(__dirname, "music");
 
-// Config multer - unused for now
-// const storage = ...
-// const upload = ...
+// Helper to ensure directory exists safely
+async function ensureDir(dirPath) {
+  try {
+    await fs.access(dirPath);
+  } catch {
+    try {
+      await fs.mkdir(dirPath, { recursive: true });
+    } catch (err) {
+      console.error(`Failed to create directory: ${dirPath}`, err);
+    }
+  }
+}
+
+// Config multer
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, MUSIC_DIR);
+  },
+  filename: function (req, file, cb) {
+    // Decode original name to handle utf-8 chars properly if needed
+    // But multer usually handles it. We'll use buffer to be safe for chinese chars
+    const name = Buffer.from(file.originalname, "latin1").toString("utf8");
+    cb(null, name);
+  },
+});
+const upload = multer({ storage: storage });
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const HOT_CACHE = { weibo: { ts: 0, data: [] }, news: { ts: 0, data: [] }, rss: new Map() };
@@ -52,33 +84,42 @@ let systemConfig = { authMode: "single" }; // default: 'single' or 'multi'
 
 async function atomicWrite(filePath, content) {
   const tempFile = filePath + ".tmp";
-  await fs.writeFile(tempFile, content);
   try {
-    await fs.rename(tempFile, filePath);
+    await fs.writeFile(tempFile, content);
+    // Windows compatibility: retry rename if it fails (common with antivirus/file locks)
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await fs.rename(tempFile, filePath);
+        return;
+      } catch (err) {
+        retries--;
+        if (retries === 0) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 100)); // wait 100ms
+      }
+    }
   } catch (err) {
-    // Windows compatibility: if rename fails, try copy and unlink
+    // If rename failed after retries, try copy and unlink as last resort for Windows
     if (os.platform() === "win32") {
       try {
         await fs.copyFile(tempFile, filePath);
         await fs.unlink(tempFile);
         return;
-      } catch {
-        // ignore copy error, throw original
+      } catch (copyErr) {
+        console.error(`[AtomicWrite] Failed to write ${filePath}:`, copyErr);
+        throw err; // Throw original error or copy error
       }
     }
+    console.error(`[AtomicWrite] Error writing ${filePath}:`, err);
     throw err;
   }
 }
 
 // Ensure directories and migrate data
 async function ensureInit() {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.mkdir(USERS_DIR, { recursive: true });
-    await fs.mkdir(MUSIC_DIR, { recursive: true });
-  } catch {
-    // ignore
-  }
+  await ensureDir(DATA_DIR);
+  await ensureDir(USERS_DIR);
+  await ensureDir(MUSIC_DIR);
 
   // Load System Config
   try {
@@ -456,6 +497,35 @@ app.post("/api/add-bookmark", async (req, res) => {
   res.json({ success: true, message: "Bookmark added" });
 });
 
+// Save current user data as Default Template (Admin only)
+app.post("/api/default/save", authenticateToken, async (req, res) => {
+  if (!req.user || req.user.username !== "admin") {
+    return res.status(403).json({ error: "Only admin can save default template" });
+  }
+
+  try {
+    // Read admin data
+    const adminFile = getUserFile("admin");
+    const adminDataStr = await fs.readFile(adminFile, "utf-8");
+    const adminData = JSON.parse(adminDataStr);
+
+    // Clean up sensitive/unnecessary data for default template
+    const templateData = {
+      groups: adminData.groups || [],
+      widgets: adminData.widgets || [],
+      appConfig: adminData.appConfig || {},
+      // Do NOT include password
+    };
+
+    // Write to default.json
+    await atomicWrite(DEFAULT_FILE, JSON.stringify(templateData, null, 2));
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[Save Default Failed]:", err);
+    res.status(500).json({ error: "Failed to save default template" });
+  }
+});
+
 // Save
 app.post("/api/save", authenticateToken, async (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
@@ -503,7 +573,7 @@ app.get("/api/docker-status", async (req, res) => {
 
 // Ping
 app.get("/api/ping", async (req, res) => {
-  const target = req.query.target || "223.5.5.5";
+  const target = req.query.target || "8.8.8.8";
   if (!/^[a-zA-Z0-9.-]+$/.test(target)) return res.status(400).json({ error: "Invalid target" });
 
   const isWin = os.platform() === "win32";
@@ -683,6 +753,29 @@ app.get("/api/hot/news", async (req, res) => {
 // Serve music files statically
 app.use("/music", express.static(MUSIC_DIR));
 
+// Get icons list
+app.get("/api/icons", async (req, res) => {
+  try {
+    const iconsDir = path.join(__dirname, "../public/icons");
+    // Check if directory exists
+    try {
+      await fs.access(iconsDir);
+    } catch {
+      return res.json([]);
+    }
+
+    const files = await fs.readdir(iconsDir);
+    const iconFiles = files.filter((file) => {
+      const ext = path.extname(file).toLowerCase();
+      return [".png", ".jpg", ".jpeg", ".svg", ".webp", ".gif", ".ico"].includes(ext);
+    });
+    res.json(iconFiles);
+  } catch (err) {
+    console.error("Failed to read icons dir", err);
+    res.status(500).json({ error: "Failed to read icons" });
+  }
+});
+
 // Get music list
 app.get("/api/music-list", async (req, res) => {
   try {
@@ -696,6 +789,45 @@ app.get("/api/music-list", async (req, res) => {
     console.error("Failed to read music dir", err);
     res.json([]);
   }
+});
+
+// Upload Music
+app.post("/api/music/upload", authenticateToken, upload.array("files"), (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  res.json({ success: true, count: req.files.length });
+});
+
+// Visitor Track
+const VISITOR_FILE = path.join(DATA_DIR, "visitors.json");
+let visitorStats = { total: 0, today: 0, lastDate: "" };
+
+// Load stats
+(async () => {
+  try {
+    const data = await fs.readFile(VISITOR_FILE, "utf-8");
+    visitorStats = JSON.parse(data);
+  } catch {
+    // ignore
+  }
+})();
+
+app.post("/api/visitor/track", async (req, res) => {
+  const today = new Date().toISOString().split("T")[0];
+  if (visitorStats.lastDate !== today) {
+    visitorStats.lastDate = today;
+    visitorStats.today = 0;
+  }
+  visitorStats.total++;
+  visitorStats.today++;
+
+  // Save async (don't await to be fast)
+  atomicWrite(VISITOR_FILE, JSON.stringify(visitorStats)).catch(console.error);
+
+  res.json({
+    success: true,
+    totalVisitors: visitorStats.total,
+    todayVisitors: visitorStats.today,
+  });
 });
 
 // Fetch Meta

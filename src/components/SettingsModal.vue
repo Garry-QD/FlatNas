@@ -56,8 +56,13 @@ const uploadMusic = async (event: Event) => {
 
   uploadStatus.value = `正在上传 ${files.length} 个文件...`;
   try {
+    const token = localStorage.getItem("flat-nas-token");
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
     const res = await fetch("/api/music/upload", {
       method: "POST",
+      headers,
       body: formData,
     });
     const data = await res.json();
@@ -249,12 +254,22 @@ const handleReset = async () => {
   requestAuth(async () => {
     // 密码验证通过后直接执行
     try {
-      const r = await fetch("/api/reset", { method: "POST" });
-      if (!r.ok) throw new Error("reset_failed");
+      const token = localStorage.getItem("flat-nas-token");
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const r = await fetch("/api/reset", {
+        method: "POST",
+        headers,
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error || "reset_failed");
+      }
       // 移除成功弹窗，直接刷新
       window.location.reload();
-    } catch (e) {
-      alert("❌ 恢复失败");
+    } catch (e: any) {
+      alert("❌ 恢复失败: " + (e.message || "未知错误"));
       console.error("[SettingsModal][Reset] failed", e);
     }
   }, "请输入密码以确认恢复初始化");
@@ -264,16 +279,26 @@ const handleSaveAsDefault = async () => {
   requestAuth(async () => {
     // 密码验证通过后直接执行
     try {
-      const r = await fetch("/api/default/save", { method: "POST" });
-      if (!r.ok) throw new Error("save_default_failed");
+      const token = localStorage.getItem("flat-nas-token");
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const r = await fetch("/api/default/save", {
+        method: "POST",
+        headers,
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error || "save_default_failed");
+      }
 
       // 移除成功弹窗，使用按钮文字反馈
       saveDefaultBtnText.value = "✅ 保存成功！";
       setTimeout(() => {
         saveDefaultBtnText.value = "💾 设为默认模板";
       }, 2000);
-    } catch (e) {
-      alert("❌ 保存失败");
+    } catch (e: any) {
+      alert("❌ 保存失败: " + (e.message || "未知错误"));
       console.error("[SettingsModal][SaveDefault] failed", e);
     }
   }, "请输入密码以确认保存默认模板");

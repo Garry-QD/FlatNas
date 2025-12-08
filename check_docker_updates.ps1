@@ -3,8 +3,8 @@ $ErrorActionPreference = "SilentlyContinue"
 $env:DOCKER_CLI_EXPERIMENTAL = "enabled"
 
 # Proxy configuration
-$env:HTTP_PROXY = "http://192.168.100.3:16888"
-$env:HTTPS_PROXY = "http://192.168.100.3:16888"
+# $env:HTTP_PROXY = "http://192.168.100.3:16888"
+# $env:HTTPS_PROXY = "http://192.168.100.3:16888"
 
 function Get-RemoteDigest {
     param($ImageName, $Arch, $Os)
