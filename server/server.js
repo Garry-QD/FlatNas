@@ -711,6 +711,9 @@ app.post("/api/save", authenticateToken, async (req, res) => {
     cachedUsersData[username] = body;
     await atomicWrite(getUserFile(username), JSON.stringify(body, null, 2));
 
+    // Notify other clients
+    io.emit("data-updated", { username, source: "save-api" });
+
     res.json({ success: true });
   } catch (err) {
     console.error("[Save Failed]:", err);

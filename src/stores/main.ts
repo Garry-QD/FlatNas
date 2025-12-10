@@ -6,12 +6,29 @@ import type { NavItem, NavGroup, AppConfig, WidgetConfig, RssFeed, RssCategory }
 export const useMainStore = defineStore("main", () => {
   const socket = io();
   const isConnected = ref(false);
+  // Flag to prevent save loop when receiving remote updates
+  const isRemoteUpdate = ref(false);
 
   socket.on("connect", () => {
     isConnected.value = true;
   });
   socket.on("disconnect", () => {
     isConnected.value = false;
+  });
+
+  socket.on("data-updated", async (data: { username: string }) => {
+    // Only refresh if we are logged in as this user
+    // Or if we are in single user mode (username might be empty/admin depending on implementation)
+    // Here we check if the updated data belongs to current user
+    if (data.username === username.value) {
+      console.log("[Store] Received remote data update, refreshing...");
+      isRemoteUpdate.value = true;
+      await init();
+      // Reset flag after a short delay to ensure watch callbacks have fired and been ignored
+      setTimeout(() => {
+        isRemoteUpdate.value = false;
+      }, 1000);
+    }
   });
 
   const groups = ref<NavGroup[]>([]);
@@ -540,9 +557,17 @@ export const useMainStore = defineStore("main", () => {
     password.value = newPwd;
   };
 
-  watch([groups, widgets, appConfig, password, rssFeeds, rssCategories], () => saveData(), {
-    deep: true,
-  });
+  watch(
+    [groups, widgets, appConfig, password, rssFeeds, rssCategories],
+    () => {
+      if (!isRemoteUpdate.value) {
+        saveData();
+      }
+    },
+    {
+      deep: true,
+    },
+  );
 
   watch(
     () => appConfig.value.iconShape,
