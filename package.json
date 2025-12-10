@@ -17,8 +17,7 @@
     "type-check": "vue-tsc --build",
     "lint": "eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/",
-    "test": "vitest --environment=jsdom",
-    "build:docker": "powershell -File scripts/build-and-push.ps1"
+    "test": "vitest --environment=jsdom"
   },
   "dependencies": {
     "@vueuse/core": "^14.1.0",
