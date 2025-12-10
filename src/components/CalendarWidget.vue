@@ -3,7 +3,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import type { WidgetConfig } from "@/types";
 import { useMainStore } from "../stores/main";
-import { Lunar } from "lunar-javascript";
+import { Lunar, Solar, HolidayUtil } from "lunar-javascript";
 
 const props = defineProps<{ widget: WidgetConfig }>();
 const store = useMainStore();
@@ -62,6 +62,20 @@ const lunarYear = computed(() => {
   return `${d.getYearInGanZhi()}${d.getYearShengXiao()}年`;
 });
 
+const MEMORIAL_DAYS: Record<string, string> = {
+  "1-10": "警察",
+  "4-15": "全民",
+  "4-24": "航天",
+  "5-4": "五四",
+  "7-1": "建党",
+  "8-19": "医师",
+  "9-3": "抗战",
+  "9-30": "烈士",
+  "11-8": "记者",
+  "11-9": "消防",
+  "12-13": "公祭",
+};
+
 // Month View Data
 const currentMonth = ref(new Date());
 
@@ -77,7 +91,7 @@ const calendarDays = computed(() => {
   // Padding for start of week (Sunday start)
   const startPadding = firstDay.getDay();
   for (let i = 0; i < startPadding; i++) {
-    days.push({ day: "", current: false, today: false, lunar: "" });
+    days.push({ day: "", current: false, today: false, lunar: "", labelOnly: false });
   }
 
   // Days of month
@@ -87,32 +101,83 @@ const calendarDays = computed(() => {
       month === now.value.getMonth() &&
       year === now.value.getFullYear();
 
-    const d = Lunar.fromDate(new Date(year, month, i));
-    const jieqi = d.getJieQi();
-    const festivals = d.getFestivals();
-    let lunarStr = d.getDayInChinese();
+    const date = new Date(year, month, i);
+    const lunar = Lunar.fromDate(date);
+    const jieqi = lunar.getJieQi();
 
-    if (lunarStr === "初一") {
-      lunarStr = d.getMonthInChinese() + "月";
+    let label = "";
+    let origin: "none" | "jieqi" | "solarFest" | "lunarFest" | "holiday" = "none";
+
+    const solar = Solar.fromDate(date);
+    const sFest = solar.getFestivals();
+    if (sFest && sFest.length > 0) {
+      label = sFest[0];
+      origin = "solarFest";
     }
 
-    if (jieqi) {
-      lunarStr = jieqi;
-    } else if (festivals && festivals.length > 0) {
-      // Pick the first festival, maybe filter for important ones if too many
-      lunarStr = festivals[0];
-      if (lunarStr.length > 3) lunarStr = lunarStr.substring(0, 3);
+    if (!label) {
+      const lFest = lunar.getFestivals();
+      if (lFest && lFest.length > 0) {
+        label = lFest[0];
+        origin = "lunarFest";
+      }
     }
 
-    days.push({ day: i, current: true, today: isToday, lunar: lunarStr });
+    if (!label) {
+      try {
+        const holiday = HolidayUtil.getHoliday(year, month + 1, i);
+        if (holiday && !holiday.isWork()) {
+          label = holiday.getName();
+          origin = "holiday";
+        }
+      } catch {}
+    }
+
+    if (!label) {
+      const k = `${month + 1}-${i}`;
+      const m = MEMORIAL_DAYS[k];
+      if (m) {
+        label = m;
+        origin = "solarFest";
+      }
+    }
+
+    if (!label && jieqi) {
+      label = jieqi;
+      origin = "jieqi";
+    }
+
+    if (!label) {
+      let lunarStr = lunar.getDayInChinese();
+      if (lunarStr === "初一") lunarStr = lunar.getMonthInChinese() + "月";
+      label = lunarStr;
+      origin = "none";
+    }
+
+    // Remove trailing '节' when the origin is a festival/holiday label
+    if (origin === "solarFest" || origin === "lunarFest" || origin === "holiday") {
+      label = label.replace(/节$/, "");
+    }
+
+    if (label.length > 4) label = label.substring(0, 4);
+
+    days.push({ day: i, current: true, today: isToday, lunar: label, origin });
   }
 
   return days;
 });
 
+// Styles: day, month-lunar, month-memorial
+const styles = ["day", "month-lunar", "month-memorial"] as const;
 const toggleStyle = () => {
   if (!props.widget.data) props.widget.data = {};
-  props.widget.data.style = props.widget.data.style === "day" ? "month" : "day";
+  const cur = props.widget.data.style || "day";
+  // Migration: map old styles to new ones if necessary, or just reset
+  let idx = styles.indexOf(cur as (typeof styles)[number]);
+  if (idx === -1) idx = 0; // Default to day if unknown style
+
+  const next = styles[(idx + 1) % styles.length];
+  props.widget.data.style = next;
   store.saveData();
 };
 
@@ -140,7 +205,7 @@ const goToday = () => {
   <div
     class="w-full h-full relative overflow-hidden group transition-all"
     :class="[
-      widget.data?.style === 'month'
+      widget.data?.style !== 'day'
         ? 'bg-white/90 text-gray-800'
         : 'bg-red-500/20 text-white hover:bg-red-500/30',
       'rounded-2xl backdrop-blur border border-white/10',
@@ -151,7 +216,7 @@ const goToday = () => {
       @click.stop="toggleStyle"
       class="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-black/10 active:scale-95"
       title="切换视图"
-      :class="widget.data?.style === 'month' ? 'text-gray-600' : 'text-white'"
+      :class="widget.data?.style !== 'day' ? 'text-gray-600' : 'text-white'"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -172,25 +237,53 @@ const goToday = () => {
     <!-- Day View -->
     <div
       v-if="widget.data?.style === 'day'"
-      class="w-full h-full flex flex-col items-center justify-center cursor-pointer"
+      class="w-full h-full flex flex-row cursor-pointer relative overflow-hidden"
       @click="toggleStyle"
     >
-      <div class="absolute -right-4 -bottom-6 text-9xl font-bold opacity-5 pointer-events-none">
+      <!-- Background Number -->
+      <div
+        class="absolute right-0 bottom-0 text-7xl md:text-9xl font-bold opacity-5 pointer-events-none select-none leading-none -mb-4 -mr-4"
+      >
         {{ dayNum }}
       </div>
-      <div class="text-xs opacity-70 tracking-widest uppercase mb-1">{{ yearMonth }}</div>
-      <div class="text-5xl font-bold shadow-text">{{ dayNum }}</div>
-      <div class="text-sm mt-1 bg-white/20 px-3 py-0.5 rounded-full backdrop-blur-md">
-        {{ weekDay }}
+
+      <!-- Left 1/3: Day Number -->
+      <div
+        class="w-1/3 h-full flex items-center justify-center border-r border-white/10 bg-black/5 flex-shrink-0"
+      >
+        <div class="text-4xl md:text-5xl font-bold shadow-text leading-none">
+          {{ dayNum }}
+        </div>
       </div>
-      <div class="text-xl font-medium opacity-90 mt-2">{{ lunarDate }}</div>
-      <div class="text-sm opacity-75 mt-1">{{ lunarYear }}</div>
+
+      <!-- Right: Details -->
+      <div class="flex-1 h-full flex flex-col justify-center px-3 z-10 min-w-0">
+        <!-- Year.Month -->
+        <div class="text-[10px] md:text-xs opacity-60 tracking-widest uppercase mb-0.5">
+          {{ yearMonth }}
+        </div>
+
+        <!-- Lunar Date -->
+        <div class="text-lg md:text-2xl font-bold opacity-90 leading-tight truncate">
+          {{ lunarDate }}
+        </div>
+
+        <!-- WeekDay & Lunar Year -->
+        <div class="flex items-center gap-2 mt-1">
+          <span
+            class="text-[10px] md:text-xs bg-white/20 px-1.5 py-0.5 rounded backdrop-blur-md whitespace-nowrap"
+          >
+            {{ weekDay }}
+          </span>
+          <span class="text-[10px] md:text-xs opacity-60 truncate">{{ lunarYear }}</span>
+        </div>
+      </div>
     </div>
 
-    <!-- Month View -->
+    <!-- Month View (with lunar) and Memorial-only -->
     <div v-else class="w-full h-full flex flex-col p-3">
       <!-- Header -->
-      <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center justify-center gap-2 mb-2">
         <button
           @click.stop="prevMonth"
           class="p-1 hover:bg-gray-200 rounded text-gray-600 transition-colors"
@@ -231,7 +324,9 @@ const goToday = () => {
       </div>
 
       <!-- Grid -->
-      <div class="grid grid-cols-7 gap-1 text-center flex-1 text-[10px] content-start">
+      <div
+        class="grid grid-cols-7 gap-1 text-center flex-1 text-[11px] md:text-[12px] content-start"
+      >
         <div
           v-for="d in ['日', '一', '二', '三', '四', '五', '六']"
           :key="d"
@@ -242,7 +337,7 @@ const goToday = () => {
         <div
           v-for="(d, i) in calendarDays"
           :key="i"
-          class="aspect-square flex items-center justify-center rounded-full transition-all"
+          class="aspect-square flex items-center justify-center rounded-2xl transition-all"
           :class="{
             'bg-red-500 text-white font-bold shadow-sm': d.today,
             'hover:bg-red-100 text-gray-700': d.current && !d.today,
@@ -250,11 +345,18 @@ const goToday = () => {
             'cursor-pointer': d.current,
           }"
         >
-          <div class="flex flex-col items-center justify-center leading-none h-full py-0.5">
-            <span class="text-sm font-bold">{{ d.day }}</span>
-            <span class="text-[10px] opacity-80 mt-0.5 transform scale-90 origin-top">{{
-              d.lunar
-            }}</span>
+          <div class="flex flex-col items-center justify-center leading-none h-full py-1">
+            <span v-if="d.day" class="text-base font-bold">{{ d.day }}</span>
+            <span
+              v-if="
+                widget.data?.style === 'month-lunar' ||
+                (widget.data?.style === 'month-memorial' &&
+                  (d.origin === 'holiday' || d.origin === 'solarFest' || d.origin === 'lunarFest'))
+              "
+              class="text-[10px] md:text-[11px] opacity-80 mt-0.5"
+              :class="{ 'scale-90': d.lunar.length > 3 }"
+              >{{ d.lunar }}</span
+            >
           </div>
         </div>
       </div>

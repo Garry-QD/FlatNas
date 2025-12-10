@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch, nextTick } from "vue";
+import { ref, onMounted, onUnmounted, computed, watch, nextTick, toRef } from "vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { GridLayout, GridItem } from "grid-layout-plus";
-import { useStorage, useWindowSize } from "@vueuse/core";
+import { useStorage } from "@vueuse/core";
 import { useMainStore } from "../stores/main";
 import { useWallpaperRotation } from "../composables/useWallpaperRotation";
+import { useDevice } from "../composables/useDevice";
 import { generateLayout, type GridLayoutItem } from "../utils/gridLayout";
 import type { NavItem, WidgetConfig, NavGroup } from "@/types";
 import EditModal from "./EditModal.vue";
@@ -164,12 +165,14 @@ const draggableWidgets = computed({
 */
 
 const layoutData = ref<GridLayoutItem[]>([]);
-
-const { width: windowWidth } = useWindowSize();
-const isMobile = computed(() => windowWidth.value < 768);
+let skipNextLayoutSave = false;
+const { deviceKey, isMobile } = useDevice(toRef(store.appConfig, "deviceMode"));
+const rowHeight = computed(() =>
+  deviceKey.value === "mobile" ? 120 : deviceKey.value === "tablet" ? 130 : 140,
+);
 
 watch(
-  () => [store.widgets, store.isExpandedMode, isMobile.value],
+  () => [store.widgets, store.isExpandedMode, deviceKey.value],
   () => {
     const visibleWidgets = store.widgets.filter(
       (w) =>
@@ -178,22 +181,27 @@ watch(
         w.type !== "search" &&
         w.type !== "quote" &&
         w.type !== "sidebar" &&
-        (!isMobile.value || !w.hideOnMobile),
+        !(deviceKey.value === "mobile" && w.hideOnMobile),
     );
 
     let colNum = store.isExpandedMode ? 8 : 4;
-    let widgetsToLayout = visibleWidgets;
+    if (deviceKey.value === "tablet") colNum = 4;
+    if (deviceKey.value === "mobile") colNum = 2;
 
-    if (isMobile.value) {
-      colNum = 2;
-      // 移动端适配：强制调整宽度
-      widgetsToLayout = visibleWidgets.map((w) => {
-        const newW = { ...w };
-        // 限制最大宽度不超过列数
-        if ((newW.w || 1) > colNum) {
-          newW.w = colNum;
-        }
-        // 对于复杂组件，在移动端强制占满两列以保证显示效果
+    const widgetsToLayout = visibleWidgets.map((w) => {
+      const newW: WidgetConfig = { ...w };
+      const layouts = newW.layouts as any;
+      const spec = layouts ? layouts[deviceKey.value] : undefined;
+      if (spec) {
+        newW.x = spec.x;
+        newW.y = spec.y;
+        newW.w = spec.w;
+        newW.h = spec.h;
+        newW.colSpan = spec.w;
+        newW.rowSpan = spec.h;
+      }
+      if (deviceKey.value === "mobile") {
+        if ((newW.w || 1) > colNum) newW.w = colNum;
         if (
           [
             "clockweather",
@@ -208,10 +216,12 @@ watch(
         ) {
           newW.w = colNum;
         }
-        return newW;
-      });
-    }
+      }
+      return newW;
+    });
 
+    // 标记为程序化布局更新，避免触发保存循环
+    skipNextLayoutSave = true;
     layoutData.value = generateLayout(widgetsToLayout, colNum);
   },
   { deep: true, immediate: true },
@@ -219,7 +229,30 @@ watch(
 
 const handleLayoutUpdated = (newLayout: GridLayoutItem[]) => {
   // 移动端布局变化不保存，避免破坏桌面端配置
-  if (isMobile.value) return;
+  if (deviceKey.value === "mobile") return;
+
+  // 如果是程序化更新导致的事件，跳过保存
+  if (skipNextLayoutSave) {
+    skipNextLayoutSave = false;
+    return;
+  }
+
+  // 如果布局与当前 store.widgets 相同，跳过保存
+  let changed = false;
+  for (const l of newLayout) {
+    const w = store.widgets.find((sw) => sw.id === l.i);
+    if (
+      !w ||
+      w.x !== l.x ||
+      w.y !== l.y ||
+      (w.w ?? w.colSpan ?? 1) !== l.w ||
+      (w.h ?? w.rowSpan ?? 1) !== l.h
+    ) {
+      changed = true;
+      break;
+    }
+  }
+  if (!changed) return;
 
   newLayout.forEach((l) => {
     const w = store.widgets.find((sw) => sw.id === l.i);
@@ -230,6 +263,9 @@ const handleLayoutUpdated = (newLayout: GridLayoutItem[]) => {
       w.h = l.h;
       w.colSpan = l.w;
       w.rowSpan = l.h;
+      const layouts = w.layouts || {};
+      layouts[deviceKey.value] = { x: l.x, y: l.y, w: l.w, h: l.h } as any;
+      w.layouts = layouts;
     }
   });
   store.saveData();
@@ -266,19 +302,33 @@ const cycleWidgetSize = (widget: WidgetConfig) => {
 };
 
 const handleSizeSelect = (widget: GridLayoutItem, size: { colSpan: number; rowSpan: number }) => {
-  // Update local layout item
-  widget.w = size.colSpan;
-  widget.h = size.rowSpan;
-  widget.colSpan = size.colSpan;
-  widget.rowSpan = size.rowSpan;
+  const maxCols = deviceKey.value === "mobile" ? 2 : 4;
+  const maxRows = 4;
+  const min = 1;
+  const nextW = Math.min(Math.max(size.colSpan, min), maxCols);
+  const nextH = Math.min(Math.max(size.rowSpan, min), maxRows);
 
-  // Update store widget
+  widget.w = nextW;
+  widget.h = nextH;
+  widget.colSpan = nextW;
+  widget.rowSpan = nextH;
+
   const storeWidget = store.widgets.find((w) => w.id === widget.i || w.id === widget.id);
   if (storeWidget) {
-    storeWidget.colSpan = size.colSpan;
-    storeWidget.rowSpan = size.rowSpan;
-    storeWidget.w = size.colSpan;
-    storeWidget.h = size.rowSpan;
+    storeWidget.colSpan = nextW;
+    storeWidget.rowSpan = nextH;
+    storeWidget.w = nextW;
+    storeWidget.h = nextH;
+    
+    // 更新 layouts 配置，确保 generateLayout 能获取到最新尺寸
+    const layouts = storeWidget.layouts || {};
+    layouts[deviceKey.value] = {
+      x: widget.x,
+      y: widget.y,
+      w: nextW,
+      h: nextH
+    } as any;
+    storeWidget.layouts = layouts;
   }
 
   activeResizeWidgetId.value = null;
@@ -1039,16 +1089,20 @@ onMounted(() => {
         </div>
 
         <GridLayout
+          v-if="layoutData.length > 0"
           v-model:layout="layoutData"
           :col-num="isMobile ? 2 : store.isExpandedMode ? 8 : 4"
-          :row-height="isMobile ? 120 : 140"
-          :is-draggable="isEditMode && !isMobile"
-          :is-resizable="isEditMode && !isMobile"
+          :row-height="rowHeight"
+          :is-draggable="isEditMode && deviceKey !== 'mobile' && !activeResizeWidgetId"
+          :is-resizable="false"
           :vertical-compact="true"
           :use-css-transforms="true"
           :margin="[24, 24]"
           @layout-updated="handleLayoutUpdated"
-          class="mb-8 text-white select-none transition-all duration-300"
+          :class="[
+            'mb-8 text-white select-none transition-all duration-300',
+            activeResizeWidgetId ? 'smooth-size' : '',
+          ]"
         >
           <GridItem
             v-for="widget in layoutData"
@@ -1077,6 +1131,9 @@ onMounted(() => {
             <button
               v-if="isEditMode"
               @click.stop="cycleWidgetSize(widget)"
+              @mousedown.stop
+              @touchstart.stop
+              @pointerdown.stop
               class="absolute bottom-2 right-2 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg z-50 hover:bg-blue-600 hover:scale-110 transition-all"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1134,7 +1191,7 @@ onMounted(() => {
                 </button>
               </div>
             </div>
-            <CountdownWidget v-else-if="widget.type === 'partition'" :widget="widget" />
+            <CountdownWidget v-else-if="widget.type === 'countdown'" :widget="widget" />
             <IframeWidget
               v-else-if="widget.type === 'iframe'"
               :widget="widget"
