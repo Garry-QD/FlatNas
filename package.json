@@ -1,6 +1,6 @@
 {
   "name": "flat-nas",
-  "version": "1.0.21",
+  "version": "1.0.22",
   "license": "AGPL-3.0",
   "private": true,
   "type": "module",
@@ -27,7 +27,9 @@
     "cross-env": "^10.1.0",
     "express": "^5.1.0",
     "fuse.js": "^7.1.0",
+    "grid-layout-plus": "^1.1.1",
     "jsonwebtoken": "^9.0.3",
+    "lunar-javascript": "^1.7.7",
     "multer": "^2.0.2",
     "pinia": "^3.0.4",
     "rss-parser": "^3.13.0",

@@ -20,6 +20,7 @@ export interface NavGroup {
   id: string;
   title: string;
   items: NavItem[];
+  isPublic?: boolean;
   titleColor?: string;
   preset?: boolean;
   cardLayout?: "vertical" | "horizontal" | string;
@@ -39,6 +40,7 @@ export interface NavGroup {
   backgroundImage?: string;
   backgroundBlur?: number;
   backgroundMask?: number;
+  autoHideTitle?: boolean;
   // Layout config overrides
   gridGap?: number;
   cardSize?: number;
@@ -104,7 +106,9 @@ export interface AppConfig {
   footerWidth?: number;
   footerMarginBottom?: number;
   footerFontSize?: number;
-  weatherApiUrl?: string;
+  weatherApiUrl?: string; // Custom API URL
+  weatherSource?: "wttr" | "amap"; // Weather source
+  amapKey?: string; // AMap API Key
 }
 
 export interface WidgetConfig {
@@ -113,6 +117,11 @@ export interface WidgetConfig {
   enable: boolean;
   colSpan?: number;
   rowSpan?: number;
+  // Grid Layout props
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
   isPublic: boolean;
   hideOnMobile?: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,43 +1,43 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useMainStore } from '../stores/main'
-import IconShape from './IconShape.vue'
-import IconUploader from './IconUploader.vue'
+import { computed } from "vue";
+import { useMainStore } from "../stores/main";
+import IconShape from "./IconShape.vue";
+import IconUploader from "./IconUploader.vue";
 
 const props = defineProps<{
-  show: boolean
-  groupId: string | null
-}>()
+  show: boolean;
+  groupId: string | null;
+}>();
 
-const emit = defineEmits(['update:show'])
-const store = useMainStore()
+const emit = defineEmits(["update:show"]);
+const store = useMainStore();
 
 const group = computed(() => {
-  return store.groups.find((g) => g.id === props.groupId)
-})
+  return store.groups.find((g) => g.id === props.groupId);
+});
 
-const close = () => emit('update:show', false)
+const close = () => emit("update:show", false);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const updateGroup = (updates: any) => {
   if (props.groupId) {
-    store.updateGroup(props.groupId, updates)
+    store.updateGroup(props.groupId, updates);
   }
-}
+};
 
 const handleDeleteGroup = () => {
-  if (!group.value) return
+  if (!group.value) return;
   if (confirm(`确定要删除分组 "${group.value.title}" 及其所有内容吗？`)) {
-    store.deleteGroup(group.value.id, true)
-    close()
+    store.deleteGroup(group.value.id, true);
+    close();
   }
-}
+};
 
 const handleReset = () => {
-  if (!group.value) return
-  if (confirm('确定要重置此分组的所有设置，恢复为全局默认吗？')) {
+  if (!group.value) return;
+  if (confirm("确定要重置此分组的所有设置，恢复为全局默认吗？")) {
     // Keep title and id, reset others
-    const { id } = group.value
+    const { id } = group.value;
     // We need to remove the optional properties from the group object in the store
     // Since we can't easily "delete" properties via partial update, we might need to manually handle this in store
     // Or just set them to undefined if the store handles it.
@@ -53,58 +53,76 @@ const handleReset = () => {
       backgroundImage: undefined,
       backgroundBlur: undefined,
       backgroundMask: undefined,
-    })
+      autoHideTitle: undefined,
+    });
   }
-}
+};
+
+const handlePublicChange = (e: Event) => {
+  const isPublic = (e.target as HTMLInputElement).checked;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const updates: any = { isPublic };
+
+  // If enabling public mode, also set all items to public
+  if (isPublic && group.value && group.value.items) {
+    const newItems = group.value.items.map((item) => ({
+      ...item,
+      isPublic: true,
+    }));
+    updates.items = newItems;
+  }
+
+  updateGroup(updates);
+};
 
 // --- Color Helper ---
 const currentBgColor = computed(
-  () => group.value?.cardBgColor || store.appConfig.cardBgColor || '#ffffff',
-)
+  () => group.value?.cardBgColor || store.appConfig.cardBgColor || "#ffffff",
+);
 
 const bgHex = computed({
   get: () => {
-    const c = currentBgColor.value
-    if (c.startsWith('#')) return c.substring(0, 7)
-    if (c.startsWith('rgba') || c.startsWith('rgb')) {
-      const rgb = c.match(/\d+/g)
+    const c = currentBgColor.value;
+    if (c.startsWith("#")) return c.substring(0, 7);
+    if (c.startsWith("rgba") || c.startsWith("rgb")) {
+      const rgb = c.match(/\d+/g);
       if (rgb && rgb.length >= 3) {
-        const r = parseInt(rgb[0]).toString(16).padStart(2, '0')
-        const g = parseInt(rgb[1]!).toString(16).padStart(2, '0')
-        const b = parseInt(rgb[2]!).toString(16).padStart(2, '0')
-        return `#${r}${g}${b}`
+        const r = parseInt(rgb[0]).toString(16).padStart(2, "0");
+        const g = parseInt(rgb[1]!).toString(16).padStart(2, "0");
+        const b = parseInt(rgb[2]!).toString(16).padStart(2, "0");
+        return `#${r}${g}${b}`;
       }
     }
-    return '#ffffff'
+    return "#ffffff";
   },
   set: (val) => {
-    const alpha = bgAlpha.value
-    const r = parseInt(val.slice(1, 3), 16)
-    const g = parseInt(val.slice(3, 5), 16)
-    const b = parseInt(val.slice(5, 7), 16)
-    updateGroup({ cardBgColor: `rgba(${r}, ${g}, ${b}, ${alpha})` })
+    const alpha = bgAlpha.value;
+    const r = parseInt(val.slice(1, 3), 16);
+    const g = parseInt(val.slice(3, 5), 16);
+    const b = parseInt(val.slice(5, 7), 16);
+    updateGroup({ cardBgColor: `rgba(${r}, ${g}, ${b}, ${alpha})` });
   },
-})
+});
 
 const bgAlpha = computed({
   get: () => {
-    const c = currentBgColor.value
-    if (c.startsWith('rgba')) {
-      const parts = c.match(/[\d\.]+/g)
+    const c = currentBgColor.value;
+    if (c.startsWith("rgba")) {
+      const parts = c.match(/[\d\.]+/g);
       if (parts && parts.length >= 4) {
-        return parseFloat(parts[3]!)
+        return parseFloat(parts[3]!);
       }
     }
-    return 1
+    return 1;
   },
   set: (val) => {
-    const hex = bgHex.value
-    const r = parseInt(hex.slice(1, 3), 16)
-    const g = parseInt(hex.slice(3, 5), 16)
-    const b = parseInt(hex.slice(5, 7), 16)
-    updateGroup({ cardBgColor: `rgba(${r}, ${g}, ${b}, ${val})` })
+    const hex = bgHex.value;
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    updateGroup({ cardBgColor: `rgba(${r}, ${g}, ${b}, ${val})` });
   },
-})
+});
 </script>
 
 <template>
@@ -131,7 +149,7 @@ const bgAlpha = computed({
         <!-- Group Title -->
         <div>
           <label class="block text-sm font-bold text-gray-600 mb-2">分组标题</label>
-          <div class="flex gap-3">
+          <div class="flex gap-3 mb-3">
             <input
               :value="group.title"
               @input="(e) => updateGroup({ title: (e.target as HTMLInputElement).value })"
@@ -145,6 +163,50 @@ const bgAlpha = computed({
               class="w-10 h-10 rounded cursor-pointer border-0 p-0"
               title="标题颜色"
             />
+          </div>
+
+          <!-- Is Public Toggle -->
+          <div
+            class="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-100"
+          >
+            <div class="flex flex-col">
+              <span class="text-xs font-bold text-gray-700">公开此分组</span>
+              <span class="text-[10px] text-gray-400">允许未登录访客查看此分组内容</span>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                :checked="!!group.isPublic"
+                @change="handlePublicChange"
+                class="sr-only peer"
+              />
+              <div
+                class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
+              ></div>
+            </label>
+          </div>
+
+          <!-- Auto Hide Title Toggle -->
+          <div
+            class="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-100 mt-3"
+          >
+            <div class="flex flex-col">
+              <span class="text-xs font-bold text-gray-700">自动隐藏标题</span>
+              <span class="text-[10px] text-gray-400">鼠标悬停时才显示组名和操作按钮</span>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                :checked="!!group.autoHideTitle"
+                @change="
+                  (e) => updateGroup({ autoHideTitle: (e.target as HTMLInputElement).checked })
+                "
+                class="sr-only peer"
+              />
+              <div
+                class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
+              ></div>
+            </label>
           </div>
         </div>
 
@@ -487,7 +549,7 @@ const bgAlpha = computed({
 </template>
 
 <style scoped>
-input[type='range']::-webkit-slider-thumb {
+input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   height: 16px;
   width: 16px;
@@ -496,7 +558,7 @@ input[type='range']::-webkit-slider-thumb {
   cursor: pointer;
   margin-top: -6px;
 }
-input[type='range']::-webkit-slider-runnable-track {
+input[type="range"]::-webkit-slider-runnable-track {
   width: 100%;
   height: 4px;
   cursor: pointer;

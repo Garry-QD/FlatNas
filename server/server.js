@@ -384,6 +384,38 @@ app.post("/api/register", async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: "Missing fields" });
 
+  // Admin creating user bypasses checks? No, user limit applies to everyone unless admin forces it?
+  // Let's stick to the rule: user limit is global.
+  // Unless we want admin to be able to add users even if limit reached? Maybe not for now.
+
+  // Check user limit
+  try {
+    const files = await fs.readdir(USERS_DIR);
+    const userCount = files.filter((f) => f.endsWith(".json")).length;
+
+    if (userCount >= 5) {
+      // Check license
+      const licenseFile = path.join(DATA_DIR, "license.key");
+      const LICENSE_KEY_CONTENT = "FLATNAS-VIP-UNLIMITED-2025";
+      try {
+        const licenseContent = await fs.readFile(licenseFile, "utf-8");
+        if (licenseContent.trim() !== LICENSE_KEY_CONTENT) {
+          throw new Error("Invalid license");
+        }
+      } catch {
+        return res.status(403).json({
+          error:
+            "注册失败：已达到最大用户限制（5个）。如需无限用户权限，请联系管理员部署授权密钥 (license.key)。",
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Error checking user limit:", err);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: "Internal error checking user limits" });
+    }
+  }
+
   const safeUsername = username.replace(/[^a-zA-Z0-9_-]/g, "");
   if (safeUsername !== username || username.length < 3) {
     return res.status(400).json({ error: "Invalid username (alphanumeric, 3+ chars)" });
@@ -404,6 +436,128 @@ app.post("/api/register", async (req, res) => {
   await atomicWrite(filePath, JSON.stringify(initData, null, 2));
 
   res.json({ success: true });
+});
+
+// Admin User Management
+// Get all users
+app.get("/api/admin/users", authenticateToken, async (req, res) => {
+  if (!req.user || req.user.username !== "admin") {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const files = await fs.readdir(USERS_DIR);
+    const users = files.filter((f) => f.endsWith(".json")).map((f) => f.replace(".json", ""));
+    res.json({ users });
+  } catch {
+    res.status(500).json({ error: "Failed to list users" });
+  }
+});
+
+// Delete user
+app.delete("/api/admin/users/:username", authenticateToken, async (req, res) => {
+  if (!req.user || req.user.username !== "admin") {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+
+  const targetUser = req.params.username;
+  if (targetUser === "admin") {
+    return res.status(400).json({ error: "Cannot delete admin" });
+  }
+
+  const filePath = getUserFile(targetUser);
+  try {
+    await fs.unlink(filePath);
+    delete cachedUsersData[targetUser];
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Failed to delete user" });
+  }
+});
+
+// Add user (Admin)
+app.post("/api/admin/users", authenticateToken, async (req, res) => {
+  if (!req.user || req.user.username !== "admin") {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+  // Reuse register logic but authenticated
+  // We can just call the register endpoint internally or duplicate logic?
+  // Let's reuse logic by calling a helper or just invoking the handler if we refactored.
+  // For simplicity, I'll copy the core logic here but skip the authMode check since admin can add users in multi mode.
+  // Wait, if authMode is single, admin shouldn't be adding users anyway?
+  // The requirement says "admin can manage accounts", implies multi-user mode.
+
+  if (systemConfig.authMode === "single") {
+    return res.status(400).json({ error: "Multi-user mode required" });
+  }
+
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: "Missing fields" });
+
+  // Check user limit
+  try {
+    const files = await fs.readdir(USERS_DIR);
+    const userCount = files.filter((f) => f.endsWith(".json")).length;
+
+    if (userCount >= 5) {
+      const licenseFile = path.join(DATA_DIR, "license.key");
+      const LICENSE_KEY_CONTENT = "FLATNAS-VIP-UNLIMITED-2025";
+      try {
+        const licenseContent = await fs.readFile(licenseFile, "utf-8");
+        if (licenseContent.trim() !== LICENSE_KEY_CONTENT) throw new Error();
+      } catch {
+        return res.status(403).json({
+          error:
+            "注册失败：已达到最大用户限制（5个）。如需无限用户权限，请联系管理员部署授权密钥 (license.key)。",
+        });
+      }
+    }
+  } catch {
+    if (!res.headersSent) return res.status(500).json({ error: "Internal error" });
+  }
+
+  const safeUsername = username.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (safeUsername !== username || username.length < 3) {
+    return res.status(400).json({ error: "Invalid username" });
+  }
+
+  const filePath = getUserFile(username);
+  try {
+    await fs.access(filePath);
+    return res.status(400).json({ error: "User already exists" });
+  } catch {
+    // OK
+  }
+
+  const initData = await getDefaultData();
+  initData.password = await bcrypt.hash(password, 10);
+  cachedUsersData[username] = initData;
+  await atomicWrite(filePath, JSON.stringify(initData, null, 2));
+
+  res.json({ success: true });
+});
+
+// Upload License Key
+app.post("/api/admin/license", authenticateToken, async (req, res) => {
+  if (!req.user || req.user.username !== "admin") {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
+  const { key } = req.body;
+  if (!key) return res.status(400).json({ error: "Missing key" });
+
+  // Validate key format if needed, but for now just save
+  // The valid key is "FLATNAS-VIP-UNLIMITED-2025"
+  if (key.trim() !== "FLATNAS-VIP-UNLIMITED-2025") {
+    return res.status(400).json({ error: "Invalid license key" });
+  }
+
+  try {
+    const licenseFile = path.join(DATA_DIR, "license.key");
+    await fs.writeFile(licenseFile, key.trim());
+    res.json({ success: true });
+  } catch {
+    res.status(500).json({ error: "Failed to save license key" });
+  }
 });
 
 // Add Bookmark
@@ -650,38 +804,125 @@ app.get("/api/ip", async (req, res) => {
   res.json({ success: false, ip: clientIp, location: "Unknown", source: "fallback", clientIp });
 });
 
+// Weather Helper
+async function fetchWeatherFromWttr(city) {
+  const response = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1&lang=zh`);
+  if (!response.ok) throw new Error("Weather API error");
+  const data = await response.json();
+  const current = data.current_condition[0];
+  const text = current.lang_zh?.[0]?.value || current.weatherDesc[0].value;
+  return {
+    temp: current.temp_C,
+    text: text,
+    city: city,
+    humidity: current.humidity,
+    windDir: current.winddir16Point,
+    windSpeed: current.windspeedKmph,
+    feelsLike: current.FeelsLikeC,
+    today: data.weather?.[0]
+      ? {
+          min: data.weather[0].mintempC,
+          max: data.weather[0].maxtempC,
+          uv: data.weather[0].uvIndex,
+        }
+      : null,
+    forecast: data.weather || [],
+  };
+}
+
+async function fetchWeatherFromAMap(city, key) {
+  if (!key) throw new Error("AMap Key required");
+
+  let adcode = city;
+  let cityName = city;
+
+  // If city is auto/empty or looks like a name (not numeric), resolve it
+  if (!city || city === "auto" || city === "本地" || !/^\d+$/.test(city)) {
+    if (!city || city === "auto" || city === "本地") {
+      // IP Location
+      const ipRes = await fetch(`https://restapi.amap.com/v3/ip?key=${key}`);
+      const ipData = await ipRes.json();
+      if (ipData.status !== "1") throw new Error("AMap IP Location failed: " + ipData.info);
+      adcode = ipData.adcode;
+      cityName = ipData.city;
+    } else {
+      // Geocoding
+      const geoRes = await fetch(
+        `https://restapi.amap.com/v3/geocode/geo?address=${encodeURIComponent(city)}&key=${key}`,
+      );
+      const geoData = await geoRes.json();
+      if (geoData.status !== "1" || !geoData.geocodes?.length)
+        throw new Error("AMap Geocoding failed");
+      adcode = geoData.geocodes[0].adcode;
+      cityName = geoData.geocodes[0].city || city;
+    }
+  }
+
+  // Weather Info (All = Forecast + Current)
+  const weatherRes = await fetch(
+    `https://restapi.amap.com/v3/weather/weatherInfo?city=${adcode}&key=${key}&extensions=all`,
+  );
+  const weatherData = await weatherRes.json();
+  if (weatherData.status !== "1" || !weatherData.forecasts?.length)
+    throw new Error("AMap Weather failed");
+
+  const forecast = weatherData.forecasts[0];
+  const today = forecast.casts?.[0];
+  const currentLiveRes = await fetch(
+    `https://restapi.amap.com/v3/weather/weatherInfo?city=${adcode}&key=${key}&extensions=base`,
+  );
+  const currentLiveData = await currentLiveRes.json();
+  const current = currentLiveData.lives?.[0] || {};
+
+  // Map to common format
+  return {
+    temp: current.temperature || today.daytemp,
+    text: current.weather || today.dayweather,
+    city: cityName || forecast.city,
+    humidity: current.humidity,
+    windDir: current.winddirection || today.daywind,
+    windSpeed: current.windpower || today.daypower,
+    feelsLike: current.temperature, // AMap doesn't provide feelsLike in base API
+    today: today
+      ? {
+          min: today.nighttemp,
+          max: today.daytemp,
+          uv: "0", // AMap doesn't provide UV in basic free API
+        }
+      : null,
+    forecast: forecast.casts.map((c) => ({
+      date: c.date,
+      maxtempC: c.daytemp,
+      mintempC: c.nighttemp,
+      uvIndex: "0",
+    })),
+  };
+}
+
 // Weather
 app.get("/api/weather", async (req, res) => {
   const city = req.query.city || "";
-  if (!city) return res.status(400).json({ error: "City is required" });
+  const source = req.query.source || "wttr";
+  const key = req.query.key || "";
+
+  // Allow "auto" or empty city to mean "local"
+  // if (!city) return res.status(400).json({ error: "City is required" });
+
   try {
-    const response = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1&lang=zh`);
-    if (!response.ok) throw new Error("Weather API error");
-    const data = await response.json();
-    const current = data.current_condition[0];
-    const text = current.lang_zh?.[0]?.value || current.weatherDesc[0].value;
-    res.json({
-      success: true,
-      data: {
-        temp: current.temp_C,
-        text: text,
-        city: city,
-        humidity: current.humidity,
-        windDir: current.winddir16Point,
-        windSpeed: current.windspeedKmph,
-        feelsLike: current.FeelsLikeC,
-        today: data.weather?.[0]
-          ? {
-              min: data.weather[0].mintempC,
-              max: data.weather[0].maxtempC,
-              uv: data.weather[0].uvIndex,
-            }
-          : null,
-        forecast: data.weather || [],
-      },
-    });
-  } catch {
-    res.status(500).json({ error: "Failed to fetch weather data" });
+    let data;
+    if (source === "amap" && key) {
+      data = await fetchWeatherFromAMap(city, key);
+    } else {
+      // Default to wttr.in
+      // If city is empty/auto for wttr, it uses requester IP automatically
+      const queryCity = !city || city === "auto" || city === "本地" ? "" : city;
+      data = await fetchWeatherFromWttr(queryCity);
+    }
+
+    res.json({ success: true, data });
+  } catch (e) {
+    console.error("Weather Error:", e.message);
+    res.status(500).json({ error: "Failed to fetch weather data: " + e.message });
   }
 });
 
@@ -885,15 +1126,37 @@ app.get("/api/icons", async (req, res) => {
   }
 });
 
+// Helper to recursively get music files
+async function getMusicFilesRecursively(dir, baseDir = "") {
+  let results = [];
+  try {
+    const list = await fs.readdir(dir, { withFileTypes: true });
+    for (const file of list) {
+      const relativePath = baseDir ? path.join(baseDir, file.name) : file.name;
+      if (file.isDirectory()) {
+        const subResults = await getMusicFilesRecursively(path.join(dir, file.name), relativePath);
+        results = results.concat(subResults);
+      } else {
+        results.push(relativePath);
+      }
+    }
+  } catch (err) {
+    console.error("Error reading dir " + dir, err);
+  }
+  return results;
+}
+
 // Get music list
 app.get("/api/music-list", async (req, res) => {
   try {
-    const files = await fs.readdir(MUSIC_DIR);
+    const files = await getMusicFilesRecursively(MUSIC_DIR);
     const musicFiles = files.filter((file) => {
       const ext = path.extname(file).toLowerCase();
       return [".mp3", ".wav", ".ogg", ".m4a", ".flac"].includes(ext);
     });
-    res.json(musicFiles);
+    // Normalize paths to use forward slashes for cross-platform consistency in JSON
+    const normalizedFiles = musicFiles.map((f) => f.split(path.sep).join("/"));
+    res.json(normalizedFiles);
   } catch (err) {
     console.error("Failed to read music dir", err);
     res.json([]);
@@ -1049,6 +1312,40 @@ app.get("/api/fetch-meta", async (req, res) => {
   }
 });
 
+// Fetch Icon and convert to Base64
+app.get("/api/get-icon-base64", async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl) return res.status(400).json({ error: "URL is required" });
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+    const response = await fetch(targetUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      },
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return res.status(404).json({ error: "Failed to fetch icon" });
+    }
+
+    const contentType = response.headers.get("content-type") || "image/png";
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = `data:${contentType};base64,${buffer.toString("base64")}`;
+
+    res.json({ success: true, icon: base64 });
+  } catch (error) {
+    console.error("Fetch icon base64 error:", error);
+    res.status(500).json({ error: "Failed to process icon" });
+  }
+});
+
 // RSS Parse
 app.get("/api/rss/parse", async (req, res) => {
   const url = req.query.url;
@@ -1105,35 +1402,17 @@ io.on("connection", (socket) => {
   });
 
   // Weather Fetch
-  socket.on("weather:fetch", async ({ city }) => {
+  socket.on("weather:fetch", async ({ city, source, key }) => {
     try {
-      if (!city) throw new Error("City required");
-      const response = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1&lang=zh`);
-      if (!response.ok) throw new Error("Weather API error");
-      const data = await response.json();
+      let data;
+      if (source === "amap" && key) {
+        data = await fetchWeatherFromAMap(city, key);
+      } else {
+        const queryCity = !city || city === "auto" || city === "本地" ? "" : city;
+        data = await fetchWeatherFromWttr(queryCity);
+      }
 
-      const current = data.current_condition[0];
-      const text = current.lang_zh?.[0]?.value || current.weatherDesc[0].value;
-
-      const weatherData = {
-        temp: current.temp_C,
-        text: text,
-        city: city,
-        humidity: current.humidity,
-        windDir: current.winddir16Point,
-        windSpeed: current.windspeedKmph,
-        feelsLike: current.FeelsLikeC,
-        today: data.weather?.[0]
-          ? {
-              min: data.weather[0].mintempC,
-              max: data.weather[0].maxtempC,
-              uv: data.weather[0].uvIndex,
-            }
-          : null,
-        forecast: data.weather || [],
-      };
-
-      socket.emit("weather:data", { city, data: weatherData });
+      socket.emit("weather:data", { city, data });
     } catch (err) {
       console.error(`Weather Socket Error [${city}]:`, err.message);
       socket.emit("weather:error", { city, error: err.message });

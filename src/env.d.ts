@@ -13,3 +13,5 @@ declare module 'vue-cropper' {
   export const VueCropper: DefineComponent<{}, {}, any>
   export default VueCropper
 }
+
+declare module 'lunar-javascript';

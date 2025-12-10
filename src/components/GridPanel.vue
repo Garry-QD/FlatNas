@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from "vue";
+import { ref, onMounted, onUnmounted, computed, watch, nextTick } from "vue";
 import { VueDraggable } from "vue-draggable-plus";
-import { useStorage } from "@vueuse/core";
+import { GridLayout, GridItem } from "grid-layout-plus";
+import { useStorage, useWindowSize } from "@vueuse/core";
 import { useMainStore } from "../stores/main";
 import { useWallpaperRotation } from "../composables/useWallpaperRotation";
+import { generateLayout, type GridLayoutItem } from "../utils/gridLayout";
 import type { NavItem, WidgetConfig, NavGroup } from "@/types";
 import EditModal from "./EditModal.vue";
 import SettingsModal from "./SettingsModal.vue";
@@ -23,6 +25,7 @@ import SimpleWeatherWidget from "./SimpleWeatherWidget.vue";
 import CalendarWidget from "./CalendarWidget.vue";
 import ClockWidget from "./ClockWidget.vue";
 import AppSidebar from "./AppSidebar.vue";
+import CountdownWidget from "./CountdownWidget.vue";
 
 import SizeSelector from "./SizeSelector.vue";
 
@@ -32,6 +35,7 @@ useWallpaperRotation();
 const showEditModal = ref(false);
 const showSettingsModal = ref(false);
 const showGroupSettingsModal = ref(false);
+
 const showLoginModal = ref(false);
 const isEditMode = ref(false);
 const activeResizeWidgetId = ref<string | null>(null);
@@ -41,6 +45,12 @@ const isLanMode = ref(false);
 const latency = ref(0);
 const isChecking = ref(true);
 const forceMode = useStorage<"auto" | "lan" | "wan">("flat-nas-network-mode", "auto");
+
+const effectiveIsLan = computed(() => {
+  if (forceMode.value === "lan") return true;
+  if (forceMode.value === "wan") return false;
+  return isLanMode.value;
+});
 
 const sidebarCollapsed = ref(true);
 const isSidebarEnabled = computed(() =>
@@ -82,6 +92,7 @@ const effectiveEngine = computed({
   },
 });
 const searchText = ref("");
+const searchInputRef = ref<HTMLInputElement | null>(null);
 
 watch(
   () => store.appConfig.defaultSearchEngine,
@@ -126,6 +137,7 @@ const checkVisible = (obj?: WidgetConfig | NavItem) => {
   return !!obj.isPublic;
 };
 
+/*
 const draggableWidgets = computed({
   get: () =>
     store.widgets.filter(
@@ -149,6 +161,79 @@ const draggableWidgets = computed({
     store.saveData();
   },
 });
+*/
+
+const layoutData = ref<GridLayoutItem[]>([]);
+
+const { width: windowWidth } = useWindowSize();
+const isMobile = computed(() => windowWidth.value < 768);
+
+watch(
+  () => [store.widgets, store.isExpandedMode, isMobile.value],
+  () => {
+    const visibleWidgets = store.widgets.filter(
+      (w) =>
+        checkVisible(w) &&
+        w.type !== "player" &&
+        w.type !== "search" &&
+        w.type !== "quote" &&
+        w.type !== "sidebar" &&
+        (!isMobile.value || !w.hideOnMobile),
+    );
+
+    let colNum = store.isExpandedMode ? 8 : 4;
+    let widgetsToLayout = visibleWidgets;
+
+    if (isMobile.value) {
+      colNum = 2;
+      // 移动端适配：强制调整宽度
+      widgetsToLayout = visibleWidgets.map((w) => {
+        const newW = { ...w };
+        // 限制最大宽度不超过列数
+        if ((newW.w || 1) > colNum) {
+          newW.w = colNum;
+        }
+        // 对于复杂组件，在移动端强制占满两列以保证显示效果
+        if (
+          [
+            "clockweather",
+            "calendar",
+            "rss",
+            "iframe",
+            "todo",
+            "memo",
+            "bookmarks",
+            "hot",
+          ].includes(newW.type)
+        ) {
+          newW.w = colNum;
+        }
+        return newW;
+      });
+    }
+
+    layoutData.value = generateLayout(widgetsToLayout, colNum);
+  },
+  { deep: true, immediate: true },
+);
+
+const handleLayoutUpdated = (newLayout: GridLayoutItem[]) => {
+  // 移动端布局变化不保存，避免破坏桌面端配置
+  if (isMobile.value) return;
+
+  newLayout.forEach((l) => {
+    const w = store.widgets.find((sw) => sw.id === l.i);
+    if (w) {
+      w.x = l.x;
+      w.y = l.y;
+      w.w = l.w;
+      w.h = l.h;
+      w.colSpan = l.w;
+      w.rowSpan = l.h;
+    }
+  });
+  store.saveData();
+};
 
 const displayGroups = computed(() => {
   // ✨ 性能优化：在编辑模式且无搜索时，直接返回 store.groups 引用
@@ -180,27 +265,24 @@ const cycleWidgetSize = (widget: WidgetConfig) => {
   activeResizeWidgetId.value = activeResizeWidgetId.value === widget.id ? null : widget.id;
 };
 
-const handleSizeSelect = (widget: WidgetConfig, size: { colSpan: number; rowSpan: number }) => {
+const handleSizeSelect = (widget: GridLayoutItem, size: { colSpan: number; rowSpan: number }) => {
+  // Update local layout item
+  widget.w = size.colSpan;
+  widget.h = size.rowSpan;
   widget.colSpan = size.colSpan;
   widget.rowSpan = size.rowSpan;
+
+  // Update store widget
+  const storeWidget = store.widgets.find((w) => w.id === widget.i || w.id === widget.id);
+  if (storeWidget) {
+    storeWidget.colSpan = size.colSpan;
+    storeWidget.rowSpan = size.rowSpan;
+    storeWidget.w = size.colSpan;
+    storeWidget.h = size.rowSpan;
+  }
+
   activeResizeWidgetId.value = null;
   store.saveData();
-};
-
-const getWidgetSpanClass = (widget: WidgetConfig) => {
-  const col = widget.colSpan || 1;
-  const row = widget.rowSpan || (widget.type === "bookmarks" ? 2 : 1);
-  const colClass =
-    col === 4
-      ? "md:col-span-4"
-      : col === 3
-        ? "md:col-span-3"
-        : col === 2
-          ? "md:col-span-2"
-          : "md:col-span-1";
-  const rowClass =
-    row === 4 ? "row-span-4" : row === 3 ? "row-span-3" : row === 2 ? "row-span-2" : "row-span-1";
-  return `${colClass} ${rowClass}`;
 };
 
 const devtoolsClickCount = ref(0);
@@ -284,6 +366,9 @@ onMounted(() => {
   fetchIp();
   store.init().then(() => {
     store.cleanInvalidGroups();
+  });
+  nextTick(() => {
+    searchInputRef.value?.focus();
   });
 });
 
@@ -850,10 +935,10 @@ onMounted(() => {
                 <template v-else
                   ><div
                     class="w-1.5 h-1.5 rounded-full"
-                    :class="isLanMode ? 'bg-green-500' : 'bg-blue-500'"
+                    :class="effectiveIsLan ? 'bg-green-500' : 'bg-blue-500'"
                   ></div>
-                  <span :class="isLanMode ? 'text-green-700' : 'text-blue-700'">{{
-                    isLanMode ? "内网" : "外网"
+                  <span :class="effectiveIsLan ? 'text-green-700' : 'text-blue-700'">{{
+                    effectiveIsLan ? "内网" : "外网"
                   }}</span
                   ><span class="text-gray-400 border-l pl-2 ml-1">{{ latency }}ms</span></template
                 >
@@ -874,7 +959,7 @@ onMounted(() => {
 
           <div
             v-if="checkVisible(store.widgets.find((w) => w.id === 'w5'))"
-            class="w-full md:absolute md:left-1/2 md:-translate-x-1/2 z-20 transition-all duration-300"
+            class="w-full md:absolute md:left-1/2 md:-translate-x-1/2 z-50 transition-all duration-300"
             :class="store.isExpandedMode ? 'md:w-[32rem]' : 'md:w-64'"
           >
             <form
@@ -884,14 +969,17 @@ onMounted(() => {
               action="."
             >
               <input
+                ref="searchInputRef"
                 id="main-search-input"
                 name="q"
                 v-model="searchText"
                 @keyup.enter="doSearch"
+                @mousedown.stop
                 type="search"
                 role="searchbox"
                 aria-label="搜索框"
                 autocomplete="off"
+                autofocus
                 class="h-full pl-6 pr-4 rounded-full bg-transparent border-0 text-gray-900 placeholder-gray-500 outline-none"
                 :style="{ width: 'calc(100% - 33.75%)' }"
                 :placeholder="
@@ -950,27 +1038,42 @@ onMounted(() => {
           </div>
         </div>
 
-        <VueDraggable
-          v-model="draggableWidgets"
-          :animation="300"
-          :disabled="!isEditMode"
-          class="grid grid-cols-1 gap-6 mb-8 text-white select-none grid-flow-dense transition-all duration-300"
-          :class="store.isExpandedMode ? 'md:grid-cols-8' : 'md:grid-cols-4'"
-          style="grid-auto-rows: 140px"
-          ghostClass="ghost"
+        <GridLayout
+          v-model:layout="layoutData"
+          :col-num="isMobile ? 2 : store.isExpandedMode ? 8 : 4"
+          :row-height="isMobile ? 120 : 140"
+          :is-draggable="isEditMode && !isMobile"
+          :is-resizable="isEditMode && !isMobile"
+          :vertical-compact="true"
+          :use-css-transforms="true"
+          :margin="[24, 24]"
+          @layout-updated="handleLayoutUpdated"
+          class="mb-8 text-white select-none transition-all duration-300"
         >
-          <div
-            v-for="widget in draggableWidgets"
-            :key="widget.id"
+          <GridItem
+            v-for="widget in layoutData"
+            :key="widget.i"
+            :x="widget.x"
+            :y="widget.y"
+            :w="widget.w"
+            :h="widget.h"
+            :i="widget.i"
             class="transition-all duration-300 relative"
             :class="[
-              getWidgetSpanClass(widget),
               isEditMode
                 ? 'ring-2 ring-blue-400/50 rounded-2xl cursor-move hover:ring-blue-500'
                 : '',
               widget.hideOnMobile ? 'hidden md:block' : '',
             ]"
           >
+            <button
+              v-if="isEditMode"
+              @click.stop="store.deleteItem(widget.id)"
+              class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg z-50 hover:bg-red-600 hover:scale-110 transition-all"
+              style="display: none"
+            >
+              <!-- Delete button placeholder -->
+            </button>
             <button
               v-if="isEditMode"
               @click.stop="cycleWidgetSize(widget)"
@@ -985,10 +1088,11 @@ onMounted(() => {
                 ></path>
               </svg>
             </button>
+
             <SizeSelector
               v-if="isEditMode && activeResizeWidgetId === widget.id"
-              :current-col="widget.colSpan || 1"
-              :current-row="widget.rowSpan || (widget.type === 'bookmarks' ? 2 : 1)"
+              :current-col="widget.w || widget.colSpan || 1"
+              :current-row="widget.h || widget.rowSpan || (widget.type === 'bookmarks' ? 2 : 1)"
               @select="(size) => handleSizeSelect(widget, size)"
             />
             <ClockWidget v-if="widget.type === 'clock'" :widget="widget" />
@@ -1030,20 +1134,21 @@ onMounted(() => {
                 </button>
               </div>
             </div>
+            <CountdownWidget v-else-if="widget.type === 'partition'" :widget="widget" />
             <IframeWidget
               v-else-if="widget.type === 'iframe'"
               :widget="widget"
-              :is-lan-mode="isLanMode"
+              :is-lan-mode="effectiveIsLan"
             />
             <BookmarkWidget v-else-if="widget.type === 'bookmarks'" :widget="widget" />
             <HotWidget v-else-if="widget.type === 'hot'" :widget="widget" />
             <ClockWeatherWidget v-else-if="widget.type === 'clockweather'" :widget="widget" />
             <RssWidget v-else-if="widget.type === 'rss'" :widget="widget" />
-          </div>
-        </VueDraggable>
+          </GridItem>
+        </GridLayout>
 
         <Transition name="fade">
-          <div v-if="store.isLogged && isEditMode" class="flex justify-center mb-4">
+          <div v-if="store.isLogged && isEditMode" class="flex justify-center mb-4 gap-4">
             <button
               data-testid="add-group-btn"
               @click="store.addGroup"
@@ -1064,7 +1169,10 @@ onMounted(() => {
           :style="{ gap: (store.appConfig.groupGap ?? 30) + 'px' }"
         >
           <div v-for="group in displayGroups" :key="group.id" class="group-container">
-            <div class="flex items-center gap-3 mb-2 group-header relative">
+            <div
+              class="flex items-center gap-3 mb-2 group-header relative transition-opacity duration-200"
+              :class="{ 'opacity-0 hover:opacity-100': group.autoHideTitle }"
+            >
               <div
                 v-if="isEditMode"
                 class="group-handle cursor-move text-white/50 hover:text-white p-1 select-none text-xl"

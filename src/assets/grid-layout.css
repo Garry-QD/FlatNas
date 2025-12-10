@@ -1,0 +1,93 @@
+.vgl-layout {
+  --vgl-placeholder-bg: red;
+  --vgl-placeholder-opacity: 20%;
+  --vgl-placeholder-z-index: 2;
+
+  --vgl-item-resizing-z-index: 3;
+  --vgl-item-resizing-opacity: 60%;
+  --vgl-item-dragging-z-index: 3;
+  --vgl-item-dragging-opacity: 100%;
+
+  --vgl-resizer-size: 10px;
+  --vgl-resizer-border-color: #444;
+  --vgl-resizer-border-width: 2px;
+
+  position: relative;
+  box-sizing: border-box;
+  transition: height 200ms ease;
+}
+
+.vgl-item {
+  position: absolute;
+  box-sizing: border-box;
+  transition: 200ms ease;
+  transition-property: left, top, right;
+}
+
+.vgl-item--placeholder {
+  z-index: var(--vgl-placeholder-z-index, 2);
+  user-select: none;
+  background-color: var(--vgl-placeholder-bg, red);
+  opacity: var(--vgl-placeholder-opacity, 20%);
+  transition-duration: 100ms;
+}
+
+.vgl-item--no-touch {
+  touch-action: none;
+}
+
+.vgl-item--transform {
+  right: auto;
+  left: 0;
+  transition-property: transform;
+}
+
+.vgl-item--transform.vgl-item--rtl {
+  right: 0;
+  left: auto;
+}
+
+.vgl-item--resizing {
+  z-index: var(--vgl-item-resizing-z-index, 3);
+  user-select: none;
+  opacity: var(--vgl-item-resizing-opacity, 60%);
+}
+
+.vgl-item--dragging {
+  z-index: var(--vgl-item-dragging-z-index, 3);
+  user-select: none;
+  opacity: var(--vgl-item-dragging-opacity, 100%);
+  transition: none;
+}
+
+.vgl-item__resizer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  box-sizing: border-box;
+  width: var(--vgl-resizer-size);
+  height: var(--vgl-resizer-size);
+  cursor: se-resize;
+}
+
+.vgl-item__resizer::before {
+  position: absolute;
+  inset: 0 3px 3px 0;
+  content: '';
+  border: 0 solid var(--vgl-resizer-border-color);
+  border-right-width: var(--vgl-resizer-border-width);
+  border-bottom-width: var(--vgl-resizer-border-width);
+}
+
+.vgl-item__resizer--rtl {
+  right: auto;
+  left: 0;
+  cursor: sw-resize;
+}
+
+.vgl-item__resizer--rtl::before {
+  inset: 0 0 3px 3px;
+  border-right-width: 0;
+  border-bottom-width: var(--vgl-resizer-border-width);
+  border-left-width: var(--vgl-resizer-border-width);
+}

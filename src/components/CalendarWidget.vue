@@ -3,6 +3,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import type { WidgetConfig } from "@/types";
 import { useMainStore } from "../stores/main";
+import { Lunar } from "lunar-javascript";
 
 const props = defineProps<{ widget: WidgetConfig }>();
 const store = useMainStore();
@@ -51,6 +52,16 @@ const weekDay = computed(
 );
 const yearMonth = computed(() => `${now.value.getFullYear()}.${now.value.getMonth() + 1}`);
 
+const lunarDate = computed(() => {
+  const d = Lunar.fromDate(now.value);
+  return `${d.getMonthInChinese()}月${d.getDayInChinese()}`;
+});
+
+const lunarYear = computed(() => {
+  const d = Lunar.fromDate(now.value);
+  return `${d.getYearInGanZhi()}${d.getYearShengXiao()}年`;
+});
+
 // Month View Data
 const currentMonth = ref(new Date());
 
@@ -66,7 +77,7 @@ const calendarDays = computed(() => {
   // Padding for start of week (Sunday start)
   const startPadding = firstDay.getDay();
   for (let i = 0; i < startPadding; i++) {
-    days.push({ day: "", current: false, today: false });
+    days.push({ day: "", current: false, today: false, lunar: "" });
   }
 
   // Days of month
@@ -75,7 +86,25 @@ const calendarDays = computed(() => {
       i === now.value.getDate() &&
       month === now.value.getMonth() &&
       year === now.value.getFullYear();
-    days.push({ day: i, current: true, today: isToday });
+
+    const d = Lunar.fromDate(new Date(year, month, i));
+    const jieqi = d.getJieQi();
+    const festivals = d.getFestivals();
+    let lunarStr = d.getDayInChinese();
+
+    if (lunarStr === "初一") {
+      lunarStr = d.getMonthInChinese() + "月";
+    }
+
+    if (jieqi) {
+      lunarStr = jieqi;
+    } else if (festivals && festivals.length > 0) {
+      // Pick the first festival, maybe filter for important ones if too many
+      lunarStr = festivals[0];
+      if (lunarStr.length > 3) lunarStr = lunarStr.substring(0, 3);
+    }
+
+    days.push({ day: i, current: true, today: isToday, lunar: lunarStr });
   }
 
   return days;
@@ -154,6 +183,8 @@ const goToday = () => {
       <div class="text-sm mt-1 bg-white/20 px-3 py-0.5 rounded-full backdrop-blur-md">
         {{ weekDay }}
       </div>
+      <div class="text-xl font-medium opacity-90 mt-2">{{ lunarDate }}</div>
+      <div class="text-sm opacity-75 mt-1">{{ lunarYear }}</div>
     </div>
 
     <!-- Month View -->
@@ -219,7 +250,12 @@ const goToday = () => {
             'cursor-pointer': d.current,
           }"
         >
-          {{ d.day }}
+          <div class="flex flex-col items-center justify-center leading-none h-full py-0.5">
+            <span class="text-sm font-bold">{{ d.day }}</span>
+            <span class="text-[10px] opacity-80 mt-0.5 transform scale-90 origin-top">{{
+              d.lunar
+            }}</span>
+          </div>
         </div>
       </div>
     </div>

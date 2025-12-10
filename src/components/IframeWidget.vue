@@ -147,9 +147,9 @@ watch(
       <span class="text-[10px] opacity-50">请在编辑模式下配置</span>
     </div>
 
-    <!-- Controls Overlay (Visible on Hover) -->
+    <!-- Controls Overlay (Visible on Hover for Desktop, Always for Mobile) -->
     <div
-      class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-20 flex gap-1.5"
+      class="absolute top-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-20 flex gap-1.5"
     >
       <button
         @click="refresh"

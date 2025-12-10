@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import { useMainStore } from "../stores/main";
 import type { RssFeed, WidgetConfig, RssCategory, SearchEngine, NavGroup, NavItem } from "@/types";
 import IconUploader from "./IconUploader.vue";
@@ -143,6 +143,60 @@ const handleChangePassword = () => {
   newPasswordInput.value = "";
 };
 
+// Admin User Management
+const userList = ref<string[]>([]);
+const newUser = ref("");
+const newPwd = ref("");
+const licenseKey = ref("");
+
+const loadUsers = async () => {
+  if (store.username === "admin" && store.systemConfig.authMode === "multi") {
+    userList.value = await store.fetchUsers();
+  }
+};
+
+const handleAddUser = async () => {
+  if (!newUser.value || !newPwd.value) return alert("请输入用户名和密码");
+  try {
+    await store.addUser(newUser.value, newPwd.value);
+    alert("添加成功");
+    newUser.value = "";
+    newPwd.value = "";
+    loadUsers();
+  } catch (e: unknown) {
+    alert((e as Error).message || "添加失败");
+  }
+};
+
+const handleDeleteUser = async (u: string) => {
+  if (!confirm(`确定删除用户 ${u} 吗？`)) return;
+  try {
+    await store.deleteUser(u);
+    alert("删除成功");
+    loadUsers();
+  } catch {
+    alert("删除失败");
+  }
+};
+
+const handleUploadLicense = async () => {
+  if (!licenseKey.value) return alert("请输入密钥");
+  try {
+    await store.uploadLicense(licenseKey.value);
+    alert("密钥导入成功，限制已解除");
+    licenseKey.value = "";
+  } catch (e: unknown) {
+    alert((e as Error).message || "导入失败");
+  }
+};
+
+// Watch for tab change to load users
+watch(activeTab, (val) => {
+  if (val === "account") {
+    loadUsers();
+  }
+});
+
 const toggleAuthMode = async () => {
   const currentMode = store.systemConfig.authMode;
   const newMode = currentMode === "single" ? "multi" : "single";
@@ -168,6 +222,42 @@ const performAuthModeSwitch = async (newMode: string) => {
 onMounted(() => {
   store.checkUpdate();
 });
+
+const restoreMissingWidgets = () => {
+  const defaultWidgets: WidgetConfig[] = [
+    {
+      id: "clockweather",
+      type: "clockweather",
+      enable: true,
+      colSpan: 1,
+      rowSpan: 1,
+      isPublic: true,
+    },
+    { id: "w1", type: "clock", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+    { id: "w2", type: "weather", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+    { id: "w3", type: "calendar", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+    { id: "w5", type: "search", enable: true, isPublic: true },
+    { id: "w7", type: "quote", enable: true, isPublic: true },
+    { id: "sidebar", type: "sidebar", enable: false, isPublic: true },
+  ];
+
+  let addedCount = 0;
+  defaultWidgets.forEach((def) => {
+    const exists = store.widgets.some((w) => w.type === def.type);
+    if (!exists) {
+      store.widgets.push(def);
+      addedCount++;
+    }
+  });
+
+  if (addedCount > 0) {
+    store.saveData();
+    alert(`已恢复 ${addedCount} 个缺失的组件`);
+  } else {
+    alert("未发现缺失的核心组件");
+  }
+};
+
 const handleExport = async () => {
   try {
     // 强制立即保存，确保后端数据也是最新的
@@ -936,6 +1026,12 @@ onMounted(() => {
                 桌面小组件
               </h4>
               <div class="flex items-center gap-3 text-xs mr-[10px]">
+                <button
+                  @click="restoreMissingWidgets"
+                  class="text-blue-500 hover:text-blue-700 underline mr-2"
+                >
+                  恢复默认组件
+                </button>
                 <div class="flex items-center gap-1">
                   <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
                   <span class="text-gray-500">公开</span>
@@ -1006,6 +1102,23 @@ onMounted(() => {
                             class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-500"
                           ></div
                         ></label>
+                      </div>
+                      <div class="flex flex-col items-center gap-0.5">
+                        <span class="text-[10px] text-gray-400 scale-90">手机</span>
+                        <label
+                          class="relative inline-flex items-center cursor-pointer"
+                          title="手机端显示"
+                        >
+                          <input
+                            type="checkbox"
+                            :checked="!w.hideOnMobile"
+                            @change="w.hideOnMobile = !($event.target as HTMLInputElement).checked"
+                            class="sr-only peer"
+                          />
+                          <div
+                            class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-400"
+                          ></div>
+                        </label>
                       </div>
                       <div class="flex flex-col items-center gap-0.5">
                         <span class="text-[10px] text-gray-400 scale-90">自动</span>
@@ -1098,7 +1211,9 @@ onMounted(() => {
                                                         ? "RSS 阅读器"
                                                         : w.type === "iframe"
                                                           ? "万能窗口"
-                                                          : "未知组件"
+                                                          : w.type === "partition"
+                                                            ? "倒计时"
+                                                            : `未知组件 (${w.type})`
                         }}
                       </span>
                     </div>
@@ -1120,6 +1235,23 @@ onMounted(() => {
                             class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-500"
                           ></div
                         ></label>
+                      </div>
+                      <div class="flex flex-col items-center gap-0.5">
+                        <span class="text-[10px] text-gray-400 scale-90">手机</span>
+                        <label
+                          class="relative inline-flex items-center cursor-pointer"
+                          title="手机端显示"
+                        >
+                          <input
+                            type="checkbox"
+                            :checked="!w.hideOnMobile"
+                            @change="w.hideOnMobile = !($event.target as HTMLInputElement).checked"
+                            class="sr-only peer"
+                          />
+                          <div
+                            class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-400"
+                          ></div>
+                        </label>
                       </div>
                       <div v-if="w.type === 'player'" class="flex flex-col items-center gap-0.5">
                         <span class="text-[10px] text-gray-400 scale-90">自动</span>
@@ -1147,6 +1279,49 @@ onMounted(() => {
             </div>
             <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
               <div class="space-y-3">
+                <div>
+                  <label class="block text-xs font-bold text-gray-600 mb-2">天气源选择</label>
+                  <div class="flex items-center gap-4 mb-3">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        v-model="store.appConfig.weatherSource"
+                        value="wttr"
+                        class="text-blue-500"
+                      />
+                      <span class="text-sm">Wttr.in (默认)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        v-model="store.appConfig.weatherSource"
+                        value="amap"
+                        class="text-blue-500"
+                      />
+                      <span class="text-sm">高德地图 (AMap)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div v-if="store.appConfig.weatherSource === 'amap'" class="animate-fade-in">
+                  <label class="block text-xs font-bold text-gray-600 mb-1">高德 API Key</label>
+                  <input
+                    v-model="store.appConfig.amapKey"
+                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                    placeholder="请输入高德 Web 服务 Key"
+                  />
+                  <p class="text-[10px] text-gray-500 mt-1">
+                    请前往
+                    <a
+                      href="https://console.amap.com/dev/key/app"
+                      target="_blank"
+                      class="text-blue-500 underline"
+                      >高德开放平台</a
+                    >
+                    申请 Web 服务 Key。
+                  </p>
+                </div>
+
                 <div>
                   <label class="block text-xs font-bold text-gray-600 mb-1">自定义天气源 URL</label>
                   <input
@@ -1826,6 +2001,79 @@ onMounted(() => {
               >
                 退出登录
               </button>
+
+              <!-- Admin User Management UI -->
+              <div
+                v-if="store.username === 'admin' && store.systemConfig.authMode === 'multi'"
+                class="mt-6 bg-blue-50 p-5 rounded-xl border border-blue-200"
+              >
+                <h5 class="text-sm font-bold text-blue-800 mb-3">👥 用户管理 (Admin)</h5>
+
+                <!-- Add User -->
+                <div class="flex flex-col gap-2 mb-4">
+                  <div class="flex gap-2">
+                    <input
+                      v-model="newUser"
+                      placeholder="用户名"
+                      class="flex-1 px-3 py-2 rounded-lg border border-blue-300 text-sm"
+                    />
+                    <input
+                      v-model="newPwd"
+                      type="password"
+                      placeholder="密码"
+                      class="flex-1 px-3 py-2 rounded-lg border border-blue-300 text-sm"
+                    />
+                  </div>
+                  <button
+                    @click="handleAddUser"
+                    class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700"
+                  >
+                    添加用户
+                  </button>
+                </div>
+
+                <!-- User List -->
+                <div class="space-y-2 max-h-40 overflow-y-auto">
+                  <div
+                    v-for="u in userList"
+                    :key="u"
+                    class="flex justify-between items-center bg-white px-3 py-2 rounded-lg border border-blue-100"
+                  >
+                    <span class="text-sm text-gray-700 font-medium">
+                      {{ u }}
+                      <span v-if="u === 'admin'" class="text-xs text-blue-500">(管理员)</span>
+                    </span>
+                    <button
+                      v-if="u !== 'admin'"
+                      @click="handleDeleteUser(u)"
+                      class="text-red-500 hover:text-red-700 text-xs font-bold px-2"
+                    >
+                      删除
+                    </button>
+                  </div>
+                </div>
+
+                <!-- License Management -->
+                <div class="mt-4 pt-4 border-t border-blue-200">
+                  <h6 class="text-xs font-bold text-blue-800 mb-2">🔑 授权密钥 (License Key)</h6>
+                  <div class="flex gap-2">
+                    <input
+                      v-model="licenseKey"
+                      placeholder="输入密钥解除限制..."
+                      class="flex-1 px-3 py-2 rounded-lg border border-blue-300 text-sm"
+                    />
+                    <button
+                      @click="handleUploadLicense"
+                      class="bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-bold hover:bg-green-700 whitespace-nowrap"
+                    >
+                      导入
+                    </button>
+                  </div>
+                  <p class="text-[10px] text-blue-600 mt-1">
+                    导入有效密钥可解除5个用户的注册限制。
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>

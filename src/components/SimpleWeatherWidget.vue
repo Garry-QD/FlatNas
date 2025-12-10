@@ -34,6 +34,7 @@ const weather = ref({
   text: "...",
   humidity: "",
   today: { min: "", max: "" },
+  forecast: [] as any[],
 });
 const isNight = ref(false);
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -94,6 +95,30 @@ const updateTime = () => {
   isNight.value = hour < 6 || hour >= 18;
 };
 
+const showForecast = computed(() => {
+  return (
+    props.widget &&
+    props.widget.h &&
+    props.widget.h > 1 &&
+    weather.value.forecast &&
+    weather.value.forecast.length > 0
+  );
+});
+
+const formatDate = (dateStr: string) => {
+  try {
+    const date = new Date(dateStr);
+    const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+    const today = new Date();
+    if (date.getDate() === today.getDate() && date.getMonth() === today.getMonth()) {
+      return "今天";
+    }
+    return weekdays[date.getDay()];
+  } catch {
+    return dateStr;
+  }
+};
+
 // 获取天气
 const fetchWeather = async () => {
   const city = props.widget?.data?.city || customCityInput.value || "Shanghai"; // Default fallback
@@ -124,7 +149,9 @@ const fetchWeather = async () => {
   store.socket.on("weather:data", onData);
   store.socket.on("weather:error", onError);
 
-  store.socket.emit("weather:fetch", { city });
+  const source = store.appConfig.weatherSource || "wttr";
+  const key = store.appConfig.amapKey || "";
+  store.socket.emit("weather:fetch", { city, source, key });
 };
 
 onMounted(() => {
@@ -236,20 +263,39 @@ onUnmounted(() => {
     ></div>
 
     <!-- 内容区域 -->
-    <div class="relative z-10 h-full flex flex-col items-center justify-center p-4">
-      <div class="text-4xl sm:text-5xl font-bold tracking-tighter drop-shadow-lg mb-2">
-        {{ weather.temp }}°
+    <div
+      class="relative z-10 h-full flex flex-col items-center p-4 transition-all"
+      :class="showForecast ? 'justify-between' : 'justify-center'"
+    >
+      <div class="flex flex-col items-center justify-center" :class="{ 'flex-1': showForecast }">
+        <div class="text-4xl sm:text-5xl font-bold tracking-tighter drop-shadow-lg mb-2">
+          {{ weather.temp }}°
+        </div>
+        <div class="text-sm sm:text-base font-medium opacity-90 flex items-center gap-2">
+          <span>{{ weather.text }}</span>
+          <span class="w-1 h-1 rounded-full bg-white/50"></span>
+          <span>{{ weather.city }}</span>
+        </div>
+        <div
+          v-if="weather.today && weather.today.min && !showForecast"
+          class="mt-2 text-xs opacity-75 flex items-center gap-2"
+        >
+          <span>{{ weather.today.min }}° / {{ weather.today.max }}°</span>
+        </div>
       </div>
-      <div class="text-sm sm:text-base font-medium opacity-90 flex items-center gap-2">
-        <span>{{ weather.text }}</span>
-        <span class="w-1 h-1 rounded-full bg-white/50"></span>
-        <span>{{ weather.city }}</span>
-      </div>
-      <div
-        v-if="weather.today && weather.today.min"
-        class="mt-2 text-xs opacity-75 flex items-center gap-2"
-      >
-        <span>{{ weather.today.min }}° / {{ weather.today.max }}°</span>
+
+      <!-- 更多预报 (仅在高德地图且高度>1时显示) -->
+      <div v-if="showForecast" class="w-full mt-2 pt-2 border-t border-white/10 space-y-2">
+        <div
+          v-for="(day, index) in weather.forecast.slice(0, 3)"
+          :key="index"
+          class="flex items-center justify-between text-xs font-medium"
+        >
+          <span class="opacity-90">{{ formatDate(day.date) }}</span>
+          <div class="flex items-center gap-2 opacity-80">
+            <span>{{ day.mintempC }}° / {{ day.maxtempC }}°</span>
+          </div>
+        </div>
       </div>
     </div>
 

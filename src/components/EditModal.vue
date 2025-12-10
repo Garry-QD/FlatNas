@@ -311,6 +311,22 @@ const onIconSelect = (icon: string) => {
   form.value.icon = icon;
 };
 
+// Helper: 尝试从服务器获取 Base64 图标
+const fetchBase64Icon = async (url: string): Promise<string | null> => {
+  try {
+    const res = await fetch(`/api/get-icon-base64?url=${encodeURIComponent(url)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.icon) {
+        return data.icon;
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to fetch base64 icon", e);
+  }
+  return null;
+};
+
 // 自动抓取网站图标
 const autoFetchIcon = async () => {
   const targetUrl = form.value.url || form.value.lanUrl;
@@ -330,6 +346,15 @@ const autoFetchIcon = async () => {
 
     let found = false;
     for (const src of candidates) {
+      // 1. 优先尝试让服务器转换成 Base64 (解决内网/外网访问问题)
+      const base64 = await fetchBase64Icon(src);
+      if (base64) {
+        form.value.icon = base64;
+        found = true;
+        break;
+      }
+
+      // 2. 降级：如果服务器不行（比如跨域或其他原因），尝试前端直接加载
       if (await checkImageExists(src)) {
         form.value.icon = src;
         found = true;

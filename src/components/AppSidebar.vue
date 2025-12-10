@@ -19,7 +19,8 @@ const fileInput = ref<HTMLInputElement | null>(null);
 
 // --- Bookmarks ---
 const bookmarks = computed(() => {
-  const widgets = store.widgets.filter((w) => w.type === "bookmarks" && w.enable);
+  // 查找所有收藏夹组件，无论是否启用（enable）
+  const widgets = store.widgets.filter((w) => w.type === "bookmarks");
   return widgets.flatMap((w) => (w.data as BookmarkCategory[]) || []);
 });
 

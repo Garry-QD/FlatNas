@@ -20,7 +20,8 @@ const historyIndex = ref(-1)
 // 🎶 智能 URL 处理
 const getMusicUrl = (fileName: string) => {
   if (!fileName || fileName === '加载中...' || fileName === '无音乐') return undefined
-  return `/music/${encodeURIComponent(fileName).replace(/'/g, '%27')}`
+  // Support nested paths by encoding each segment separately
+  return `/music/${fileName.split('/').map(part => encodeURIComponent(part).replace(/'/g, '%27')).join('/')}`
 }
 
 // 📥 获取列表

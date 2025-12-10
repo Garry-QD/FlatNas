@@ -139,35 +139,40 @@ const fetchWeather = async () => {
       }
 
       if (!useCache) {
-        // 改用后端接口获取位置，解决 HTTPS 下 Mixed Content 问题
-        const ipRes = await fetch("/api/ip");
-        if (!ipRes.ok) throw new Error("IP API Error");
-        const ipData = await ipRes.json();
+        // 如果使用的是高德地图，直接交给后端处理定位
+        if (store.appConfig.weatherSource === "amap" && store.appConfig.amapKey) {
+          city = "auto";
+        } else {
+          // 改用后端接口获取位置，解决 HTTPS 下 Mixed Content 问题
+          const ipRes = await fetch("/api/ip");
+          if (!ipRes.ok) throw new Error("IP API Error");
+          const ipData = await ipRes.json();
 
-        if (ipData.success && ipData.location) {
-          // 1. 去除运营商信息
-          let loc = ipData.location.split(" ")[0];
+          if (ipData.success && ipData.location) {
+            // 1. 去除运营商信息
+            let loc = ipData.location.split(" ")[0];
 
-          // 2. 去除省份、自治区、特别行政区前缀
-          loc = loc.replace(/^(?:.*?省|.*?自治区|.*?特别行政区)/, "");
+            // 2. 去除省份、自治区、特别行政区前缀
+            loc = loc.replace(/^(?:.*?省|.*?自治区|.*?特别行政区)/, "");
 
-          // 3. 保留第一级城市 (如 "宁波市慈溪市" -> "宁波市")
-          //    只匹配第一个 "市/州/盟/地区"
-          const match = loc.match(/^(.*?[市州盟地区])/);
-          if (match) {
-            loc = match[1];
+            // 3. 保留第一级城市 (如 "宁波市慈溪市" -> "宁波市")
+            //    只匹配第一个 "市/州/盟/地区"
+            const match = loc.match(/^(.*?[市州盟地区])/);
+            if (match) {
+              loc = match[1];
+            }
+
+            city = loc;
+
+            // 保存定位缓存
+            localStorage.setItem(
+              "flatnas_auto_city",
+              JSON.stringify({
+                city: city,
+                timestamp: Date.now(),
+              }),
+            );
           }
-
-          city = loc;
-
-          // 保存定位缓存
-          localStorage.setItem(
-            "flatnas_auto_city",
-            JSON.stringify({
-              city: city,
-              timestamp: Date.now(),
-            }),
-          );
         }
       }
     }
@@ -193,6 +198,10 @@ const fetchWeather = async () => {
       if (url.includes("{city}")) {
         url = url.replace("{city}", encodeURIComponent(city));
       }
+    } else {
+      const source = store.appConfig.weatherSource || "wttr";
+      const key = store.appConfig.amapKey || "";
+      url += `&source=${source}&key=${encodeURIComponent(key)}`;
     }
 
     const weatherRes = await fetch(url);
@@ -345,6 +354,33 @@ onUnmounted(() => {
     <div
       class="absolute inset-0 bg-black/5 backdrop-blur-[0px] group-hover:backdrop-blur-[2px] transition-all duration-500"
     ></div>
+
+    <!-- 设置按钮 -->
+    <div
+      v-if="props.widget && store.isLogged"
+      class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-20"
+    >
+      <button
+        @click.stop="showCityInput = true"
+        class="p-1.5 bg-black/10 text-white/70 hover:text-white rounded-full hover:bg-black/30 backdrop-blur-md transition-colors"
+        title="设置城市"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+          />
+        </svg>
+      </button>
+    </div>
 
     <!-- 内容区域 -->
     <div class="relative z-10 h-full flex flex-col justify-between p-2 sm:p-3">

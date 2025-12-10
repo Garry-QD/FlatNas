@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props */
-import { ref, nextTick, watch, onMounted } from "vue";
+import { ref, nextTick, watch, onMounted, computed } from "vue";
 import { useStorage } from "@vueuse/core";
 import type { WidgetConfig, BookmarkItem, BookmarkCategory } from "@/types";
 import { useMainStore } from "../stores/main";
@@ -8,6 +8,31 @@ import { isInternalDomain, processSecurityUrl } from "../utils/security";
 
 const props = defineProps<{ widget: WidgetConfig }>();
 const store = useMainStore();
+
+const searchQuery = ref("");
+
+const filteredData = computed(() => {
+  if (!searchQuery.value) return props.widget.data || [];
+  const query = searchQuery.value.toLowerCase();
+
+  return (props.widget.data || [])
+    .map((cat: BookmarkCategory) => {
+      const catMatches = cat.title.toLowerCase().includes(query);
+      const matchingChildren = cat.children.filter(
+        (item: BookmarkItem) =>
+          item.title.toLowerCase().includes(query) || item.url.toLowerCase().includes(query),
+      );
+
+      if (catMatches || matchingChildren.length > 0) {
+        return {
+          ...cat,
+          children: catMatches ? cat.children : matchingChildren,
+        };
+      }
+      return null;
+    })
+    .filter((cat: BookmarkCategory | null) => cat !== null) as BookmarkCategory[];
+});
 
 // Local Backup
 const localBackup = useStorage<BookmarkCategory[]>(
@@ -229,10 +254,21 @@ const cancelEdit = () => {
   editingLinkId.value = null;
 };
 
-const deleteItem = (catIndex: number, childIndex?: number) => {
+const deleteItem = (catId: string, linkId?: string) => {
   if (!confirm("确定删除吗？")) return;
-  if (typeof childIndex === "number") {
-    props.widget.data[catIndex].children.splice(childIndex, 1);
+
+  if (!props.widget.data) return;
+
+  const catIndex = props.widget.data.findIndex((c: BookmarkCategory) => c.id === catId);
+  if (catIndex === -1) return;
+
+  if (linkId) {
+    const childIndex = props.widget.data[catIndex].children.findIndex(
+      (c: BookmarkItem) => c.id === linkId,
+    );
+    if (childIndex > -1) {
+      props.widget.data[catIndex].children.splice(childIndex, 1);
+    }
   } else {
     props.widget.data.splice(catIndex, 1);
   }
@@ -264,6 +300,14 @@ const openUrl = (url: string) => {
       class="px-4 py-3 border-b border-gray-200/50 flex justify-between items-center bg-white/50 shrink-0"
     >
       <div class="font-bold text-gray-800 text-sm flex items-center gap-2">📑 收藏夹</div>
+      <div class="flex-1 mx-4">
+        <input
+          v-model="searchQuery"
+          type="text"
+          placeholder="搜索书签..."
+          class="w-full text-xs px-2 py-1 rounded-md border border-gray-200 focus:outline-none focus:border-blue-400 bg-white/50 text-gray-900 placeholder-gray-500"
+        />
+      </div>
       <div
         v-if="store.isLogged"
         class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -320,7 +364,7 @@ const openUrl = (url: string) => {
         </div>
       </div>
 
-      <div v-for="(cat, catIdx) in widget.data" :key="cat.id">
+      <div v-for="cat in filteredData" :key="cat.id">
         <div class="flex items-center justify-between mb-3 group/cat border-b border-gray-100 pb-1">
           <span
             class="font-bold text-gray-600 text-sm flex items-center gap-1 cursor-pointer select-none"
@@ -343,7 +387,7 @@ const openUrl = (url: string) => {
             >
               + 添加
             </button>
-            <button @click="deleteItem(catIdx)" class="text-gray-300 hover:text-red-500 text-xs">
+            <button @click="deleteItem(cat.id)" class="text-gray-300 hover:text-red-500 text-xs">
               删除分类
             </button>
           </div>
@@ -351,7 +395,7 @@ const openUrl = (url: string) => {
 
         <div v-if="!cat.collapsed" class="flex flex-col gap-2">
           <div
-            v-for="(link, linkIdx) in cat.children"
+            v-for="link in cat.children"
             :key="link.id"
             class="flex items-center gap-3 p-2 hover:bg-gray-100 rounded-xl cursor-pointer transition-all group/link border border-transparent hover:border-gray-200"
             @click.stop="openUrl(link.url)"
@@ -386,7 +430,7 @@ const openUrl = (url: string) => {
                 ✎
               </button>
               <button
-                @click.stop="deleteItem(catIdx, linkIdx)"
+                @click.stop="deleteItem(cat.id, link.id)"
                 class="text-gray-300 hover:text-red-500 p-1"
                 title="删除"
               >

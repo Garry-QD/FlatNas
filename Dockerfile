@@ -1,45 +1,55 @@
-# --- 第一阶段：构建前端 (Builder Stage) ---
-FROM node:20-alpine AS builder
+# ==========================================
+# 第一阶段：构建前端 (Builder Stage)
+# ==========================================
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
+
+# 1. 接收构建参数（代理地址）
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
 
 WORKDIR /app
 
-# 1. 安装项目依赖
-# 利用缓存层，如果 package.json 没变，就不重新 npm install
+# 2. 设置环境变量
+# 这样 npm install 就会自动走你传入的代理
+ENV HTTP_PROXY=$HTTP_PROXY
+ENV HTTPS_PROXY=$HTTPS_PROXY
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+
+# 3. 安装依赖并构建
 COPY package.json package-lock.json ./
-RUN npm config set registry https://registry.npmmirror.com && npm install
+RUN npm install
 
-# 2. 拷贝所有源代码
 COPY . .
-
-# 3. 执行构建生成 dist 目录
 RUN npm run build-only
 
 
-# --- 第二阶段：生产环境 (Production Stage) ---
-# 我们只用一个轻量级的 Node 镜像来运行，不包含 Python，体积更小
+# ==========================================
+# 第二阶段：生产环境 (Production Stage)
+# ==========================================
 FROM node:20-alpine
+
+# 1. 这里也需要接收参数，因为这一步也要 npm install
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
 
 WORKDIR /app
 
-# 1. 安装生产环境依赖
-# 由于 server 目录没有 package.json，我们使用根目录的 package.json
-# 这里的依赖包含 express, cors 等后端需要的包
+# 2. 同样配置代理环境变量
+ENV HTTP_PROXY=$HTTP_PROXY
+ENV HTTPS_PROXY=$HTTPS_PROXY
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+ENV NODE_ENV=production
+
+# 3. 安装后端依赖
 COPY package.json package-lock.json ./
-RUN npm config set registry https://registry.npmmirror.com && npm install --omit=dev
+# 此时 npm 会走你的 192.168... 代理，速度会非常快
+RUN apk add --no-cache python3 make g++ && npm install --omit=dev && apk del python3 make g++
 
-# 2. 准备后端文件结构
+# 4. 拷贝文件
 COPY server/ ./server/
-
-# 3. 拷贝构建好的前端静态文件
 COPY --from=builder /app/dist ./dist
 
-# 4. 处理 CGI 权限
-# 赋予 cgi-bin 下所有文件可执行权限，确保 spawn 能调用
+# 5. 权限与启动
 RUN chmod +x ./server/cgi-bin/*
-
-# 5. 暴露端口
 EXPOSE 3000
-
-# 6. 启动 Node.js 网关服务
-# server.js 位于 /app/server/server.js
 CMD ["node", "server/server.js"]

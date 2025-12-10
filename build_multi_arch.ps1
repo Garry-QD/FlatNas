@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Continue"
 
 $IMAGE_NAME = "qdnas/flatnas"
-$TAG = "1.0.21"
+$TAG = "1.0.22"
 # $env:HTTP_PROXY = "http://192.168.100.3:16888"
 # $env:HTTPS_PROXY = "http://192.168.100.3:16888"
 
@@ -40,7 +40,7 @@ try { docker context use default } catch {}
 
 # --- AMD64 ---
 Write-Host "Building for linux/amd64..."
-Invoke-Expression "docker build --pull --provenance=false --platform linux/amd64 $PROXY_ARGS -t '${IMAGE_NAME}:${TAG}-amd64' ."
+Invoke-Expression "& 'D:\Program Files\Docker\Docker\resources\cli-plugins\docker-buildx.exe' build --pull --provenance=false --platform linux/amd64 $PROXY_ARGS -t '${IMAGE_NAME}:${TAG}-amd64' ."
 if ($LASTEXITCODE -ne 0) { Write-Error "AMD64 Build failed"; exit 1 }
 
 if (-not (Run-With-Retry -Command "docker push '${IMAGE_NAME}:${TAG}-amd64'")) {
@@ -49,7 +49,7 @@ if (-not (Run-With-Retry -Command "docker push '${IMAGE_NAME}:${TAG}-amd64'")) {
 
 # --- ARM64 ---
 Write-Host "Building for linux/arm64..."
-Invoke-Expression "docker build --pull --provenance=false --platform linux/arm64 $PROXY_ARGS -t '${IMAGE_NAME}:${TAG}-arm64' ."
+Invoke-Expression "& 'D:\Program Files\Docker\Docker\resources\cli-plugins\docker-buildx.exe' build --pull --provenance=false --platform linux/arm64 $PROXY_ARGS -t '${IMAGE_NAME}:${TAG}-arm64' ."
 if ($LASTEXITCODE -ne 0) { Write-Error "ARM64 Build failed"; exit 1 }
 
 if (-not (Run-With-Retry -Command "docker push '${IMAGE_NAME}:${TAG}-arm64'")) {

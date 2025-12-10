@@ -45,16 +45,32 @@ export const useMainStore = defineStore("main", () => {
     }));
 
   // Version Check
-  const currentVersion = "1.0.21";
+  const currentVersion = "1.0.22";
   const latestVersion = ref("");
   const dockerUpdateAvailable = ref(false);
 
+  const compareVersions = (v1: string, v2: string) => {
+    const parts1 = v1.replace(/^v/, "").split(".").map(Number);
+    const parts2 = v2.replace(/^v/, "").split(".").map(Number);
+    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+      const p1 = parts1[i] || 0;
+      const p2 = parts2[i] || 0;
+      if (p1 > p2) return 1;
+      if (p1 < p2) return -1;
+    }
+    return 0;
+  };
+
   const hasUpdate = computed(() => {
-    if (dockerUpdateAvailable.value) return true;
-    if (!latestVersion.value) return false;
-    const v1 = currentVersion.replace(/^v/, "");
-    const v2 = latestVersion.value.replace(/^v/, "");
-    return v1 !== v2;
+    // 1. Version Check (Gitee)
+    if (latestVersion.value) {
+      const cmp = compareVersions(latestVersion.value, currentVersion);
+      if (cmp > 0) return true; // Remote > Local
+      if (cmp < 0) return false; // Local > Remote (Dev)
+    }
+
+    // 2. Fallback to Docker Check (only if versions match or unknown)
+    return dockerUpdateAvailable.value;
   });
 
   const checkUpdate = async () => {
@@ -72,11 +88,13 @@ export const useMainStore = defineStore("main", () => {
     }
 
     try {
-      const res = await fetch("/api/docker-status");
-      if (res.ok) {
-        const data = await res.json();
-        if (data.hasUpdate) {
-          dockerUpdateAvailable.value = true;
+      if (!import.meta.env.DEV) {
+        const res = await fetch("/api/docker-status");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.hasUpdate) {
+            dockerUpdateAvailable.value = true;
+          }
         }
       }
     } catch {
@@ -287,7 +305,7 @@ export const useMainStore = defineStore("main", () => {
 
     const doSave = async () => {
       try {
-        await fetch("/api/save", {
+        const res = await fetch("/api/save", {
           method: "POST",
           headers: getHeaders(),
           body: JSON.stringify({
@@ -299,6 +317,18 @@ export const useMainStore = defineStore("main", () => {
             rssCategories: rssCategories.value,
           }),
         });
+
+        if (res.status === 401) {
+          // 如果未授权，提示用户登录
+          if (confirm("保存失败：未登录或登录已过期。\n是否现在登录？")) {
+            // 这里可以触发登录弹窗，或者简单的跳转到登录（如果有专门的登录页）
+            // 由于目前登录是弹窗形式，我们可能需要通过状态来控制
+            // 简单做法：刷新页面让用户重新登录
+            // window.location.reload();
+            // 更好的做法：抛出一个事件让 App.vue 打开登录弹窗，但这里在 store 里比较麻烦
+            // 暂时先提示，后续可以优化为打开 SettingsModal
+          }
+        }
       } catch (e) {
         console.error("保存失败", e);
       }
@@ -431,6 +461,70 @@ export const useMainStore = defineStore("main", () => {
     }
   };
 
+  const fetchUsers = async () => {
+    try {
+      const headers: Record<string, string> = {};
+      if (token.value) headers["Authorization"] = `Bearer ${token.value}`;
+      const res = await fetch("/api/admin/users", { headers });
+      if (res.ok) {
+        const data = await res.json();
+        return data.users;
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  };
+
+  const addUser = async (usr: string, pwd: string) => {
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token.value) headers["Authorization"] = `Bearer ${token.value}`;
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ username: usr, password: pwd }),
+      });
+      if (res.ok) return true;
+      const data = await res.json();
+      throw new Error(data.error || "Add user failed");
+    } catch (e) {
+      throw e;
+    }
+  };
+
+  const deleteUser = async (usr: string) => {
+    try {
+      const headers: Record<string, string> = {};
+      if (token.value) headers["Authorization"] = `Bearer ${token.value}`;
+      const res = await fetch(`/api/admin/users/${usr}`, {
+        method: "DELETE",
+        headers,
+      });
+      if (res.ok) return true;
+      throw new Error("Delete failed");
+    } catch (e) {
+      throw e;
+    }
+  };
+
+  const uploadLicense = async (key: string) => {
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token.value) headers["Authorization"] = `Bearer ${token.value}`;
+      const res = await fetch("/api/admin/license", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ key }),
+      });
+      if (res.ok) return true;
+      const data = await res.json();
+      throw new Error(data.error || "Upload license failed");
+    } catch (e) {
+      throw e;
+    }
+  };
+
   const logout = async () => {
     token.value = "";
     username.value = "";
@@ -497,5 +591,9 @@ export const useMainStore = defineStore("main", () => {
     systemConfig,
     isConnected,
     socket,
+    fetchUsers,
+    addUser,
+    deleteUser,
+    uploadLicense,
   };
 });
