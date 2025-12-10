@@ -6,29 +6,13 @@ import type { NavItem, NavGroup, AppConfig, WidgetConfig, RssFeed, RssCategory }
 export const useMainStore = defineStore("main", () => {
   const socket = io();
   const isConnected = ref(false);
-  // Flag to prevent save loop when receiving remote updates
-  const isRemoteUpdate = ref(false);
+  let socketListenersBound = false;
 
   socket.on("connect", () => {
     isConnected.value = true;
   });
   socket.on("disconnect", () => {
     isConnected.value = false;
-  });
-
-  socket.on("data-updated", async (data: { username: string }) => {
-    // Only refresh if we are logged in as this user
-    // Or if we are in single user mode (username might be empty/admin depending on implementation)
-    // Here we check if the updated data belongs to current user
-    if (data.username === username.value) {
-      console.log("[Store] Received remote data update, refreshing...");
-      isRemoteUpdate.value = true;
-      await init();
-      // Reset flag after a short delay to ensure watch callbacks have fired and been ignored
-      setTimeout(() => {
-        isRemoteUpdate.value = false;
-      }, 1000);
-    }
   });
 
   const groups = ref<NavGroup[]>([]);
@@ -62,32 +46,16 @@ export const useMainStore = defineStore("main", () => {
     }));
 
   // Version Check
-  const currentVersion = "1.0.22";
+  const currentVersion = "1.0.23";
   const latestVersion = ref("");
   const dockerUpdateAvailable = ref(false);
 
-  const compareVersions = (v1: string, v2: string) => {
-    const parts1 = v1.replace(/^v/, "").split(".").map(Number);
-    const parts2 = v2.replace(/^v/, "").split(".").map(Number);
-    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-      const p1 = parts1[i] || 0;
-      const p2 = parts2[i] || 0;
-      if (p1 > p2) return 1;
-      if (p1 < p2) return -1;
-    }
-    return 0;
-  };
-
   const hasUpdate = computed(() => {
-    // 1. Version Check (Gitee)
-    if (latestVersion.value) {
-      const cmp = compareVersions(latestVersion.value, currentVersion);
-      if (cmp > 0) return true; // Remote > Local
-      if (cmp < 0) return false; // Local > Remote (Dev)
-    }
-
-    // 2. Fallback to Docker Check (only if versions match or unknown)
-    return dockerUpdateAvailable.value;
+    if (dockerUpdateAvailable.value) return true;
+    if (!latestVersion.value) return false;
+    const v1 = currentVersion.replace(/^v/, "");
+    const v2 = latestVersion.value.replace(/^v/, "");
+    return v1 !== v2;
   });
 
   const checkUpdate = async () => {
@@ -105,13 +73,11 @@ export const useMainStore = defineStore("main", () => {
     }
 
     try {
-      if (!import.meta.env.DEV) {
-        const res = await fetch("/api/docker-status");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.hasUpdate) {
-            dockerUpdateAvailable.value = true;
-          }
+      const res = await fetch("/api/docker-status");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.hasUpdate) {
+          dockerUpdateAvailable.value = true;
         }
       }
     } catch {
@@ -126,8 +92,9 @@ export const useMainStore = defineStore("main", () => {
     mobileBackground: "/default-wallpaper.svg",
     enableMobileWallpaper: true,
     fixedWallpaper: false,
+    deviceMode: "auto",
     pcRotation: false,
-    pcRotationInterval: 30, // Default 30 minutes
+    pcRotationInterval: 30,
     pcRotationMode: "random",
     mobileRotation: false,
     mobileRotationInterval: 30,
@@ -162,12 +129,22 @@ export const useMainStore = defineStore("main", () => {
     rememberLastEngine: true,
     groupTitleColor: "#ffffff",
     groupGap: 30,
+    autoPlayMusic: false,
     showFooterStats: false,
     footerHtml: "",
     footerHeight: 0,
     footerWidth: 1280,
     footerMarginBottom: 0,
     footerFontSize: 12,
+    // Wallpaper API defaults
+    wallpaperApiPcList: "/api/backgrounds",
+    wallpaperApiPcUpload: "/api/backgrounds/upload",
+    wallpaperApiPcDeleteBase: "/api/backgrounds",
+    wallpaperPcImageBase: "/backgrounds",
+    wallpaperApiMobileList: "/api/mobile_backgrounds",
+    wallpaperApiMobileUpload: "/api/mobile_backgrounds/upload",
+    wallpaperApiMobileDeleteBase: "/api/mobile_backgrounds",
+    wallpaperMobileImageBase: "/mobile_backgrounds",
   });
 
   const fetchSystemConfig = async () => {
@@ -310,30 +287,52 @@ export const useMainStore = defineStore("main", () => {
       if (data.rssCategories) rssCategories.value = data.rssCategories;
 
       checkUpdate();
+      if (!socketListenersBound) {
+        socket.on("memo:updated", ({ widgetId, content }) => {
+          const w = widgets.value.find((x) => x.id === widgetId);
+          if (w) w.data = content;
+        });
+        socketListenersBound = true;
+      }
+      if (token.value) {
+        socket.emit("auth", { token: token.value });
+      }
     } catch (e) {
       console.error("加载失败", e);
     }
   };
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastSavedJson = "";
 
   const saveData = async (immediate = false) => {
     if (saveTimer) clearTimeout(saveTimer);
 
     const doSave = async () => {
       try {
+        const body = {
+          groups: groups.value,
+          widgets: widgets.value,
+          appConfig: appConfig.value,
+          password: password.value, // Will handle password change logic on server
+          rssFeeds: rssFeeds.value,
+          rssCategories: rssCategories.value,
+        };
+        const json = JSON.stringify(body);
+
+        if (json === lastSavedJson) {
+          return;
+        }
+
         const res = await fetch("/api/save", {
           method: "POST",
           headers: getHeaders(),
-          body: JSON.stringify({
-            groups: groups.value,
-            widgets: widgets.value,
-            appConfig: appConfig.value,
-            password: password.value, // Will handle password change logic on server
-            rssFeeds: rssFeeds.value,
-            rssCategories: rssCategories.value,
-          }),
+          body: json,
         });
+
+        if (res.ok) {
+          lastSavedJson = json;
+        }
 
         if (res.status === 401) {
           // 如果未授权，提示用户登录
@@ -557,17 +556,13 @@ export const useMainStore = defineStore("main", () => {
     password.value = newPwd;
   };
 
-  watch(
-    [groups, widgets, appConfig, password, rssFeeds, rssCategories],
-    () => {
-      if (!isRemoteUpdate.value) {
-        saveData();
-      }
-    },
-    {
-      deep: true,
-    },
-  );
+  const saveWidget = async (id?: string, data?: unknown) => {
+    if (typeof id === "string") {
+      const w = widgets.value.find((x) => x.id === id);
+      if (w) w.data = data as WidgetConfig["data"];
+    }
+    await saveData();
+  };
 
   watch(
     () => appConfig.value.iconShape,
@@ -589,6 +584,7 @@ export const useMainStore = defineStore("main", () => {
     appConfig,
     password,
     isLogged,
+    token,
     username, // Export username
     isExpandedMode,
     rssFeeds,
@@ -605,6 +601,7 @@ export const useMainStore = defineStore("main", () => {
     register,
     logout,
     changePassword,
+    saveWidget,
     saveData,
     cleanInvalidGroups,
     checkUpdate,

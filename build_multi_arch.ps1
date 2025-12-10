@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Continue"
 
 $IMAGE_NAME = "qdnas/flatnas"
-$TAG = "1.0.22"
+$TAG = "1.0.23"
 # $env:HTTP_PROXY = "http://192.168.100.3:16888"
 # $env:HTTPS_PROXY = "http://192.168.100.3:16888"
 

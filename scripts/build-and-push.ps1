@@ -4,7 +4,7 @@ $ErrorActionPreference = "Stop"
 $env:HTTP_PROXY = "http://192.168.100.3:16888"
 $env:HTTPS_PROXY = "http://192.168.100.3:16888"
 
-$VERSION = "1.0.22"
+$VERSION = "1.0.23"
 $IMAGE_NAME = "qdnas/flatnas"
 $BUILDX_EXE = "D:\Program Files\Docker\Docker\resources\cli-plugins\docker-buildx.exe"
 
