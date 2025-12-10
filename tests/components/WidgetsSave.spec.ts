@@ -5,6 +5,7 @@ import { reactive } from "vue";
 import MemoWidget from "../../src/components/MemoWidget.vue";
 import TodoWidget from "../../src/components/TodoWidget.vue";
 import { useMainStore } from "../../src/stores/main";
+import type { TodoItem } from "../../src/types";
 
 describe("Widget Auto Save Logic", () => {
   beforeEach(() => {
@@ -55,7 +56,13 @@ describe("Widget Auto Save Logic", () => {
     Object.defineProperty(store, "isLogged", { get: () => true });
     store.saveWidget = vi.fn().mockResolvedValue(undefined);
 
-    const widget = reactive({ id: "t1", type: "todo", data: [], enable: true, isPublic: false });
+    const widget = reactive<{
+      id: string;
+      type: string;
+      data: TodoItem[];
+      enable: boolean;
+      isPublic: boolean;
+    }>({ id: "t1", type: "todo", data: [], enable: true, isPublic: false });
     const wrapper = mount(TodoWidget, {
       props: { widget },
     });
@@ -69,6 +76,7 @@ describe("Widget Auto Save Logic", () => {
 
     expect(store.saveWidget).toHaveBeenCalled();
     expect(widget.data).toHaveLength(1);
-    expect((widget.data as any)[0].text).toBe("Task 1");
+    const first = widget.data[0]!;
+    expect(first.text).toBe("Task 1");
   });
 });

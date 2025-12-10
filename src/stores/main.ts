@@ -47,7 +47,7 @@ export const useMainStore = defineStore("main", () => {
     }));
 
   // Version Check
-  const currentVersion = "1.0.23";
+  const currentVersion = "1.0.25";
   const latestVersion = ref("");
   const dockerUpdateAvailable = ref(false);
 
@@ -314,6 +314,9 @@ export const useMainStore = defineStore("main", () => {
 
     const doSave = async () => {
       try {
+        if (!isLogged.value) {
+          return;
+        }
         const body = {
           groups: groups.value,
           widgets: widgets.value,
@@ -339,15 +342,11 @@ export const useMainStore = defineStore("main", () => {
         }
 
         if (res.status === 401) {
-          // 如果未授权，提示用户登录
-          if (confirm("保存失败：未登录或登录已过期。\n是否现在登录？")) {
-            // 这里可以触发登录弹窗，或者简单的跳转到登录（如果有专门的登录页）
-            // 由于目前登录是弹窗形式，我们可能需要通过状态来控制
-            // 简单做法：刷新页面让用户重新登录
-            // window.location.reload();
-            // 更好的做法：抛出一个事件让 App.vue 打开登录弹窗，但这里在 store 里比较麻烦
-            // 暂时先提示，后续可以优化为打开 SettingsModal
-          }
+          token.value = "";
+          username.value = "";
+          isLogged.value = false;
+          localStorage.removeItem("flat-nas-token");
+          localStorage.removeItem("flat-nas-username");
         }
       } catch (e) {
         console.error("保存失败", e);

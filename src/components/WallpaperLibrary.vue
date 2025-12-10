@@ -522,8 +522,7 @@ onMounted(() => {
         </div>
 
         <VueDraggable
-          v-else
-          v-if="activeTab !== 'api'"
+          v-else-if="activeTab !== 'api'"
           v-model="draggableList"
           class="grid gap-2 md:gap-4"
           :class="
