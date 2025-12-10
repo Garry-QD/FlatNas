@@ -85,7 +85,8 @@ const cachedUsersData = {};
 let systemConfig = { authMode: "single" }; // default: 'single' or 'multi'
 
 async function atomicWrite(filePath, content) {
-  const tempFile = filePath + ".tmp";
+  const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const tempFile = `${filePath}.tmp-${uniqueSuffix}`;
   try {
     await fs.writeFile(tempFile, content);
     // Windows compatibility: retry rename if it fails (common with antivirus/file locks)
@@ -239,6 +240,22 @@ const authenticateToken = (req, res, next) => {
 // System Config API
 app.get("/api/system-config", (req, res) => {
   res.json(systemConfig);
+});
+
+// Docker Status API
+app.get("/api/docker-status", async (req, res) => {
+  const dockerStatusFile = path.join(DATA_DIR, "docker-status.json");
+  try {
+    const content = await fs.readFile(dockerStatusFile, "utf-8");
+    res.json(JSON.parse(content));
+  } catch (err) {
+    // If file not found, return a default status
+    if (err.code === "ENOENT") {
+      return res.json({ hasUpdate: false, lastCheck: null, error: "Docker status file not found" });
+    }
+    console.error("[Docker Status Error]:", err);
+    res.status(500).json({ error: "Failed to read docker status" });
+  }
 });
 
 app.post("/api/system-config", authenticateToken, async (req, res) => {
@@ -1465,6 +1482,64 @@ io.on("connection", (socket) => {
       } else {
         socket.emit("hot:error", { type, error: err.message });
       }
+    }
+  });
+
+  // Auth for Socket
+  socket.on("auth", ({ token }) => {
+    try {
+      if (!token) return;
+      const decoded = jwt.verify(token, SECRET_KEY);
+      const username = decoded.username;
+      socket.join(`user:${username}`);
+      console.log(`Socket ${socket.id} joined room user:${username}`);
+    } catch {
+      // console.error("Socket auth failed:", err.message);
+    }
+  });
+
+  socket.on("memo:update", async ({ token, widgetId, content }) => {
+    try {
+      let username = "admin";
+      if (token) {
+        const decoded = jwt.verify(token, SECRET_KEY);
+        username = decoded.username;
+      } else if (systemConfig.authMode === "single") {
+        username = "admin";
+      } else {
+        return;
+      }
+
+      if (!cachedUsersData[username]) {
+        const filePath = getUserFile(username);
+        try {
+          const json = await fs.readFile(filePath, "utf-8");
+          cachedUsersData[username] = JSON.parse(json);
+        } catch {
+          return;
+        }
+      }
+
+      const userData = cachedUsersData[username];
+      let widget = null;
+      if (userData.widgets) {
+        widget = userData.widgets.find((w) => w.id === widgetId);
+      }
+
+      if (widget) {
+        if (widget.data !== content) {
+          widget.data = content;
+          atomicWrite(getUserFile(username), JSON.stringify(userData, null, 2)).catch(
+            console.error,
+          );
+          socket.to(`user:${username}`).emit("memo:updated", { widgetId, content });
+          if (systemConfig.authMode === "single") {
+            io.emit("memo:updated", { widgetId, content });
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Memo update error:", err.message);
     }
   });
 

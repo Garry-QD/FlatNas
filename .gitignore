@@ -69,6 +69,7 @@ jspm_packages/
 # dotenv environment variables file
 .env
 .env.test
+.env.*
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -116,6 +117,7 @@ flatnas-helper/
 
 dist/
 .trae/documents/
+server/flat-nas-backup-*.json
 
 # FlatNas Media Files (防止上传本地音乐文件)
 server/music/*.mp3
@@ -134,3 +136,5 @@ server/data/*
 *.bak
 Thumbs.db
 .DS_Store
+desktop.ini
+.github/

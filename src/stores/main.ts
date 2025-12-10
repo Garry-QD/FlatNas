@@ -7,6 +7,7 @@ export const useMainStore = defineStore("main", () => {
   const socket = io();
   const isConnected = ref(false);
   let socketListenersBound = false;
+  let isInitializing = false;
 
   socket.on("connect", () => {
     isConnected.value = true;
@@ -181,6 +182,7 @@ export const useMainStore = defineStore("main", () => {
   };
 
   const init = async () => {
+    isInitializing = true;
     await fetchSystemConfig();
     try {
       const headers: Record<string, string> = {};
@@ -297,8 +299,10 @@ export const useMainStore = defineStore("main", () => {
       if (token.value) {
         socket.emit("auth", { token: token.value });
       }
+      isInitializing = false;
     } catch (e) {
       console.error("加载失败", e);
+      isInitializing = false;
     }
   };
 
@@ -575,6 +579,46 @@ export const useMainStore = defineStore("main", () => {
     (val) => {
       if (typeof val === "string") localStorage.setItem("flat-nas-card-bg-color", val);
     },
+  );
+
+  watch(
+    appConfig,
+    () => {
+      if (!isInitializing) {
+        saveData();
+      }
+    },
+    { deep: true },
+  );
+
+  watch(
+    widgets,
+    () => {
+      if (!isInitializing) {
+        saveData();
+      }
+    },
+    { deep: true },
+  );
+
+  watch(
+    rssFeeds,
+    () => {
+      if (!isInitializing) {
+        saveData();
+      }
+    },
+    { deep: true },
+  );
+
+  watch(
+    rssCategories,
+    () => {
+      if (!isInitializing) {
+        saveData();
+      }
+    },
+    { deep: true },
   );
 
   return {

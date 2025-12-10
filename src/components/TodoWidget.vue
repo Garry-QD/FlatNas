@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /* eslint-disable vue/no-mutating-props */
 import { ref, watch, onMounted } from "vue";
-import { useStorage } from "@vueuse/core";
+import { useStorage, useDebounceFn } from "@vueuse/core";
 import type { WidgetConfig } from "@/types";
+import { useMainStore } from "../stores/main";
 
 interface TodoItem {
   id: string;
@@ -11,7 +12,26 @@ interface TodoItem {
 }
 
 const props = defineProps<{ widget: WidgetConfig }>();
+const store = useMainStore();
 const newItem = ref("");
+const saveStatus = ref<"saved" | "saving" | "unsaved">("saved");
+
+// 自动保存逻辑
+const autoSave = useDebounceFn(async () => {
+  if (!store.isLogged) return;
+  saveStatus.value = "saving";
+  await store.saveWidget();
+
+  store.socket.emit("memo:update", {
+    token: store.token || localStorage.getItem("flat-nas-token"),
+    widgetId: props.widget.id,
+    content: props.widget.data,
+  });
+
+  setTimeout(() => {
+    saveStatus.value = "saved";
+  }, 500);
+}, 500);
 
 // 本地持久化备份：防止网络断开时数据丢失
 const localBackup = useStorage<TodoItem[]>(`flatnas-todo-backup-${props.widget.id}`, []);
@@ -20,6 +40,7 @@ watch(
   () => props.widget.data,
   (newVal) => {
     if (newVal) localBackup.value = newVal;
+    // Removed auto-save here to prevent loop with backend updates
   },
   { deep: true },
 );
@@ -31,15 +52,22 @@ onMounted(() => {
   }
 });
 
+const handleSave = () => {
+  saveStatus.value = "unsaved";
+  autoSave();
+};
+
 const add = () => {
   if (!newItem.value) return;
   if (!props.widget.data) props.widget.data = [];
   props.widget.data.push({ id: Date.now().toString(), text: newItem.value, done: false });
   newItem.value = "";
+  handleSave();
 };
 
 const remove = (index: number) => {
   props.widget.data.splice(index, 1);
+  handleSave();
 };
 </script>
 
@@ -48,7 +76,15 @@ const remove = (index: number) => {
     class="w-full h-full bg-white/90 backdrop-blur-md border border-white/40 rounded-2xl flex flex-col overflow-hidden p-3"
   >
     <div class="font-bold text-gray-800 text-xs mb-2 flex justify-between items-center">
-      <span>✅ 待办</span>
+      <div class="flex items-center gap-2">
+        <span>✅ 待办</span>
+        <span
+          v-if="saveStatus !== 'saved'"
+          class="text-[10px] font-normal text-gray-400 transition-opacity"
+        >
+          {{ saveStatus === "saving" ? "..." : "•" }}
+        </span>
+      </div>
       <span class="text-[10px] text-gray-400"
         >{{ widget.data?.filter((i: TodoItem) => !i.done).length || 0 }} 待完成</span
       >
@@ -59,6 +95,7 @@ const remove = (index: number) => {
         <input
           type="checkbox"
           v-model="item.done"
+          @change="handleSave"
           class="rounded text-blue-500 focus:ring-0 cursor-pointer mt-0.5"
         />
         <span

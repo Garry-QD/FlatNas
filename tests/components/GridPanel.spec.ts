@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, it, expect, vi } from "vitest";
 import { createApp } from "vue";
 import { createPinia } from "pinia";

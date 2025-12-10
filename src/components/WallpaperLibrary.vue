@@ -11,7 +11,7 @@ defineProps<{
 const emit = defineEmits(["update:show", "select"]);
 const store = useMainStore();
 
-const activeTab = ref<"pc" | "mobile">("pc");
+const activeTab = ref<"pc" | "mobile" | "api">("pc");
 const wallpapers = ref<string[]>([]);
 const mobileWallpapers = ref<string[]>([]);
 const loading = ref(false);
@@ -32,14 +32,19 @@ const handleConfirm = () => {
   closeConfirmModal();
 };
 
+const pcListEndpoint = computed(() => store.appConfig.wallpaperApiPcList || "/api/backgrounds");
+const mobileListEndpoint = computed(
+  () => store.appConfig.wallpaperApiMobileList || "/api/mobile_backgrounds",
+);
+
 const fetchWallpapers = async () => {
   loading.value = true;
   try {
-    const res = await fetch("/api/backgrounds");
+    const res = await fetch(pcListEndpoint.value);
     if (res.ok) {
       wallpapers.value = await res.json();
     }
-    const resMobile = await fetch("/api/mobile_backgrounds");
+    const resMobile = await fetch(mobileListEndpoint.value);
     if (resMobile.ok) {
       mobileWallpapers.value = await resMobile.json();
     }
@@ -51,7 +56,12 @@ const fetchWallpapers = async () => {
 };
 
 const getUrl = (name: string, type: "pc" | "mobile") => {
-  return type === "pc" ? `/backgrounds/${name}` : `/mobile_backgrounds/${name}`;
+  const base =
+    type === "pc"
+      ? store.appConfig.wallpaperPcImageBase || "/backgrounds"
+      : store.appConfig.wallpaperMobileImageBase || "/mobile_backgrounds";
+  const trimmed = base.endsWith("/") ? base.slice(0, -1) : base;
+  return `${trimmed}/${name}`;
 };
 
 const selectWallpaper = (name: string, type: "pc" | "mobile") => {
@@ -78,7 +88,7 @@ const draggableList = computed({
     const currentBg =
       activeTab.value === "pc" ? store.appConfig.background : store.appConfig.mobileBackground;
 
-    const type = activeTab.value;
+    const type: "pc" | "mobile" = activeTab.value === "pc" ? "pc" : "mobile";
     const index = list.findIndex((name) => getUrl(name, type) === currentBg);
     if (index > -1) {
       const [item] = list.splice(index, 1);
@@ -95,7 +105,7 @@ const draggableList = computed({
 
     const first = val[0];
     if (first) {
-      const type = activeTab.value;
+      const type: "pc" | "mobile" = activeTab.value === "pc" ? "pc" : "mobile";
       const currentBg =
         type === "pc" ? store.appConfig.background : store.appConfig.mobileBackground;
       const firstUrl = getUrl(first, type);
@@ -145,7 +155,9 @@ const executeUpload = async () => {
 
   // Determine endpoint based on active tab
   const endpoint =
-    activeTab.value === "pc" ? "/api/backgrounds/upload" : "/api/mobile_backgrounds/upload";
+    activeTab.value === "pc"
+      ? store.appConfig.wallpaperApiPcUpload || "/api/backgrounds/upload"
+      : store.appConfig.wallpaperApiMobileUpload || "/api/mobile_backgrounds/upload";
 
   try {
     const token = localStorage.getItem("flat-nas-token");
@@ -179,10 +191,12 @@ const handleDelete = (name: string, type: "pc" | "mobile") => {
 };
 
 const executeDelete = async (name: string, type: "pc" | "mobile") => {
-  const endpoint =
+  const base =
     type === "pc"
-      ? `/api/backgrounds/${encodeURIComponent(name)}`
-      : `/api/mobile_backgrounds/${encodeURIComponent(name)}`;
+      ? store.appConfig.wallpaperApiPcDeleteBase || "/api/backgrounds"
+      : store.appConfig.wallpaperApiMobileDeleteBase || "/api/mobile_backgrounds";
+  const trimmed = base.endsWith("/") ? base.slice(0, -1) : base;
+  const endpoint = `${trimmed}/${encodeURIComponent(name)}`;
 
   try {
     const token = localStorage.getItem("flat-nas-token");
@@ -299,6 +313,17 @@ onMounted(() => {
               <span class="px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-600 text-[10px]">{{
                 mobileWallpapers.length
               }}</span>
+            </button>
+            <button
+              @click="activeTab = 'api'"
+              class="px-3 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2"
+              :class="
+                activeTab === 'api'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              "
+            >
+              API 接口
             </button>
           </div>
         </div>
@@ -498,6 +523,7 @@ onMounted(() => {
 
         <VueDraggable
           v-else
+          v-if="activeTab !== 'api'"
           v-model="draggableList"
           class="grid gap-2 md:gap-4"
           :class="
@@ -514,7 +540,7 @@ onMounted(() => {
             :class="activeTab === 'pc' ? 'aspect-video' : 'aspect-[9/16]'"
           >
             <img
-              :src="getUrl(img, activeTab)"
+              :src="getUrl(img, activeTab === 'pc' ? 'pc' : 'mobile')"
               class="w-full h-full object-cover transition-all duration-300"
               :style="
                 index === 0
@@ -560,14 +586,14 @@ onMounted(() => {
             <!-- Set as Default Overlay -->
             <div
               class="absolute inset-0 flex items-center justify-center bg-black/50 text-white text-lg font-bold opacity-0 group-hover:opacity-100 transition-opacity z-10"
-              @click="selectWallpaper(img, activeTab)"
+              @click="selectWallpaper(img, activeTab === 'pc' ? 'pc' : 'mobile')"
             >
               设为默认壁纸
             </div>
 
             <!-- Delete Button -->
             <button
-              @click.stop="handleDelete(img, activeTab)"
+              @click.stop="handleDelete(img, activeTab === 'pc' ? 'pc' : 'mobile')"
               class="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow-sm z-20"
               title="删除"
             >
@@ -588,6 +614,101 @@ onMounted(() => {
             </button>
           </div>
         </VueDraggable>
+
+        <!-- API Management -->
+        <div v-if="activeTab === 'api'" class="space-y-6">
+          <div class="border border-gray-200 rounded-xl bg-white p-4">
+            <h4 class="text-sm font-bold text-gray-800 mb-3">PC 端接口</h4>
+            <div class="space-y-2">
+              <label class="block text-[12px] text-gray-600">列表接口</label>
+              <input
+                v-model="store.appConfig.wallpaperApiPcList"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                placeholder="默认 /api/backgrounds，返回文件名数组"
+              />
+              <label class="block text-[12px] text-gray-600 mt-2">上传接口</label>
+              <input
+                v-model="store.appConfig.wallpaperApiPcUpload"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                placeholder="默认 /api/backgrounds/upload (支持FormData: files)"
+              />
+              <label class="block text-[12px] text-gray-600 mt-2">删除接口基础路径</label>
+              <input
+                v-model="store.appConfig.wallpaperApiPcDeleteBase"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                placeholder="默认 /api/backgrounds，最终为 /base/{name}"
+              />
+              <label class="block text-[12px] text-gray-600 mt-2">图片访问前缀</label>
+              <input
+                v-model="store.appConfig.wallpaperPcImageBase"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                placeholder="默认 /backgrounds，最终为 /prefix/{name}"
+              />
+            </div>
+          </div>
+
+          <div class="border border-gray-200 rounded-xl bg-white p-4">
+            <h4 class="text-sm font-bold text-gray-800 mb-3">手机端接口</h4>
+            <div class="space-y-2">
+              <label class="block text-[12px] text-gray-600">列表接口</label>
+              <input
+                v-model="store.appConfig.wallpaperApiMobileList"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                placeholder="默认 /api/mobile_backgrounds，返回文件名数组"
+              />
+              <label class="block text-[12px] text-gray-600 mt-2">上传接口</label>
+              <input
+                v-model="store.appConfig.wallpaperApiMobileUpload"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                placeholder="默认 /api/mobile_backgrounds/upload (支持FormData: files)"
+              />
+              <label class="block text-[12px] text-gray-600 mt-2">删除接口基础路径</label>
+              <input
+                v-model="store.appConfig.wallpaperApiMobileDeleteBase"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                placeholder="默认 /api/mobile_backgrounds，最终为 /base/{name}"
+              />
+              <label class="block text-[12px] text-gray-600 mt-2">图片访问前缀</label>
+              <input
+                v-model="store.appConfig.wallpaperMobileImageBase"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                placeholder="默认 /mobile_backgrounds，最终为 /prefix/{name}"
+              />
+            </div>
+          </div>
+
+          <div class="flex items-center justify-end gap-3">
+            <button
+              @click="
+                () => {
+                  store.saveData(true);
+                  fetchWallpapers();
+                }
+              "
+              class="px-4 py-2 rounded-lg text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-sm"
+            >
+              保存并测试列表
+            </button>
+            <button
+              @click="
+                () => {
+                  store.appConfig.wallpaperApiPcList = '/api/backgrounds';
+                  store.appConfig.wallpaperApiPcUpload = '/api/backgrounds/upload';
+                  store.appConfig.wallpaperApiPcDeleteBase = '/api/backgrounds';
+                  store.appConfig.wallpaperPcImageBase = '/backgrounds';
+                  store.appConfig.wallpaperApiMobileList = '/api/mobile_backgrounds';
+                  store.appConfig.wallpaperApiMobileUpload = '/api/mobile_backgrounds/upload';
+                  store.appConfig.wallpaperApiMobileDeleteBase = '/api/mobile_backgrounds';
+                  store.appConfig.wallpaperMobileImageBase = '/mobile_backgrounds';
+                  store.saveData(true);
+                }
+              "
+              class="px-4 py-2 rounded-lg text-xs font-bold text-gray-700 bg-gray-100 hover:bg-gray-200"
+            >
+              恢复默认
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

@@ -190,8 +190,9 @@ watch(
 
     const widgetsToLayout = visibleWidgets.map((w) => {
       const newW: WidgetConfig = { ...w };
-      const layouts = newW.layouts as any;
-      const spec = layouts ? layouts[deviceKey.value] : undefined;
+      const layouts = newW.layouts;
+      const key = deviceKey.value as "desktop" | "tablet" | "mobile";
+      const spec = layouts ? layouts[key] : undefined;
       if (spec) {
         newW.x = spec.x;
         newW.y = spec.y;
@@ -264,7 +265,14 @@ const handleLayoutUpdated = (newLayout: GridLayoutItem[]) => {
       w.colSpan = l.w;
       w.rowSpan = l.h;
       const layouts = w.layouts || {};
-      layouts[deviceKey.value] = { x: l.x, y: l.y, w: l.w, h: l.h } as any;
+      const key = deviceKey.value as "desktop" | "tablet" | "mobile";
+      const spec: { x: number; y: number; w: number; h: number } = {
+        x: l.x,
+        y: l.y,
+        w: l.w,
+        h: l.h,
+      };
+      layouts[key] = spec;
       w.layouts = layouts;
     }
   });
@@ -319,15 +327,17 @@ const handleSizeSelect = (widget: GridLayoutItem, size: { colSpan: number; rowSp
     storeWidget.rowSpan = nextH;
     storeWidget.w = nextW;
     storeWidget.h = nextH;
-    
+
     // 更新 layouts 配置，确保 generateLayout 能获取到最新尺寸
     const layouts = storeWidget.layouts || {};
-    layouts[deviceKey.value] = {
+    const key = deviceKey.value as "desktop" | "tablet" | "mobile";
+    const spec: { x: number; y: number; w: number; h: number } = {
       x: widget.x,
       y: widget.y,
       w: nextW,
-      h: nextH
-    } as any;
+      h: nextH,
+    };
+    layouts[key] = spec;
     storeWidget.layouts = layouts;
   }
 

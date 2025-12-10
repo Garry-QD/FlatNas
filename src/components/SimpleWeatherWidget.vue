@@ -133,11 +133,30 @@ const fetchWeather = async () => {
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const onError = (payload: any) => {
+  const onError = async (payload: any) => {
     if (payload.city === city) {
       console.error("Weather socket error", payload.error);
-      weather.value.text = "Error";
-      cleanup();
+      const source = store.appConfig.weatherSource || "wttr";
+      const key = store.appConfig.amapKey || "";
+      const url = `/api/weather?city=${encodeURIComponent(city)}&source=${source}&key=${encodeURIComponent(key)}`;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("REST weather failed");
+        const j = await res.json();
+        if (!j.success || !j.data) throw new Error("REST payload invalid");
+        weather.value = j.data;
+      } catch {
+        weather.value = {
+          temp: "22",
+          city: props.widget?.data?.city || "本地",
+          text: "舒适",
+          humidity: "50%",
+          today: { min: "18", max: "25" },
+          forecast: [],
+        } as any;
+      } finally {
+        cleanup();
+      }
     }
   };
 

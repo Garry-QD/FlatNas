@@ -4,16 +4,19 @@ import vue from "@vitejs/plugin-vue";
 import vueDevTools from "vite-plugin-vue-devtools";
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => ({
-  plugins: [vue(), mode !== "test" && vueDevTools()],
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
+  export default defineConfig(({ mode }) => ({
+    plugins: [vue(), mode === "development" && vueDevTools()],
+    resolve: {
+      alias: {
+        "@": fileURLToPath(new URL("./src", import.meta.url)),
+      },
     },
-  },
   // ✨✨✨ 关键修改：增加了 /music 的代理 ✨✨✨
   server: {
     host: "0.0.0.0",
+    watch: {
+      ignored: ["**/data/**", "**/server/**"],
+    },
     proxy: {
       // 告诉 Vite：遇到 /api 开头的请求，转给 3000 端口
       "/api": {

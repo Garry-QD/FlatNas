@@ -734,6 +734,7 @@ const submit = () => {
             <IconUploader
               v-model="form.backgroundImage"
               :crop="false"
+              :uploadOnly="true"
               :previewStyle="{
                 filter: `blur(${form.backgroundBlur ?? 6}px)`,
                 transform: 'scale(1.1)',

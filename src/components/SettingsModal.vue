@@ -626,6 +626,24 @@ const addIframeWidget = () => {
   store.saveData();
 };
 
+const addCountdownWidget = () => {
+  const newId = "w-cd-" + Date.now();
+  store.widgets.push({
+    id: newId,
+    type: "countdown",
+    enable: true,
+    data: {
+      targetDate: "",
+      title: "重要时刻",
+      style: "card",
+    },
+    colSpan: 1,
+    rowSpan: 1,
+    isPublic: true,
+  });
+  store.saveData();
+};
+
 const removeWidget = (id: string) => {
   widgetToDeleteId.value = id;
   showDeleteWidgetConfirm.value = true;
@@ -1044,13 +1062,15 @@ onMounted(() => {
             </div>
 
             <!-- Normal Widgets Grid -->
-            <div class="grid grid-cols-4 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
               <template v-for="w in sortedWidgets" :key="w.id">
                 <div
-                  v-if="w.type !== 'iframe'"
+                  v-if="w.type !== 'iframe' && w.type !== 'countdown'"
                   :class="[
-                    'flex items-center justify-between p-3 border border-gray-100 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all',
-                    w.type === 'player' ? 'col-span-4 flex-row' : 'aspect-square flex-col',
+                    'border border-gray-100 rounded-xl bg-white hover:shadow-md transition-all',
+                    w.type === 'player'
+                      ? 'col-span-2 md:col-span-4 flex flex-col gap-3 p-4 md:grid md:grid-cols-[auto_1fr_auto] md:items-center md:gap-4'
+                      : 'flex flex-col items-center justify-between p-4 aspect-square',
                   ]"
                 >
                   <template v-if="w.type === 'player'">
@@ -1062,9 +1082,7 @@ onMounted(() => {
                       </div>
                       <span class="font-bold text-gray-700 text-sm">随机音乐</span>
                     </div>
-                    <div
-                      class="flex-1 flex items-center gap-2 px-4 border-l border-gray-200 ml-4 h-8"
-                    >
+                    <div class="flex items-center gap-2 flex-wrap">
                       <label
                         class="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs rounded-lg cursor-pointer hover:bg-blue-100 transition-colors flex items-center gap-1 whitespace-nowrap"
                       >
@@ -1084,7 +1102,7 @@ onMounted(() => {
                         >{{ uploadStatus }}</span
                       >
                     </div>
-                    <div class="flex items-center gap-4 flex-shrink-0">
+                    <div class="flex items-center justify-center md:justify-end gap-3 md:gap-4">
                       <div class="flex flex-col items-center gap-0.5">
                         <span class="text-[10px] text-gray-400 scale-90">公开</span>
                         <label class="relative inline-flex items-center cursor-pointer" title="公开"
@@ -1105,20 +1123,21 @@ onMounted(() => {
                       </div>
                       <div class="flex flex-col items-center gap-0.5">
                         <span class="text-[10px] text-gray-400 scale-90">手机</span>
-                        <label
-                          class="relative inline-flex items-center cursor-pointer"
-                          title="手机端显示"
-                        >
-                          <input
+                        <label class="relative inline-flex items-center cursor-pointer" title="手机"
+                          ><input
                             type="checkbox"
                             :checked="!w.hideOnMobile"
-                            @change="w.hideOnMobile = !($event.target as HTMLInputElement).checked"
                             class="sr-only peer"
-                          />
+                            @change="
+                              (e) => {
+                                w.hideOnMobile = !(e.target as HTMLInputElement).checked;
+                                store.saveData();
+                              }
+                            " />
                           <div
-                            class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-400"
-                          ></div>
-                        </label>
+                            class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-500"
+                          ></div
+                        ></label>
                       </div>
                       <div class="flex flex-col items-center gap-0.5">
                         <span class="text-[10px] text-gray-400 scale-90">自动</span>
@@ -1128,6 +1147,7 @@ onMounted(() => {
                           ><input
                             type="checkbox"
                             v-model="store.appConfig.autoPlayMusic"
+                            @change="store.saveData()"
                             class="sr-only peer" />
                           <div
                             class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-500"
@@ -1211,13 +1231,15 @@ onMounted(() => {
                                                         ? "RSS 阅读器"
                                                         : w.type === "iframe"
                                                           ? "万能窗口"
-                                                          : w.type === "partition"
+                                                          : w.type === "countdown"
                                                             ? "倒计时"
                                                             : `未知组件 (${w.type})`
                         }}
                       </span>
                     </div>
-                    <div class="flex items-center justify-around w-full mt-1">
+                    <div
+                      class="grid grid-cols-3 gap-2 w-full mt-2 md:flex md:items-center md:justify-center md:gap-4"
+                    >
                       <div class="flex flex-col items-center gap-0.5">
                         <span class="text-[10px] text-gray-400 scale-90">公开</span>
                         <label class="relative inline-flex items-center cursor-pointer" title="公开"
@@ -1238,20 +1260,21 @@ onMounted(() => {
                       </div>
                       <div class="flex flex-col items-center gap-0.5">
                         <span class="text-[10px] text-gray-400 scale-90">手机</span>
-                        <label
-                          class="relative inline-flex items-center cursor-pointer"
-                          title="手机端显示"
-                        >
-                          <input
+                        <label class="relative inline-flex items-center cursor-pointer" title="手机"
+                          ><input
                             type="checkbox"
                             :checked="!w.hideOnMobile"
-                            @change="w.hideOnMobile = !($event.target as HTMLInputElement).checked"
                             class="sr-only peer"
-                          />
+                            @change="
+                              (e) => {
+                                w.hideOnMobile = !(e.target as HTMLInputElement).checked;
+                                store.saveData();
+                              }
+                            " />
                           <div
-                            class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-400"
-                          ></div>
-                        </label>
+                            class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-500"
+                          ></div
+                        ></label>
                       </div>
                       <div v-if="w.type === 'player'" class="flex flex-col items-center gap-0.5">
                         <span class="text-[10px] text-gray-400 scale-90">自动</span>
@@ -1261,6 +1284,7 @@ onMounted(() => {
                           ><input
                             type="checkbox"
                             v-model="store.appConfig.autoPlayMusic"
+                            @change="store.saveData()"
                             class="sr-only peer" />
                           <div
                             class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-500"
@@ -1338,13 +1362,11 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="activeTab === 'rss'" class="space-y-6">
-            <div
-              class="flex items-center justify-between border-l-4 border-orange-500 pl-3 mb-4 mr-8"
-            >
+          <div v-if="activeTab === 'rss'" class="space-y-3">
+            <div class="flex items-center justify-between border-l-2 border-orange-500 pl-2 mb-2">
               <h4 class="text-lg font-bold text-gray-800">RSS 订阅管理</h4>
               <span
-                class="text-[10px] text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-100 flex items-center gap-1 mr-[10px]"
+                class="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full border border-green-100 flex items-center gap-1"
               >
                 <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                 云端同步已开启
@@ -1354,11 +1376,11 @@ onMounted(() => {
             <!-- RSS Widget Master Switch -->
             <div
               v-if="rssWidget"
-              class="flex items-center justify-between p-4 border border-gray-100 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all"
+              class="flex items-center justify-between p-3 border border-gray-100 rounded-lg bg-gray-50 hover:bg-white hover:shadow-md transition-all"
             >
-              <div class="flex items-center gap-4">
+              <div class="flex items-center gap-3">
                 <div
-                  class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm"
+                  class="w-8 h-8 rounded-full bg-white flex items-center justify-center text-lg shadow-sm"
                 >
                   📡
                 </div>
@@ -1367,7 +1389,7 @@ onMounted(() => {
                   <p class="text-xs text-gray-400">桌面组件总开关</p>
                 </div>
               </div>
-              <div class="flex items-center gap-6">
+              <div class="flex items-center gap-3">
                 <div class="flex flex-col items-end gap-1">
                   <span class="text-[10px] text-gray-400 font-medium">公开</span
                   ><label class="relative inline-flex items-center cursor-pointer"
@@ -1392,7 +1414,7 @@ onMounted(() => {
             <!-- Add/Edit Form -->
             <div
               v-if="editingRss"
-              class="bg-orange-50 border border-orange-100 rounded-xl p-4 mb-6 animate-fade-in"
+              class="bg-orange-50 border border-orange-100 rounded-lg p-3 mb-3 animate-fade-in"
             >
               <h5 class="text-sm font-bold text-orange-800 mb-3">
                 {{ rssForm.id ? "编辑订阅源" : "新增订阅源" }}
@@ -1414,7 +1436,7 @@ onMounted(() => {
                     placeholder="https://..."
                   />
                 </div>
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="block text-xs font-bold text-gray-600 mb-1">分类</label>
                     <input
@@ -1449,7 +1471,7 @@ onMounted(() => {
                     </div>
                   </div>
                 </div>
-                <div class="flex items-center gap-6 pt-2">
+                <div class="flex items-center gap-3 pt-2">
                   <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                     <input type="checkbox" v-model="rssForm.enable" class="accent-orange-500" />
                     启用
@@ -1478,10 +1500,10 @@ onMounted(() => {
 
             <!-- RSS List / Category Management -->
             <div v-if="!editingRss">
-              <div class="flex gap-3 mb-4">
+              <div class="flex gap-2 mb-3">
                 <button
                   @click="editRss()"
-                  class="flex-1 py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 hover:border-orange-400 hover:text-orange-500 hover:bg-orange-50 transition-all text-sm font-bold flex items-center justify-center gap-2"
+                  class="flex-1 py-2 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 hover:border-orange-400 hover:text-orange-500 hover:bg-orange-50 transition-all text-sm font-bold flex items-center justify-center gap-2"
                 >
                   <span>+</span> 新增订阅源
                 </button>
@@ -1492,16 +1514,16 @@ onMounted(() => {
                       ? 'bg-orange-100 text-orange-600 border-orange-200'
                       : 'border-gray-200 text-gray-500 hover:bg-gray-50'
                   "
-                  class="px-4 py-3 border rounded-xl text-sm font-bold transition-all"
+                  class="px-3 py-2 border rounded-lg text-sm font-bold transition-all"
                 >
                   {{ managingCategories ? "返回订阅列表" : "🗂️ 管理分类" }}
                 </button>
               </div>
 
               <!-- Category Management View -->
-              <div v-if="managingCategories" class="space-y-4 animate-fade-in">
-                <div class="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                  <h5 class="text-sm font-bold text-gray-700 mb-3">添加新分类</h5>
+              <div v-if="managingCategories" class="space-y-3 animate-fade-in">
+                <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                  <h5 class="text-sm font-bold text-gray-700 mb-2">添加新分类</h5>
                   <div class="flex gap-2">
                     <input
                       v-model="newCategoryName"
@@ -1522,7 +1544,7 @@ onMounted(() => {
                   <div
                     v-for="cat in store.rssCategories"
                     :key="cat.id"
-                    class="flex items-center justify-between p-3 bg-white border border-gray-100 rounded-xl hover:shadow-sm"
+                    class="flex items-center justify-between p-2 bg-white border border-gray-100 rounded-lg hover:shadow-sm"
                   >
                     <div v-if="editingCategoryId === cat.id" class="flex-1 flex gap-2 mr-4">
                       <input
@@ -1563,7 +1585,7 @@ onMounted(() => {
                   </div>
                   <div
                     v-if="!store.rssCategories || store.rssCategories.length === 0"
-                    class="text-center py-8 text-gray-400 text-sm"
+                    class="text-center py-6 text-gray-400 text-sm"
                   >
                     暂无分类
                   </div>
@@ -1571,10 +1593,10 @@ onMounted(() => {
               </div>
 
               <!-- RSS Feed List -->
-              <div v-else class="space-y-3 animate-fade-in">
+              <div v-else class="space-y-2 animate-fade-in">
                 <div
                   v-if="!store.rssFeeds || store.rssFeeds.length === 0"
-                  class="text-center py-8 text-gray-400 text-sm"
+                  class="text-center py-6 text-gray-400 text-sm"
                 >
                   暂无订阅源，点击上方按钮添加
                 </div>
@@ -1582,18 +1604,18 @@ onMounted(() => {
                 <div
                   v-for="feed in store.rssFeeds"
                   :key="feed.id"
-                  class="p-4 border border-gray-100 rounded-xl bg-white hover:shadow-md transition-all group"
+                  class="p-3 border border-gray-100 rounded-lg bg-white hover:shadow-md transition-all group"
                 >
-                  <div class="flex items-start justify-between mb-2">
-                    <div class="flex items-center gap-3">
+                  <div class="flex items-start justify-between mb-1">
+                    <div class="flex items-center gap-2">
                       <div
-                        class="w-10 h-10 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-lg"
+                        class="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-base"
                       >
                         {{ feed.title.substring(0, 1) }}
                       </div>
                       <div>
                         <h5 class="font-bold text-gray-800">{{ feed.title }}</h5>
-                        <div class="flex items-center gap-2 mt-1">
+                        <div class="flex items-center gap-2 mt-0.5">
                           <span
                             v-if="feed.category"
                             class="px-2 py-0.5 rounded bg-gray-100 text-xs text-gray-500"
@@ -1610,25 +1632,25 @@ onMounted(() => {
                     >
                       <button
                         @click="editRss(feed)"
-                        class="p-2 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-blue-50"
+                        class="p-1.5 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-blue-50"
                       >
                         ✏️
                       </button>
                       <button
                         @click="deleteRss(feed.id)"
-                        class="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50"
+                        class="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50"
                       >
                         🗑️
                       </button>
                     </div>
                   </div>
-                  <div class="flex items-center justify-between pt-2 border-t border-gray-50 mt-2">
+                  <div class="flex items-center justify-between pt-1 border-t border-gray-50 mt-1">
                     <div class="flex gap-2">
                       <span v-for="tag in feed.tags" :key="tag" class="text-[10px] text-orange-400"
                         >#{{ tag }}</span
                       >
                     </div>
-                    <div class="flex gap-3">
+                    <div class="flex gap-2">
                       <span
                         :class="feed.enable ? 'text-green-500' : 'text-gray-300'"
                         class="text-xs font-bold"
@@ -1769,6 +1791,7 @@ onMounted(() => {
           </div>
 
           <div v-if="activeTab === 'universal-window'" class="flatnas-handshake-signal space-y-4">
+            <!-- Universal Window Widget Section -->
             <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-4">
               <div class="flex items-center gap-2">
                 <h4 class="text-lg font-bold text-gray-800 border-l-4 border-purple-500 pl-3">
@@ -1823,13 +1846,18 @@ onMounted(() => {
                       ></label>
                     </div>
                     <div class="flex flex-col items-end gap-1">
-                      <span class="text-[10px] text-gray-400 font-medium">手机隐藏</span
+                      <span class="text-[10px] text-gray-400 font-medium">手机</span
                       ><label class="relative inline-flex items-center cursor-pointer"
                         ><input
                           type="checkbox"
-                          v-model="w.hideOnMobile"
+                          :checked="!w.hideOnMobile"
                           class="sr-only peer"
-                          @change="store.saveData()" />
+                          @change="
+                            (e) => {
+                              w.hideOnMobile = !(e.target as HTMLInputElement).checked;
+                              store.saveData();
+                            }
+                          " />
                         <div
                           class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"
                         ></div
@@ -1884,6 +1912,115 @@ onMounted(() => {
                   <p class="text-[10px] text-gray-400 mt-1">
                     系统将根据当前网络环境自动切换：内网环境优先使用内网地址，外网环境使用默认地址。
                   </p>
+                </div>
+              </div>
+            </template>
+
+            <!-- Countdown Widget Section -->
+            <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-4 mt-8">
+              <div class="flex items-center gap-2">
+                <h4 class="text-lg font-bold text-gray-800 border-l-4 border-red-500 pl-3">
+                  倒计时
+                </h4>
+                <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">可多开</span>
+                <button
+                  @click="addCountdownWidget"
+                  class="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-1 ml-2"
+                >
+                  <span class="text-lg leading-none">+</span> 新增倒计时
+                </button>
+              </div>
+            </div>
+
+            <template v-for="w in store.widgets" :key="'cd-' + w.id">
+              <div
+                v-if="w.type === 'countdown'"
+                class="flatnas-handshake-signal flex flex-col gap-3 p-4 border border-gray-100 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all"
+              >
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-4">
+                    <div
+                      class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm"
+                    >
+                      ⏳
+                    </div>
+                    <div class="flex flex-col">
+                      <span class="font-bold text-gray-700">倒计时</span>
+                      <span class="text-[10px] text-gray-400 font-mono">ID: {{ w.id }}</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-6">
+                    <button
+                      @click="removeWidget(w.id)"
+                      class="text-red-400 hover:text-red-600 text-xs underline px-2"
+                      title="删除此组件"
+                    >
+                      删除
+                    </button>
+                    <div class="flex flex-col items-end gap-1">
+                      <span class="text-[10px] text-gray-400 font-medium">公开</span
+                      ><label class="relative inline-flex items-center cursor-pointer"
+                        ><input
+                          type="checkbox"
+                          v-model="w.isPublic"
+                          class="sr-only peer"
+                          @change="store.saveData()" />
+                        <div
+                          class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
+                        ></div
+                      ></label>
+                    </div>
+                    <div class="flex flex-col items-end gap-1">
+                      <span class="text-[10px] text-gray-400 font-medium">手机</span
+                      ><label class="relative inline-flex items-center cursor-pointer"
+                        ><input
+                          type="checkbox"
+                          :checked="!w.hideOnMobile"
+                          class="sr-only peer"
+                          @change="
+                            (e) => {
+                              w.hideOnMobile = !(e.target as HTMLInputElement).checked;
+                              store.saveData();
+                            }
+                          " />
+                        <div
+                          class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"
+                        ></div
+                      ></label>
+                    </div>
+                    <div class="flex flex-col items-end gap-1">
+                      <span class="text-[10px] text-gray-400 font-medium">启用</span
+                      ><label class="relative inline-flex items-center cursor-pointer"
+                        ><input
+                          type="checkbox"
+                          v-model="w.enable"
+                          class="sr-only peer"
+                          @change="store.saveData()" />
+                        <div
+                          class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500"
+                        ></div
+                      ></label>
+                    </div>
+                  </div>
+                </div>
+                <div class="w-full bg-white p-3 rounded-lg border border-gray-100 space-y-3">
+                  <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">标题</label>
+                    <input
+                      v-model="w.data.title"
+                      type="text"
+                      placeholder="例如：春节"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-red-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">目标时间</label>
+                    <input
+                      v-model="w.data.targetDate"
+                      type="datetime-local"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-red-500 outline-none"
+                    />
+                  </div>
                 </div>
               </div>
             </template>

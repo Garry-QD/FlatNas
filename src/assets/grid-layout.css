@@ -42,6 +42,21 @@
   transition-property: transform;
 }
 
+.vgl-layout.smooth-size {
+  transition: height 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.vgl-layout.smooth-size .vgl-item {
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  transition-property: left, top, width, height;
+  will-change: transform, width, height;
+}
+
+.vgl-layout.smooth-size .vgl-item--transform {
+  transition-property: transform, width, height;
+}
+
 .vgl-item--transform.vgl-item--rtl {
   right: 0;
   left: auto;
@@ -73,7 +88,7 @@
 .vgl-item__resizer::before {
   position: absolute;
   inset: 0 3px 3px 0;
-  content: '';
+  content: "";
   border: 0 solid var(--vgl-resizer-border-color);
   border-right-width: var(--vgl-resizer-border-width);
   border-bottom-width: var(--vgl-resizer-border-width);

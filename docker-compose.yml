@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   flatnas:
-    image: qdnas/flatnas:latest
+    image: qdnas/flatnas:1.0.23
     container_name: flatnas
     restart: unless-stopped
     ports:

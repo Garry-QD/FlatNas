@@ -172,7 +172,6 @@ const styles = ["day", "month-lunar", "month-memorial"] as const;
 const toggleStyle = () => {
   if (!props.widget.data) props.widget.data = {};
   const cur = props.widget.data.style || "day";
-  // Migration: map old styles to new ones if necessary, or just reset
   let idx = styles.indexOf(cur as (typeof styles)[number]);
   if (idx === -1) idx = 0; // Default to day if unknown style
 
@@ -211,7 +210,6 @@ const goToday = () => {
       'rounded-2xl backdrop-blur border border-white/10',
     ]"
   >
-    <!-- Toggle Button (Visible on Hover) -->
     <button
       @click.stop="toggleStyle"
       class="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-black/10 active:scale-95"
@@ -234,20 +232,16 @@ const goToday = () => {
       </svg>
     </button>
 
-    <!-- Day View -->
     <div
       v-if="widget.data?.style === 'day'"
       class="w-full h-full flex flex-row cursor-pointer relative overflow-hidden"
       @click="toggleStyle"
     >
-      <!-- Background Number -->
       <div
         class="absolute right-0 bottom-0 text-7xl md:text-9xl font-bold opacity-5 pointer-events-none select-none leading-none -mb-4 -mr-4"
       >
         {{ dayNum }}
       </div>
-
-      <!-- Left 1/3: Day Number -->
       <div
         class="w-1/3 h-full flex items-center justify-center border-r border-white/10 bg-black/5 flex-shrink-0"
       >
@@ -255,20 +249,13 @@ const goToday = () => {
           {{ dayNum }}
         </div>
       </div>
-
-      <!-- Right: Details -->
       <div class="flex-1 h-full flex flex-col justify-center px-3 z-10 min-w-0">
-        <!-- Year.Month -->
         <div class="text-[10px] md:text-xs opacity-60 tracking-widest uppercase mb-0.5">
           {{ yearMonth }}
         </div>
-
-        <!-- Lunar Date -->
         <div class="text-lg md:text-2xl font-bold opacity-90 leading-tight truncate">
           {{ lunarDate }}
         </div>
-
-        <!-- WeekDay & Lunar Year -->
         <div class="flex items-center gap-2 mt-1">
           <span
             class="text-[10px] md:text-xs bg-white/20 px-1.5 py-0.5 rounded backdrop-blur-md whitespace-nowrap"
@@ -280,9 +267,7 @@ const goToday = () => {
       </div>
     </div>
 
-    <!-- Month View (with lunar) and Memorial-only -->
     <div v-else class="w-full h-full flex flex-col p-3">
-      <!-- Header -->
       <div class="flex items-center justify-center gap-2 mb-2">
         <button
           @click.stop="prevMonth"
@@ -323,7 +308,6 @@ const goToday = () => {
         </button>
       </div>
 
-      <!-- Grid -->
       <div
         class="grid grid-cols-7 gap-1 text-center flex-1 text-[11px] md:text-[12px] content-start"
       >

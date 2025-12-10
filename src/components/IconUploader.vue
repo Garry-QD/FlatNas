@@ -10,11 +10,13 @@ const props = withDefaults(
     crop?: boolean;
     previewStyle?: Record<string, string | number>;
     overlayStyle?: Record<string, string | number>;
+    uploadOnly?: boolean;
   }>(),
   {
     crop: true,
     previewStyle: () => ({}),
     overlayStyle: () => ({}),
+    uploadOnly: false,
   },
 );
 const emit = defineEmits(["update:modelValue"]);
@@ -27,7 +29,9 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const zoom = ref(1);
 
 const triggerSelect = () => {
-  if (!props.crop) {
+  if (props.uploadOnly) {
+    fileInput.value?.click();
+  } else if (!props.crop) {
     showLibrary.value = true;
   } else {
     fileInput.value?.click();
@@ -131,7 +135,7 @@ const confirmCrop = () => {
       >
         <span class="text-2xl text-gray-400 mb-1 group-hover:text-blue-500">+</span>
         <span class="text-xs text-gray-500 group-hover:text-blue-600">{{
-          crop ? "点击上传 / 裁剪" : "从壁纸库选择"
+          uploadOnly ? "点击上传" : crop ? "点击上传 / 裁剪" : "从壁纸库选择"
         }}</span>
       </div>
     </div>

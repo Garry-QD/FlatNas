@@ -154,6 +154,39 @@ watch([currentSongName, isPlaying], async () => {
 })
 
 let mountTimer: ReturnType<typeof setTimeout>
+let gestureHandlerAttached = false
+
+const tryAutoplay = async () => {
+  if (!store.appConfig.autoPlayMusic) return
+  const player = audioRef.value
+  if (!player) return
+  try {
+    player.load()
+    await player.play()
+    isPlaying.value = true
+  } catch {
+    attachGestureAutoplay()
+  }
+}
+
+const attachGestureAutoplay = () => {
+  if (gestureHandlerAttached) return
+  gestureHandlerAttached = true
+  const handler = async () => {
+    await tryAutoplay()
+    detach()
+  }
+  const detach = () => {
+    window.removeEventListener('pointerdown', handler)
+    window.removeEventListener('touchstart', handler)
+    window.removeEventListener('keydown', handler)
+    document.removeEventListener('click', handler)
+  }
+  window.addEventListener('pointerdown', handler, { once: true })
+  window.addEventListener('touchstart', handler, { once: true })
+  window.addEventListener('keydown', handler, { once: true })
+  document.addEventListener('click', handler, { once: true })
+}
 
 onMounted(() => {
   console.log('[MiniPlayer] Mounted')
@@ -162,12 +195,21 @@ onMounted(() => {
     fetchMusicList()
     setTimeout(setupMarquee, 200)
   }, 500)
+  if (store.appConfig.autoPlayMusic) attachGestureAutoplay()
 })
 
 onUnmounted(() => {
   console.log('[MiniPlayer] Unmounted')
   if (mountTimer) clearTimeout(mountTimer)
 })
+
+watch(
+  () => store.appConfig.autoPlayMusic,
+  async (val) => {
+    if (val) await tryAutoplay()
+  },
+  { immediate: false }
+)
 </script>
 
 <template>

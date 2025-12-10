@@ -12,10 +12,12 @@ export function useWallpaperRotation() {
 
   const fetchWallpapers = async () => {
     try {
-      const res = await fetch("/api/backgrounds");
+      const res = await fetch(store.appConfig.wallpaperApiPcList || "/api/backgrounds");
       if (res.ok) pcWallpapers.value = await res.json();
 
-      const resMobile = await fetch("/api/mobile_backgrounds");
+      const resMobile = await fetch(
+        store.appConfig.wallpaperApiMobileList || "/api/mobile_backgrounds",
+      );
       if (resMobile.ok) mobileWallpapers.value = await resMobile.json();
     } catch (e) {
       console.error("Failed to fetch wallpapers for rotation", e);
@@ -55,8 +57,12 @@ export function useWallpaperRotation() {
       nextWallpaper = list[nextIndex] || "";
     }
 
-    const url =
-      type === "pc" ? `/backgrounds/${nextWallpaper}` : `/mobile_backgrounds/${nextWallpaper}`;
+    const base =
+      type === "pc"
+        ? store.appConfig.wallpaperPcImageBase || "/backgrounds"
+        : store.appConfig.wallpaperMobileImageBase || "/mobile_backgrounds";
+    const trimmed = base.endsWith("/") ? base.slice(0, -1) : base;
+    const url = `${trimmed}/${nextWallpaper}`;
 
     if (type === "pc") {
       store.appConfig.background = url;

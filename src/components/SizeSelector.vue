@@ -2,6 +2,9 @@
   <div
     class="absolute bottom-12 right-2 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-[100] w-48 animate-fade-in"
     @click.stop
+    @mousedown.stop
+    @touchstart.stop
+    @pointerdown.stop
   >
     <div class="mb-2 text-xs font-bold text-gray-500 flex justify-between items-center">
       <span>调整尺寸</span>

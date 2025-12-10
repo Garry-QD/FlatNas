@@ -68,6 +68,7 @@ export interface AppConfig {
   mobileRotation?: boolean;
   mobileRotationInterval?: number;
   mobileRotationMode?: "random" | "sequential";
+  deviceMode?: "auto" | "desktop" | "tablet" | "mobile";
   backgroundBlur?: number;
   backgroundMask?: number;
   mobileBackgroundBlur?: number;
@@ -109,6 +110,15 @@ export interface AppConfig {
   weatherApiUrl?: string; // Custom API URL
   weatherSource?: "wttr" | "amap"; // Weather source
   amapKey?: string; // AMap API Key
+  // Wallpaper API management
+  wallpaperApiPcList?: string;
+  wallpaperApiPcUpload?: string;
+  wallpaperApiPcDeleteBase?: string;
+  wallpaperPcImageBase?: string;
+  wallpaperApiMobileList?: string;
+  wallpaperApiMobileUpload?: string;
+  wallpaperApiMobileDeleteBase?: string;
+  wallpaperMobileImageBase?: string;
 }
 
 export interface WidgetConfig {
@@ -126,6 +136,11 @@ export interface WidgetConfig {
   hideOnMobile?: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: any;
+  layouts?: {
+    desktop?: { x: number; y: number; w: number; h: number };
+    tablet?: { x: number; y: number; w: number; h: number };
+    mobile?: { x: number; y: number; w: number; h: number };
+  };
 }
 
 export interface SimpleIcon {

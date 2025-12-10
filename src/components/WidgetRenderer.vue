@@ -31,7 +31,7 @@ defineProps<{
   >
     IP Widget (TODO)
   </div>
-  <CountdownWidget v-else-if="widget.type === 'partition'" :widget="widget" />
+  <CountdownWidget v-else-if="widget.type === 'countdown'" :widget="widget" />
   <IframeWidget v-else-if="widget.type === 'iframe'" :widget="widget" />
   <BookmarkWidget v-else-if="widget.type === 'bookmarks'" :widget="widget" />
   <HotWidget v-else-if="widget.type === 'hot'" :widget="widget" />

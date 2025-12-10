@@ -26,7 +26,7 @@ RUN npm run build-only
 # ==========================================
 # 第二阶段：生产环境 (Production Stage)
 # ==========================================
-FROM node:20-alpine
+FROM --platform=$TARGETPLATFORM node:20-alpine
 
 # 1. 这里也需要接收参数，因为这一步也要 npm install
 ARG HTTP_PROXY

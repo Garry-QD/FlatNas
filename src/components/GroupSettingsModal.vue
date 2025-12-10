@@ -437,6 +437,7 @@ const bgAlpha = computed({
                   :modelValue="group.backgroundImage"
                   @update:modelValue="(val) => updateGroup({ backgroundImage: val })"
                   :crop="false"
+                  :uploadOnly="true"
                   :previewStyle="{
                     filter: `blur(${group.backgroundBlur ?? 6}px)`,
                     transform: 'scale(1.1)',
