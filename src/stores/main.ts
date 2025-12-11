@@ -47,7 +47,7 @@ export const useMainStore = defineStore("main", () => {
     }));
 
   // Version Check
-  const currentVersion = "1.0.25";
+  const currentVersion = "1.0.26";
   const latestVersion = ref("");
   const dockerUpdateAvailable = ref(false);
 
@@ -317,14 +317,16 @@ export const useMainStore = defineStore("main", () => {
         if (!isLogged.value) {
           return;
         }
-        const body = {
+        const body: Record<string, unknown> = {
           groups: groups.value,
           widgets: widgets.value,
           appConfig: appConfig.value,
-          password: password.value, // Will handle password change logic on server
           rssFeeds: rssFeeds.value,
           rssCategories: rssCategories.value,
         };
+        if (typeof password.value === "string" && password.value.length > 0) {
+          body.password = password.value;
+        }
         const json = JSON.stringify(body);
 
         if (json === lastSavedJson) {
@@ -339,6 +341,9 @@ export const useMainStore = defineStore("main", () => {
 
         if (res.ok) {
           lastSavedJson = json;
+          if (body.password) {
+            password.value = "";
+          }
         }
 
         if (res.status === 401) {
