@@ -28,6 +28,7 @@ import ClockWidget from "./ClockWidget.vue";
 import AppSidebar from "./AppSidebar.vue";
 import CountdownWidget from "./CountdownWidget.vue";
 import DockerWidget from "./DockerWidget.vue";
+import SystemStatusWidget from "./SystemStatusWidget.vue";
 
 import SizeSelector from "./SizeSelector.vue";
 
@@ -1136,6 +1137,7 @@ onMounted(() => {
                 ? 'ring-2 ring-blue-400/50 rounded-2xl cursor-move hover:ring-blue-500'
                 : '',
               widget.hideOnMobile ? 'hidden md:block' : '',
+              activeResizeWidgetId === widget.id ? '!z-[1000]' : '',
             ]"
           >
             <button
@@ -1218,6 +1220,7 @@ onMounted(() => {
             <ClockWeatherWidget v-else-if="widget.type === 'clockweather'" :widget="widget" />
             <RssWidget v-else-if="widget.type === 'rss'" :widget="widget" />
             <DockerWidget v-else-if="widget.type === 'docker'" :widget="widget" />
+            <SystemStatusWidget v-else-if="widget.type === 'system-status'" :widget="widget" />
           </GridItem>
         </GridLayout>
 

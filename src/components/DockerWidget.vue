@@ -30,6 +30,12 @@ const store = useMainStore();
 const props = defineProps<{ widget?: WidgetConfig; compact?: boolean }>();
 
 const MB = 1024 * 1024;
+const dockerInfo = ref<any>(null);
+const unhealthyCount = computed(
+  () =>
+    containers.value.filter((c) => c.Status && c.Status.toLowerCase().includes("unhealthy")).length,
+);
+
 const MOCK_CONTAINERS: DockerContainer[] = [
   {
     Id: "mock-1",
@@ -156,23 +162,31 @@ const fetchContainers = async () => {
   }
 };
 
-const checkConnection = async () => {
+const fetchDockerInfo = async (silent = true) => {
+  if (useMock.value) return;
   try {
     const headers = store.getHeaders();
     const res = await fetch("/api/docker/info", { headers });
     const data = await res.json();
     if (data.success) {
-      alert(
-        `✅ 连接成功!\n\nSocket: ${data.socketPath}\n版本: ${data.version.Version}\n系统: ${data.info.OSType} / ${data.info.Architecture}\n容器: ${data.info.Containers}\n名称: ${data.info.Name}`,
-      );
+      dockerInfo.value = data.info;
+      if (!silent) {
+        alert(
+          `✅ 连接成功!\n\nSocket: ${data.socketPath}\n版本: ${data.version.Version}\n系统: ${data.info.OSType} / ${data.info.Architecture}\n容器: ${data.info.Containers}\n名称: ${data.info.Name}`,
+        );
+      }
     } else {
-      alert(`❌ 连接失败: ${data.error}\nSocket: ${data.socketPath}`);
+      if (!silent) alert(`❌ 连接失败: ${data.error}\nSocket: ${data.socketPath}`);
     }
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    alert("❌ 网络错误: " + msg);
+    if (!silent) {
+      const msg = e instanceof Error ? e.message : String(e);
+      alert("❌ 网络错误: " + msg);
+    }
   }
 };
+
+const checkConnection = () => fetchDockerInfo(false);
 
 const handleAction = async (id: string, action: string) => {
   if (useMock.value) {
@@ -193,7 +207,10 @@ const handleAction = async (id: string, action: string) => {
 
 onMounted(() => {
   fetchContainers();
-  pollTimer = setInterval(fetchContainers, 5000);
+  fetchDockerInfo(true);
+  pollTimer = setInterval(() => {
+    fetchContainers();
+  }, 5000);
 });
 
 onUnmounted(() => {
@@ -318,210 +335,244 @@ const getStatusColor = (state: string) => {
       </button>
     </div>
 
-    <div v-else class="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar min-h-0">
-      <div
-        v-for="c in containers"
-        :key="c.Id"
-        class="flex flex-col gap-1 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-600"
-      >
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-2 overflow-hidden flex-1">
-            <div :class="['w-2 h-2 rounded-full shrink-0', getStatusColor(c.State)]"></div>
-            <div class="flex flex-col overflow-hidden min-w-0">
-              <span
-                class="font-medium text-sm truncate text-gray-700 dark:text-gray-200"
-                :title="c.Names?.[0] || ''"
-              >
-                {{ (c.Names?.[0] || "").replace(/^\//, "") }}
-              </span>
-              <span class="text-[10px] text-gray-400 truncate block" :title="c.Image">
-                {{ c.Image }}
-              </span>
-            </div>
-            <button
-              @click="promptPublicHost(c)"
-              class="text-[10px] text-blue-500 hover:underline px-1 shrink-0"
-              title="添加外网地址"
-            >
-              添加外网地址
-            </button>
-            <div v-if="editingPublicId === c.Id" class="flex items-center gap-1 ml-2 shrink-0">
-              <input
-                v-model="publicHostTemp"
-                type="text"
-                placeholder="nas.example.com"
-                class="px-2 py-1 border border-gray-200 rounded text-[10px] focus:border-blue-500 outline-none w-36"
-              />
-              <button
-                @click="savePublicHost(c)"
-                class="text-[10px] text-green-600 hover:underline px-1"
-                title="保存"
-              >
-                保存
-              </button>
-              <button
-                @click="cancelPublicHost"
-                class="text-[10px] text-gray-500 hover:underline px-1"
-                title="取消"
-              >
-                取消
-              </button>
-            </div>
-          </div>
-          <div class="flex flex-col items-end shrink-0 ml-2">
-            <span class="text-[10px] text-gray-400">{{ c.Status }}</span>
-            <div class="flex gap-1 mt-0.5" v-if="c.Ports && c.Ports.length">
-              <span
-                v-for="(p, i) in c.Ports.filter((p) => p.PublicPort).slice(0, 1)"
-                :key="i"
-                class="text-[9px] bg-blue-50 text-blue-500 px-1 rounded border border-blue-100"
-              >
-                {{ p.PublicPort }}
-              </span>
-              <span
-                v-if="c.Ports.filter((p) => p.PublicPort).length > 1"
-                class="text-[9px] text-gray-400"
-                >+{{ c.Ports.filter((p) => p.PublicPort).length - 1 }}</span
-              >
-            </div>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2 mt-2">
-          <div class="flex flex-col gap-1">
-            <div class="flex justify-between text-[10px] text-gray-500 items-end">
-              <span>CPU</span>
-              <span v-if="c.stats" class="font-mono">{{ c.stats.cpuPercent.toFixed(1) }}%</span>
-              <span v-else class="text-gray-300">--</span>
-            </div>
-            <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                class="h-full bg-blue-500 rounded-full transition-all duration-500"
-                :style="{ width: c.stats ? Math.min(c.stats.cpuPercent, 100) + '%' : '0%' }"
-              ></div>
-            </div>
-          </div>
-          <div class="flex flex-col gap-1">
-            <div class="flex justify-between text-[10px] text-gray-500 items-end">
-              <span>MEM</span>
-              <span v-if="c.stats" class="font-mono"
-                >{{ (c.stats.memUsage / 1024 / 1024).toFixed(0) }}MB</span
-              >
-              <span v-else class="text-gray-300">--</span>
-            </div>
-            <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                class="h-full bg-purple-500 rounded-full transition-all duration-500"
-                :style="{ width: c.stats ? Math.min(c.stats.memPercent, 100) + '%' : '0%' }"
-              ></div>
-            </div>
-          </div>
-        </div>
-
+    <div v-else class="flex flex-col h-full overflow-hidden">
+      <!-- 容器列表 (滚动区域) -->
+      <div class="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar min-h-0">
         <div
-          class="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700"
+          class="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-2 mb-2"
         >
-          <div class="flex items-center gap-2 mr-auto">
-            <button
-              v-if="c.State === 'running' && c.Ports.some((p) => p.PublicPort)"
-              @click="openContainerUrl(c)"
-              class="px-2 py-1 hover:bg-gray-100 text-gray-600 rounded transition-colors text-xs flex items-center gap-1"
-              title="内网打开"
+          <div class="flex gap-2">
+            <span
+              class="px-1.5 py-0.5 bg-green-100 text-green-700 rounded flex items-center gap-1 text-xs"
+              title="Running"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                class="w-4 h-4"
-              >
-                <path
-                  fill-rule="evenodd"
-                  d="M15.75 2.25H21a.75.75 0 01.75.75v5.25a.75.75 0 01-1.5 0V4.81L8.03 17.03a.75.75 0 01-1.06-1.06L19.19 3.75h-3.44a.75.75 0 010-1.5zm-10.5 4.5a1.5 1.5 0 00-1.5 1.5v10.5a1.5 1.5 0 001.5 1.5h10.5a1.5 1.5 0 001.5-1.5V10.5a.75.75 0 011.5 0v8.25a3 3 0 01-3 3H5.25a3 3 0 01-3-3V8.25a3 3 0 013-3h8.25a.75.75 0 010 1.5H5.25z"
-                  clip-rule="evenodd"
-                />
-              </svg>
-              <span>内网打开</span>
-            </button>
-            <button
-              v-if="c.State === 'running' && c.Ports.some((p) => p.PublicPort)"
-              @click="openContainerPublicUrl(c)"
-              class="px-2 py-1 hover:bg-gray-100 text-gray-600 rounded transition-colors text-xs flex items-center gap-1"
-              title="外网打开"
+              <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+              {{ containers.filter((c) => c.State === "running").length }}
+            </span>
+            <span
+              class="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded flex items-center gap-1 text-xs"
+              title="Stopped"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                class="w-4 h-4"
+              <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+              {{ containers.filter((c) => c.State !== "running").length }}
+            </span>
+            <span
+              v-if="unhealthyCount > 0"
+              class="px-1.5 py-0.5 bg-red-100 text-red-700 rounded flex items-center gap-1 text-xs"
+              title="Unhealthy"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+              {{ unhealthyCount }}
+            </span>
+          </div>
+          <div v-if="dockerInfo" class="flex gap-2 text-[10px] text-gray-400 items-center ml-1">
+            <span title="Images">IMG:{{ dockerInfo.Images }}</span>
+          </div>
+        </div>
+        <div
+          v-for="c in containers"
+          :key="c.Id"
+          class="flex flex-col gap-1 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-600"
+        >
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2 overflow-hidden flex-1">
+              <div :class="['w-2 h-2 rounded-full shrink-0', getStatusColor(c.State)]"></div>
+              <div class="flex flex-col overflow-hidden min-w-0">
+                <span
+                  class="font-medium text-sm truncate text-gray-700 dark:text-gray-200"
+                  :title="c.Names?.[0] || ''"
+                >
+                  {{ (c.Names?.[0] || "").replace(/^\//, "") }}
+                </span>
+                <span class="text-[10px] text-gray-400 truncate block" :title="c.Image">
+                  {{ c.Image }}
+                </span>
+              </div>
+              <button
+                @click="promptPublicHost(c)"
+                class="text-[10px] text-blue-500 hover:underline px-1 shrink-0"
+                title="添加外网地址"
               >
-                <path
-                  fill-rule="evenodd"
-                  d="M3 4.5A1.5 1.5 0 014.5 3h9A1.5 1.5 0 0115 4.5V9a1.5 1.5 0 01-1.5 1.5H9.31l2.44 2.44a.75.75 0 11-1.06 1.06L7.5 10.31V12a1.5 1.5 0 01-1.5 1.5H1.5A1.5 1.5 0 010 12V4.5A1.5 1.5 0 011.5 3H3v1.5z"
-                  clip-rule="evenodd"
+                添加外网地址
+              </button>
+              <div v-if="editingPublicId === c.Id" class="flex items-center gap-1 ml-2 shrink-0">
+                <input
+                  v-model="publicHostTemp"
+                  type="text"
+                  placeholder="nas.example.com"
+                  class="px-2 py-1 border border-gray-200 rounded text-[10px] focus:border-blue-500 outline-none w-36"
                 />
-              </svg>
-              <span>外网打开</span>
-            </button>
+                <button
+                  @click="savePublicHost(c)"
+                  class="text-[10px] text-green-600 hover:underline px-1"
+                  title="保存"
+                >
+                  保存
+                </button>
+                <button
+                  @click="cancelPublicHost"
+                  class="text-[10px] text-gray-500 hover:underline px-1"
+                  title="取消"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+            <div class="flex flex-col items-end shrink-0 ml-2">
+              <span class="text-[10px] text-gray-400">{{ c.Status }}</span>
+              <div class="flex gap-1 mt-0.5" v-if="c.Ports && c.Ports.length">
+                <span
+                  v-for="(p, i) in c.Ports.filter((p) => p.PublicPort).slice(0, 1)"
+                  :key="i"
+                  class="text-[9px] bg-blue-50 text-blue-500 px-1 rounded border border-blue-100"
+                >
+                  {{ p.PublicPort }}
+                </span>
+                <span
+                  v-if="c.Ports.filter((p) => p.PublicPort).length > 1"
+                  class="text-[9px] text-gray-400"
+                  >+{{ c.Ports.filter((p) => p.PublicPort).length - 1 }}</span
+                >
+              </div>
+            </div>
           </div>
 
-          <button
-            v-if="c.State !== 'running'"
-            @click="handleAction(c.Id, 'start')"
-            class="p-1 hover:bg-green-100 text-green-600 rounded transition-colors"
-            title="启动"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              class="w-4 h-4"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </button>
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <div class="flex flex-col gap-1">
+              <div class="flex justify-between text-[10px] text-gray-500 items-end">
+                <span>CPU</span>
+                <span v-if="c.stats" class="font-mono">{{ c.stats.cpuPercent.toFixed(1) }}%</span>
+                <span v-else class="text-gray-300">--</span>
+              </div>
+              <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-blue-500 rounded-full transition-all duration-500"
+                  :style="{ width: c.stats ? Math.min(c.stats.cpuPercent, 100) + '%' : '0%' }"
+                ></div>
+              </div>
+            </div>
+            <div class="flex flex-col gap-1">
+              <div class="flex justify-between text-[10px] text-gray-500 items-end">
+                <span>MEM</span>
+                <span v-if="c.stats" class="font-mono"
+                  >{{ (c.stats.memUsage / 1024 / 1024).toFixed(0) }}MB</span
+                >
+                <span v-else class="text-gray-300">--</span>
+              </div>
+              <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  class="h-full bg-purple-500 rounded-full transition-all duration-500"
+                  :style="{ width: c.stats ? Math.min(c.stats.memPercent, 100) + '%' : '0%' }"
+                ></div>
+              </div>
+            </div>
+          </div>
 
-          <button
-            v-if="c.State === 'running'"
-            @click="handleAction(c.Id, 'stop')"
-            class="p-1 hover:bg-red-100 text-red-600 rounded transition-colors"
-            title="停止"
+          <div
+            class="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              class="w-4 h-4"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3v-9z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </button>
+            <div class="flex items-center gap-2 mr-auto whitespace-nowrap">
+              <button
+                v-if="c.State === 'running' && c.Ports.some((p) => p.PublicPort)"
+                @click="openContainerUrl(c)"
+                class="px-2 py-1 hover:bg-gray-100 text-gray-600 rounded transition-colors text-xs flex items-center gap-1 whitespace-nowrap"
+                title="内网打开"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  class="w-4 h-4"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M15.75 2.25H21a.75.75 0 01.75.75v5.25a.75.75 0 01-1.5 0V4.81L8.03 17.03a.75.75 0 01-1.06-1.06L19.19 3.75h-3.44a.75.75 0 010-1.5zm-10.5 4.5a1.5 1.5 0 00-1.5 1.5v10.5a1.5 1.5 0 001.5 1.5h10.5a1.5 1.5 0 001.5-1.5V10.5a.75.75 0 011.5 0v8.25a3 3 0 01-3 3H5.25a3 3 0 01-3-3V8.25a3 3 0 013-3h8.25a.75.75 0 010 1.5H5.25z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                <span>内网打开</span>
+              </button>
+              <button
+                v-if="c.State === 'running' && c.Ports.some((p) => p.PublicPort)"
+                @click="openContainerPublicUrl(c)"
+                class="px-2 py-1 hover:bg-gray-100 text-gray-600 rounded transition-colors text-xs flex items-center gap-1 whitespace-nowrap"
+                title="外网打开"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  class="w-4 h-4"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M3 4.5A1.5 1.5 0 014.5 3h9A1.5 1.5 0 0115 4.5V9a1.5 1.5 0 01-1.5 1.5H9.31l2.44 2.44a.75.75 0 11-1.06 1.06L7.5 10.31V12a1.5 1.5 0 01-1.5 1.5H1.5A1.5 1.5 0 010 12V4.5A1.5 1.5 0 011.5 3H3v1.5z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                <span>外网打开</span>
+              </button>
+            </div>
 
-          <button
-            @click="handleAction(c.Id, 'restart')"
-            class="p-1 hover:bg-blue-100 text-blue-600 rounded transition-colors"
-            title="重启"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              class="w-4 h-4"
+            <button
+              v-if="c.State !== 'running'"
+              @click="handleAction(c.Id, 'start')"
+              class="p-1 hover:bg-green-100 text-green-600 rounded transition-colors"
+              title="启动"
             >
-              <path
-                fill-rule="evenodd"
-                d="M4.755 10.059a7.5 7.5 0 0112.548-3.364l1.903 1.903h-3.183a.75.75 0 100 1.5h4.992a.75.75 0 00.75-.75V4.356a.75.75 0 00-1.5 0v3.18l-1.9-1.9A9 9 0 003.306 9.67a.75.75 0 101.45.388zm15.408 3.352a.75.75 0 00-.919.53 7.5 7.5 0 01-12.548 3.364l-1.902-1.903h3.183a.75.75 0 000-1.5H2.984a.75.75 0 00-.75.75v4.992a.75.75 0 001.5 0v-3.18l1.9 1.9a9 9 0 0015.059-4.035.75.75 0 00-.53-.919z"
-                clip-rule="evenodd"
-              />
-            </svg>
-          </button>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                class="w-4 h-4"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
+
+            <button
+              v-if="c.State === 'running'"
+              @click="handleAction(c.Id, 'stop')"
+              class="p-1 hover:bg-red-100 text-red-600 rounded transition-colors"
+              title="停止"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                class="w-4 h-4"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3v-9z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
+
+            <button
+              @click="handleAction(c.Id, 'restart')"
+              class="p-1 hover:bg-blue-100 text-blue-600 rounded transition-colors"
+              title="重启"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                class="w-4 h-4"
+              >
+                <path
+                  fill-rule="evenodd"
+                  d="M4.755 10.059a7.5 7.5 0 0112.548-3.364l1.903 1.903h-3.183a.75.75 0 100 1.5h4.992a.75.75 0 00.75-.75V4.356a.75.75 0 00-1.5 0v3.18l-1.9-1.9A9 9 0 003.306 9.67a.75.75 0 101.45.388zm15.408 3.352a.75.75 0 00-.919.53 7.5 7.5 0 01-12.548 3.364l-1.902-1.903h3.183a.75.75 0 000-1.5H2.984a.75.75 0 00-.75.75v4.992a.75.75 0 001.5 0v-3.18l1.9 1.9a9 9 0 0015.059-4.035.75.75 0 00-.53-.919z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -92,6 +92,11 @@ const bgClass = computed(() => {
   }
 });
 
+// 判断是否为高亮天气（需要加深遮罩）
+const isBrightWeather = computed(() => {
+  return ["snow", "cloudy", "fog"].includes(weatherType.value);
+});
+
 // 更新时间
 const updateTime = () => {
   const now = new Date();
@@ -352,7 +357,8 @@ onUnmounted(() => {
 
     <!-- 玻璃质感遮罩 -->
     <div
-      class="absolute inset-0 bg-black/5 backdrop-blur-[0px] group-hover:backdrop-blur-[2px] transition-all duration-500"
+      class="absolute inset-0 backdrop-blur-[0px] group-hover:backdrop-blur-[2px] transition-all duration-500"
+      :class="isBrightWeather ? 'bg-black/30' : 'bg-black/5'"
     ></div>
 
     <!-- 设置按钮 -->
@@ -509,7 +515,8 @@ onUnmounted(() => {
       <!-- 中部：绝对居中的时间 -->
       <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div
-          class="text-3xl sm:text-4xl font-bold tracking-tighter drop-shadow-lg font-mono leading-none bg-gradient-to-b from-white to-white/80 bg-clip-text text-transparent"
+          class="text-3xl sm:text-4xl font-bold tracking-tighter font-mono leading-none bg-gradient-to-b from-white to-white/80 bg-clip-text text-transparent"
+          :class="isBrightWeather ? 'drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]' : 'drop-shadow-lg'"
         >
           {{ time }}
         </div>

@@ -98,6 +98,10 @@ const weatherType = computed(() => {
   return "default";
 });
 
+const isBrightWeather = computed(() => {
+  return ["snow", "cloudy", "fog"].includes(weatherType.value);
+});
+
 // 计算背景样式
 const bgClass = computed(() => {
   switch (weatherType.value) {
@@ -304,7 +308,8 @@ onUnmounted(() => {
 
     <!-- 玻璃质感遮罩 -->
     <div
-      class="absolute inset-0 bg-black/5 backdrop-blur-[0px] group-hover:backdrop-blur-[2px] transition-all duration-500"
+      class="absolute inset-0 backdrop-blur-[0px] group-hover:backdrop-blur-[2px] transition-all duration-500"
+      :class="isBrightWeather ? 'bg-black/30' : 'bg-black/5'"
     ></div>
 
     <!-- 内容区域 -->
@@ -313,7 +318,10 @@ onUnmounted(() => {
       :class="showForecast ? 'justify-between' : 'justify-center'"
     >
       <div class="flex flex-col items-center justify-center" :class="{ 'flex-1': showForecast }">
-        <div class="text-4xl sm:text-5xl font-bold tracking-tighter drop-shadow-lg mb-2">
+        <div
+          class="text-4xl sm:text-5xl font-bold tracking-tighter mb-2"
+          :class="isBrightWeather ? 'drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]' : 'drop-shadow-lg'"
+        >
           {{ weather.temp }}°
         </div>
         <div class="text-sm sm:text-base font-medium opacity-90 flex items-center gap-2">

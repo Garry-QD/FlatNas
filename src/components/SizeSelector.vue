@@ -1,6 +1,6 @@
 <template>
   <div
-    class="absolute bottom-12 right-2 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-[100] w-48 animate-fade-in"
+    class="absolute bottom-12 right-2 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-[9999] w-48 animate-fade-in"
     @click.stop
     @mousedown.stop
     @touchstart.stop

@@ -10,6 +10,7 @@ import RSSParser from "rss-parser";
 import os from "os";
 import multer from "multer";
 import Docker from "dockerode";
+import si from "systeminformation";
 
 const rssParser = new RSSParser();
 const socketPath =
@@ -53,9 +54,9 @@ const OLD_DATA_FILE = path.join(DATA_DIR, "data.json");
 const SYSTEM_CONFIG_FILE = path.join(DATA_DIR, "system.json");
 const DEFAULT_FILE = path.join(__dirname, "default.json");
 const MUSIC_DIR = path.join(__dirname, "music");
-const WALLPAPER_DIR = path.join(__dirname, "Wallpaper");
-const BACKGROUNDS_DIR = path.join(WALLPAPER_DIR, "backgrounds");
-const MOBILE_BACKGROUNDS_DIR = path.join(WALLPAPER_DIR, "mobile_backgrounds");
+const WALLPAPER_DIR = path.join(__dirname, "Wallpaper"); // Deprecated but kept for reference if needed
+const BACKGROUNDS_DIR = path.join(__dirname, "PC");
+const MOBILE_BACKGROUNDS_DIR = path.join(__dirname, "APP");
 const CONFIG_VERSIONS_DIR = path.join(DATA_DIR, "config_versions");
 
 // Helper to ensure directory exists safely
@@ -264,6 +265,62 @@ app.get("/api/docker-status", async (req, res) => {
     }
     console.error("[Docker Status Error]:", err);
     res.status(500).json({ error: "Failed to read docker status" });
+  }
+});
+
+// System Stats API
+app.get("/api/system/stats", authenticateToken, async (req, res) => {
+  try {
+    const [cpuLoad, cpuInfo, mem, fsSize, networkStats, temp, time, osInfo] = await Promise.all([
+      si.currentLoad(),
+      si.cpu(),
+      si.mem(),
+      si.fsSize(),
+      si.networkStats(),
+      si.cpuTemperature(),
+      si.time(),
+      si.osInfo(),
+    ]);
+
+    // Optimize Memory: mem.active is often better for "Used" on Linux as it excludes buffers/cache
+    // But systeminformation 'used' is total - free - buffers - cached.
+    // Let's pass both and decide in frontend or just pass the object.
+
+    res.json({
+      success: true,
+      data: {
+        cpu: {
+          currentLoad: cpuLoad.currentLoad,
+          currentLoadUser: cpuLoad.currentLoadUser,
+          currentLoadSystem: cpuLoad.currentLoadSystem,
+          manufacturer: cpuInfo.manufacturer,
+          brand: cpuInfo.brand,
+          speed: cpuInfo.speed,
+          cores: cpuInfo.cores,
+        },
+        mem: {
+          total: mem.total,
+          used: mem.used,
+          active: mem.active,
+          available: mem.available,
+        },
+        disk: fsSize,
+        network: networkStats,
+        temp: temp,
+        uptime: time.uptime,
+        os: {
+          distro: osInfo.distro,
+          release: osInfo.release,
+          codename: osInfo.codename,
+          kernel: osInfo.kernel,
+          arch: osInfo.arch,
+          hostname: osInfo.hostname,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("System Stats Error:", error);
+    res.json({ success: false, error: error.message });
   }
 });
 

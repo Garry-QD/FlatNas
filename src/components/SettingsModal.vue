@@ -7,6 +7,7 @@ import WallpaperLibrary from "./WallpaperLibrary.vue";
 import PasswordConfirmModal from "./PasswordConfirmModal.vue";
 import { VueDraggable } from "vue-draggable-plus";
 import DockerWidget from "./DockerWidget.vue";
+import SystemStatusWidget from "./SystemStatusWidget.vue";
 
 defineProps<{ show: boolean }>();
 const emit = defineEmits(["update:show"]);
@@ -28,6 +29,7 @@ const handleWallpaperSelect = (payload: { url: string; type: string } | string) 
 const activeTab = ref("style");
 const searchWidget = computed(() => store.widgets.find((w) => w.id === "w5"));
 const dockerWidget = computed(() => store.widgets.find((w) => w.type === "docker"));
+const systemStatusWidget = computed(() => store.widgets.find((w) => w.type === "system-status"));
 const sortedWidgets = computed(() => {
   const list = [...store.widgets];
   const playerIndex = list.findIndex((w) => w.type === "player");
@@ -39,6 +41,19 @@ const sortedWidgets = computed(() => {
   }
   return list;
 });
+
+// Debug Active Tab
+watch(activeTab, (val) => {
+  console.log("Active Tab Changed:", val);
+});
+
+// Ensure Docker Widget Exists
+onMounted(() => {
+  // 移除强制恢复逻辑，避免覆盖用户配置
+  // const hasDocker = store.widgets.some((w) => w.type === "docker");
+  // if (!hasDocker) { ... }
+});
+
 const passwordInput = ref("");
 const newPasswordInput = ref("");
 
@@ -376,6 +391,7 @@ const isUnknownWidget = (type: string) => {
     "sidebar",
     "iframe",
     "countdown",
+    "system-status",
   ];
 
   return !knownTypes.includes(type);
@@ -398,6 +414,15 @@ const restoreMissingWidgets = () => {
     { id: "w7", type: "quote", enable: true, isPublic: true },
     { id: "sidebar", type: "sidebar", enable: false, isPublic: true },
     { id: "docker", type: "docker", enable: false, isPublic: true, colSpan: 1, rowSpan: 1 },
+    {
+      id: "system-status",
+      type: "system-status",
+      enable: false,
+      isPublic: true,
+      colSpan: 1,
+      rowSpan: 1,
+      data: { useMock: false },
+    },
     { id: "memo", type: "memo", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
     { id: "todo", type: "todo", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
     { id: "calculator", type: "calculator", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
@@ -420,6 +445,64 @@ const restoreMissingWidgets = () => {
     alert(`已恢复 ${addedCount} 个缺失的组件`);
   } else {
     alert("未发现缺失的核心组件");
+  }
+};
+
+const enableDockerWidget = () => {
+  const def: WidgetConfig = {
+    id: "docker",
+    type: "docker",
+    enable: true,
+    isPublic: true,
+    colSpan: 1,
+    rowSpan: 1,
+    data: { useMock: false },
+  };
+  const exists = store.widgets.find((w) => w.type === "docker");
+  if (!exists) {
+    store.widgets.push(def);
+    store.saveData();
+  } else {
+    exists.enable = true;
+    store.saveData();
+  }
+};
+
+const toggleSystemStatusMock = (checked: boolean) => {
+  const w = systemStatusWidget.value;
+  if (w) {
+    if (!w.data) w.data = {};
+    w.data.useMock = checked;
+    store.saveData();
+  }
+};
+
+const enableSystemStatusWidget = () => {
+  const def: WidgetConfig = {
+    id: "system-status",
+    type: "system-status",
+    enable: true,
+    isPublic: true,
+    colSpan: 1,
+    rowSpan: 1,
+    data: { useMock: false },
+  };
+  const exists = store.widgets.find((w) => w.type === "system-status");
+  if (!exists) {
+    store.widgets.push(def);
+    store.saveData();
+  } else {
+    exists.enable = true;
+    store.saveData();
+  }
+};
+
+const onMobileSystemStatusDisplayChange = (e: Event) => {
+  const checked = (e.target as HTMLInputElement | null)?.checked ?? false;
+  const w = systemStatusWidget.value;
+  if (w) {
+    w.hideOnMobile = !checked;
+    store.saveData();
   }
 };
 
@@ -1418,13 +1501,15 @@ onMounted(() => {
                                                       ? "全网热搜"
                                                       : w.type === "rss"
                                                         ? "RSS 阅读器"
-                                                        : w.type === "iframe"
-                                                          ? "万能窗口"
-                                                          : w.type === "countdown"
-                                                            ? "倒计时"
-                                                            : w.type === "docker"
-                                                              ? "Docker 管理"
-                                                              : `未知组件 (${w.type})`
+                                                        : w.type === "system-status"
+                                                          ? "宿主机状态"
+                                                          : w.type === "iframe"
+                                                            ? "万能窗口"
+                                                            : w.type === "countdown"
+                                                              ? "倒计时"
+                                                              : w.type === "docker"
+                                                                ? "Docker 管理"
+                                                                : `未知组件 (${w.type})`
                         }}
                       </span>
                     </div>
@@ -1874,6 +1959,86 @@ onMounted(() => {
               </div>
             </div>
 
+            <!-- Host Status Widget Section -->
+            <div class="space-y-3 mb-6 pb-6 border-b border-gray-100">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-bold text-gray-800">宿主机状态组件</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="systemStatusWidget?.enable"
+                    @change="
+                      (e) => {
+                        if ((e.target as HTMLInputElement).checked) enableSystemStatusWidget();
+                        else if (systemStatusWidget) {
+                          systemStatusWidget.enable = false;
+                          store.saveData();
+                        }
+                      }
+                    "
+                    class="sr-only peer"
+                  />
+                  <div
+                    class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
+                  ></div>
+                </label>
+              </div>
+
+              <div
+                v-if="systemStatusWidget && systemStatusWidget.enable"
+                class="animate-fade-in space-y-3"
+              >
+                <div class="flex flex-wrap items-center gap-4 border-t border-gray-100 pt-3">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-700 font-medium">公开访问</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        v-model="systemStatusWidget.isPublic"
+                        class="sr-only peer"
+                      />
+                      <div
+                        class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
+                      ></div>
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-700 font-medium">手机端显示</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :checked="!systemStatusWidget.hideOnMobile"
+                        @change="onMobileSystemStatusDisplayChange"
+                        class="sr-only peer"
+                      />
+                      <div
+                        class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"
+                      ></div>
+                    </label>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-400">使用模拟数据</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        :checked="!!systemStatusWidget.data?.useMock"
+                        @change="
+                          (e) => toggleSystemStatusMock((e.target as HTMLInputElement).checked)
+                        "
+                        class="sr-only peer"
+                      />
+                      <div
+                        class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"
+                      ></div>
+                    </label>
+                  </div>
+                </div>
+                <div class="h-40 w-full max-w-sm">
+                  <SystemStatusWidget :widget="systemStatusWidget" />
+                </div>
+              </div>
+            </div>
+
             <div v-if="dockerWidget" class="space-y-3">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-bold text-gray-800">Docker 组件</span>
@@ -1927,8 +2092,14 @@ onMounted(() => {
                 <div class="flex items-center gap-2">
                   <span class="text-xs text-gray-700 font-medium">内网主机</span>
                   <input
-                    v-model="dockerWidget.data.lanHost"
-                    @change="store.saveData()"
+                    :value="dockerWidget.data?.lanHost"
+                    @change="
+                      (e) => {
+                        if (!dockerWidget.data) dockerWidget.data = {};
+                        dockerWidget.data.lanHost = (e.target as HTMLInputElement).value;
+                        store.saveData();
+                      }
+                    "
                     type="text"
                     placeholder="例如：192.168.1.10"
                     class="px-2 py-1 border border-gray-200 rounded text-xs focus:border-blue-500 outline-none"
@@ -1941,10 +2112,17 @@ onMounted(() => {
             </div>
 
             <div v-else class="text-center py-8 text-gray-500">
-              <p>未找到 Docker 组件，请尝试恢复默认组件。</p>
-              <button @click="restoreMissingWidgets" class="mt-2 text-blue-500 underline">
-                恢复默认组件
+              <p class="mb-4">未启用 Docker 组件</p>
+              <button
+                @click="enableDockerWidget"
+                class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors shadow-sm"
+              >
+                启用 Docker 组件
               </button>
+              <p class="mt-4 text-xs text-gray-400 max-w-xs mx-auto">
+                如果您的系统不支持
+                Docker（如旧版本），启用后可以在上方开启"使用模拟数据"以体验功能。
+              </p>
             </div>
           </div>
 

@@ -209,7 +209,7 @@ export const useMainStore = defineStore("main", () => {
         groups.value = [{ id: "g1", title: "常用", items: createDefaultItems(), preset: true }];
       }
 
-      if (data.widgets) {
+      if (Array.isArray(data.widgets)) {
         widgets.value = data.widgets;
 
         // 修复潜在的组件类型错乱问题 (例如备忘录被错误标记为 docker)
@@ -218,34 +218,40 @@ export const useMainStore = defineStore("main", () => {
           memoW.type = "memo";
         }
 
-        // 确保 Docker 组件存在且类型正确
-        const dockerW = widgets.value.find((w) => w.id === "docker");
-        if (!dockerW) {
-          widgets.value.push({
+        // 强健的 Docker 组件修复逻辑
+        // 1. 查找最佳 Docker 组件候选 (优先匹配 ID，其次匹配类型)
+        let dockerCandidate = widgets.value.find((w) => w.id === "docker");
+        if (!dockerCandidate) {
+          dockerCandidate = widgets.value.find((w) => w.type === "docker");
+        }
+
+        // 2. 从列表中移除所有相关的组件 (防止重复或 ID 冲突)
+        widgets.value = widgets.value.filter((w) => w.id !== "docker" && w.type !== "docker");
+
+        // 3. 准备最终的 Docker 组件
+        if (dockerCandidate) {
+          // 使用现有组件作为基础，但强制 ID 和类型
+          dockerCandidate.id = "docker";
+          dockerCandidate.type = "docker";
+          // 确保关键属性存在，防止渲染错误
+          if (typeof dockerCandidate.colSpan !== "number") dockerCandidate.colSpan = 1;
+          if (typeof dockerCandidate.rowSpan !== "number") dockerCandidate.rowSpan = 1;
+          if (typeof dockerCandidate.enable !== "boolean") dockerCandidate.enable = false;
+          if (typeof dockerCandidate.isPublic !== "boolean") dockerCandidate.isPublic = true;
+        } else {
+          // 不存在则创建默认的
+          dockerCandidate = {
             id: "docker",
             type: "docker",
             enable: false,
             isPublic: true,
             colSpan: 1,
             rowSpan: 1,
-          });
-        } else if (dockerW.type !== "docker") {
-          // 如果 ID 是 docker 但 type 错乱，强制修复并重置
-          dockerW.type = "docker";
-          dockerW.enable = false;
-          dockerW.isPublic = true;
-          // 重置尺寸，避免继承其他组件的错误尺寸
-          dockerW.colSpan = 1;
-          dockerW.rowSpan = 1;
-        } else {
-          // 如果 Docker 组件存在且类型正确，将其移动到列表末尾
-          // 这样启用时不会挤占其他未定位组件（如收藏夹）的位置
-          const idx = widgets.value.findIndex((w) => w.id === "docker");
-          if (idx > -1 && idx < widgets.value.length - 1) {
-            const [d] = widgets.value.splice(idx, 1);
-            if (d) widgets.value.push(d);
-          }
+          };
         }
+
+        // 4. 将规范化后的 Docker 组件添加到列表末尾
+        widgets.value.push(dockerCandidate);
 
         if (!widgets.value.find((w) => w.type === "rss")) {
           widgets.value.push({

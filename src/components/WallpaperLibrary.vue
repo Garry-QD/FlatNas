@@ -540,24 +540,12 @@ onMounted(() => {
           >
             <img
               :src="getUrl(img, activeTab === 'pc' ? 'pc' : 'mobile')"
-              class="w-full h-full object-cover transition-all duration-300"
-              :style="
-                index === 0
-                  ? {
-                      filter: `blur(${
-                        activeTab === 'pc'
-                          ? (store.appConfig.backgroundBlur ?? 0)
-                          : (store.appConfig.mobileBackgroundBlur ?? 0)
-                      }px)`,
-                      transform: 'scale(1.1)',
-                    }
-                  : {}
-              "
+              class="w-full h-full object-cover transition-all duration-300 group-hover:scale-110"
               loading="lazy"
             />
 
-            <!-- Mask Overlay for index 0 -->
-            <div
+            <!-- Mask Overlay for index 0 (Removed for better preview clarity) -->
+            <!-- <div
               v-if="index === 0"
               class="absolute inset-0 transition-all duration-300 pointer-events-none"
               :style="{
@@ -567,7 +555,7 @@ onMounted(() => {
                     : (store.appConfig.mobileBackgroundMask ?? 0)
                 })`,
               }"
-            ></div>
+            ></div> -->
 
             <!-- Current Wallpaper Badge -->
             <div
