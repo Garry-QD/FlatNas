@@ -14,6 +14,7 @@ export interface NavItem {
   backgroundImage?: string;
   backgroundBlur?: number;
   backgroundMask?: number;
+  iconSize?: number;
 }
 
 export interface NavGroup {
@@ -33,6 +34,8 @@ export interface NavGroup {
     | "pentagon"
     | "hexagon"
     | "octagon"
+    | "none"
+    | "hidden"
     | string;
   cardBgColor?: string;
   cardTitleColor?: string;
@@ -93,6 +96,8 @@ export interface AppConfig {
     | "pentagon"
     | "hexagon"
     | "octagon"
+    | "none"
+    | "hidden"
     | string;
   searchEngines: SearchEngine[];
   defaultSearchEngine: string;
@@ -108,8 +113,12 @@ export interface AppConfig {
   footerMarginBottom?: number;
   footerFontSize?: number;
   weatherApiUrl?: string; // Custom API URL
-  weatherSource?: "wttr" | "amap"; // Weather source
+  weatherSource?: "wttr" | "amap" | "qweather"; // Weather source
   amapKey?: string; // AMap API Key
+  hefengJwt?: string; // QWeather Legacy API Key / Token
+  qweatherProjectId?: string; // QWeather Project ID
+  qweatherKeyId?: string; // QWeather Key ID
+  qweatherPrivateKey?: string; // QWeather Private Key
   // Wallpaper API management
   wallpaperApiPcList?: string;
   wallpaperApiPcUpload?: string;

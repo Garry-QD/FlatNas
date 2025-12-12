@@ -9,8 +9,14 @@ import cors from "cors";
 import RSSParser from "rss-parser";
 import os from "os";
 import multer from "multer";
+import Docker from "dockerode";
 
 const rssParser = new RSSParser();
+const socketPath =
+  process.env.DOCKER_SOCKET_PATH ||
+  (process.platform === "win32" ? "//./pipe/docker_engine" : "/var/run/docker.sock");
+const docker = new Docker({ socketPath });
+
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
@@ -47,8 +53,10 @@ const OLD_DATA_FILE = path.join(DATA_DIR, "data.json");
 const SYSTEM_CONFIG_FILE = path.join(DATA_DIR, "system.json");
 const DEFAULT_FILE = path.join(__dirname, "default.json");
 const MUSIC_DIR = path.join(__dirname, "music");
-const BACKGROUNDS_DIR = path.join(DATA_DIR, "backgrounds");
-const MOBILE_BACKGROUNDS_DIR = path.join(DATA_DIR, "mobile_backgrounds");
+const WALLPAPER_DIR = path.join(__dirname, "Wallpaper");
+const BACKGROUNDS_DIR = path.join(WALLPAPER_DIR, "backgrounds");
+const MOBILE_BACKGROUNDS_DIR = path.join(WALLPAPER_DIR, "mobile_backgrounds");
+const CONFIG_VERSIONS_DIR = path.join(DATA_DIR, "config_versions");
 
 // Helper to ensure directory exists safely
 async function ensureDir(dirPath) {
@@ -125,6 +133,7 @@ async function ensureInit() {
   await ensureDir(MUSIC_DIR);
   await ensureDir(BACKGROUNDS_DIR);
   await ensureDir(MOBILE_BACKGROUNDS_DIR);
+  await ensureDir(CONFIG_VERSIONS_DIR);
 
   // Load System Config
   try {
@@ -255,6 +264,122 @@ app.get("/api/docker-status", async (req, res) => {
     }
     console.error("[Docker Status Error]:", err);
     res.status(500).json({ error: "Failed to read docker status" });
+  }
+});
+
+// Docker Management APIs
+app.get("/api/docker/containers", authenticateToken, async (req, res) => {
+  try {
+    const containers = await docker.listContainers({ all: true });
+
+    // Fetch stats for running containers
+    const runningContainers = containers.filter((c) => c.State === "running");
+    const statsPromises = runningContainers.map(async (c) => {
+      try {
+        const container = docker.getContainer(c.Id);
+        // stream: false returns a single snapshot
+        const stats = await container.stats({ stream: false });
+        return { id: c.Id, stats };
+      } catch (e) {
+        return { id: c.Id, error: e.message };
+      }
+    });
+
+    const statsResults = await Promise.all(statsPromises);
+    const statsMap = {};
+    statsResults.forEach((r) => {
+      if (r.stats) statsMap[r.id] = r.stats;
+    });
+
+    // Enrich containers with stats
+    const enriched = containers.map((c) => {
+      if (c.State === "running" && statsMap[c.Id]) {
+        const s = statsMap[c.Id];
+        // Calculate CPU %
+        // cpu_delta = cpu_stats.cpu_usage.total_usage - precpu_stats.cpu_usage.total_usage
+        // system_cpu_delta = cpu_stats.system_cpu_usage - precpu_stats.system_cpu_usage
+        // number_cpus = length(cpu_stats.cpu_usage.percpu_usage) or cpu_stats.online_cpus
+        // CPU % = (cpu_delta / system_cpu_delta) * number_cpus * 100.0
+
+        let cpuPercent = 0;
+        let memUsage = 0;
+        let memLimit = 0;
+        let memPercent = 0;
+
+        try {
+          const cpuStats = s.cpu_stats;
+          const precpuStats = s.precpu_stats;
+
+          if (cpuStats && precpuStats) {
+            const cpuDelta = cpuStats.cpu_usage.total_usage - precpuStats.cpu_usage.total_usage;
+            const systemDelta = cpuStats.system_cpu_usage - precpuStats.system_cpu_usage;
+            const onlineCpus =
+              cpuStats.online_cpus ||
+              (cpuStats.cpu_usage.percpu_usage ? cpuStats.cpu_usage.percpu_usage.length : 0);
+
+            if (systemDelta > 0 && onlineCpus > 0) {
+              cpuPercent = (cpuDelta / systemDelta) * onlineCpus * 100.0;
+            }
+          }
+
+          // Memory
+          if (s.memory_stats) {
+            memUsage = s.memory_stats.usage;
+            // Subtract cache from usage for cgroup v1, different for v2
+            // Simple approximation: usage - stats.cache (if exists)
+            if (s.memory_stats.stats && s.memory_stats.stats.cache) {
+              memUsage -= s.memory_stats.stats.cache;
+            } else if (s.memory_stats.stats && s.memory_stats.stats.inactive_file) {
+              // cgroup v2 approximation
+              memUsage -= s.memory_stats.stats.inactive_file;
+            }
+
+            memLimit = s.memory_stats.limit;
+            if (memLimit > 0) {
+              memPercent = (memUsage / memLimit) * 100.0;
+            }
+          }
+        } catch {
+          // Ignore calculation errors
+        }
+
+        return { ...c, stats: { cpuPercent, memUsage, memLimit, memPercent } };
+      }
+      return c;
+    });
+
+    res.json({ success: true, data: enriched });
+  } catch (error) {
+    console.error("Docker List Error:", error);
+    // Return empty list instead of 500 if docker is not available, so frontend doesn't break
+    res.json({ success: false, error: "Docker not available: " + error.message, data: [] });
+  }
+});
+
+app.get("/api/docker/info", authenticateToken, async (req, res) => {
+  try {
+    const info = await docker.info();
+    const version = await docker.version();
+    res.json({ success: true, info, version, socketPath });
+  } catch (error) {
+    console.error("Docker Info Error:", error);
+    res.json({ success: false, error: error.message, socketPath });
+  }
+});
+
+app.post("/api/docker/container/:id/:action", authenticateToken, async (req, res) => {
+  const { id, action } = req.params;
+  try {
+    const container = docker.getContainer(id);
+    if (action === "start") await container.start();
+    else if (action === "stop") await container.stop();
+    else if (action === "restart") await container.restart();
+    else return res.status(400).json({ error: "Invalid action" });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error(`Docker Action ${action} Error:`, error);
+    res.status(500).json({ error: `Failed to ${action} container: ` + error.message });
   }
 });
 
@@ -389,6 +514,103 @@ app.post("/api/login", async (req, res) => {
   } else {
     recordFailedAttempt(ip);
     res.status(401).json({ error: "Password incorrect" });
+  }
+});
+
+// Config Versions (Single User Mode)
+app.get("/api/config-versions", authenticateToken, async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (systemConfig.authMode !== "single") {
+      return res.status(400).json({ error: "Only available in single user mode" });
+    }
+    const files = await fs.readdir(CONFIG_VERSIONS_DIR);
+    const list = [];
+    for (const f of files) {
+      if (!f.endsWith(".json")) continue;
+      const full = path.join(CONFIG_VERSIONS_DIR, f);
+      const stat = await fs.stat(full).catch(() => null);
+      if (!stat) continue;
+      const base = path.basename(f, ".json");
+      const [tsStr, ...labelParts] = base.split("-");
+      const ts = Number(tsStr) || stat.mtimeMs;
+      const label = labelParts.join("-");
+      list.push({ id: f, label, createdAt: ts, size: stat.size });
+    }
+    list.sort((a, b) => b.createdAt - a.createdAt);
+    res.json({ versions: list });
+  } catch (err) {
+    console.error("[ConfigVersions][List]", err);
+    res.status(500).json({ error: "Failed to list versions" });
+  }
+});
+
+app.post("/api/config-versions", authenticateToken, async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (systemConfig.authMode !== "single") {
+      return res.status(400).json({ error: "Only available in single user mode" });
+    }
+    const rawLabel = (req.body && req.body.label) || "";
+    const safeLabel = String(rawLabel)
+      .replace(/[^a-zA-Z0-9-_]/g, "_")
+      .slice(0, 64);
+    const now = Date.now();
+    const filename = safeLabel ? `${now}-${safeLabel}.json` : `${now}.json`;
+    const filePath = path.join(CONFIG_VERSIONS_DIR, filename);
+    const adminData = cachedUsersData["admin"] || {};
+    const snapshot = {
+      groups: adminData.groups || [],
+      widgets: adminData.widgets || [],
+      appConfig: adminData.appConfig || {},
+      rssFeeds: adminData.rssFeeds || [],
+      rssCategories: adminData.rssCategories || [],
+    };
+    await atomicWrite(filePath, JSON.stringify(snapshot, null, 2));
+    res.json({ success: true, id: filename });
+  } catch (err) {
+    console.error("[ConfigVersions][Save]", err);
+    res.status(500).json({ error: "Failed to save version" });
+  }
+});
+
+app.post("/api/config-versions/restore", authenticateToken, async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (systemConfig.authMode !== "single") {
+      return res.status(400).json({ error: "Only available in single user mode" });
+    }
+    const id = req.body && req.body.id;
+    if (!id || typeof id !== "string") return res.status(400).json({ error: "Missing id" });
+    const filePath = path.join(CONFIG_VERSIONS_DIR, path.basename(id));
+    const content = await fs.readFile(filePath, "utf-8");
+    const data = JSON.parse(content);
+    const activeFile = getUserFile("admin");
+    const current = cachedUsersData["admin"] || {};
+    const finalData = { ...data, password: current.password };
+    cachedUsersData["admin"] = finalData;
+    await atomicWrite(activeFile, JSON.stringify(finalData, null, 2));
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[ConfigVersions][Restore]", err);
+    res.status(500).json({ error: "Failed to restore version" });
+  }
+});
+
+app.delete("/api/config-versions/:id", authenticateToken, async (req, res) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    if (systemConfig.authMode !== "single") {
+      return res.status(400).json({ error: "Only available in single user mode" });
+    }
+    const id = req.params.id;
+    if (!id || typeof id !== "string") return res.status(400).json({ error: "Missing id" });
+    const filePath = path.join(CONFIG_VERSIONS_DIR, path.basename(id));
+    await fs.unlink(filePath).catch(() => {});
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[ConfigVersions][Delete]", err);
+    res.status(500).json({ error: "Failed to delete version" });
   }
 });
 
@@ -718,9 +940,20 @@ app.post("/api/save", authenticateToken, async (req, res) => {
 
     // Handle password update
     let newPassword = currentData.password;
-    if (body.password && body.password.length > 0) {
-      if (body.password !== currentData.password) {
-        newPassword = await bcrypt.hash(body.password, 10);
+    if (typeof body.password === "string" && body.password.length > 0) {
+      try {
+        let matched = false;
+        if (typeof currentData.password === "string" && currentData.password.startsWith("$2b$")) {
+          matched = await bcrypt.compare(body.password, currentData.password);
+        } else {
+          matched = body.password === currentData.password;
+        }
+        if (!matched) {
+          newPassword = await bcrypt.hash(body.password, 10);
+        }
+      } catch (e) {
+        console.error("Password process error", e);
+        newPassword = currentData.password;
       }
     }
     body.password = newPassword;
@@ -953,8 +1186,10 @@ app.post("/api/data/import", authenticateToken, async (req, res) => {
   const username = req.user.username;
   try {
     const body = req.body;
-    cachedUsersData[username] = body;
-    await atomicWrite(getUserFile(username), JSON.stringify(body, null, 2));
+    const current = cachedUsersData[username] || {};
+    const finalData = { ...body, password: current.password };
+    cachedUsersData[username] = finalData;
+    await atomicWrite(getUserFile(username), JSON.stringify(finalData, null, 2));
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: "Failed to import" });

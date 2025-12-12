@@ -47,10 +47,11 @@ const form = ref<Omit<NavItem, "id">>({
   description3: "",
   color: "bg-blue-50 text-blue-600",
   titleColor: "",
-  isPublic: true,
+  isPublic: false,
   backgroundImage: "",
   backgroundBlur: 6,
   backgroundMask: 0.3,
+  iconSize: 100,
 });
 
 // 预设一些常用的 Emoji
@@ -391,6 +392,7 @@ watch(
           backgroundImage: props.data.backgroundImage || "",
           backgroundBlur: props.data.backgroundBlur ?? 6,
           backgroundMask: props.data.backgroundMask ?? 0.3,
+          iconSize: props.data.iconSize ?? 100,
         };
 
         // 判断当前图标是图片还是 Emoji
@@ -422,10 +424,11 @@ watch(
           icon: "",
           color: "bg-blue-50 text-blue-600",
           titleColor: "",
-          isPublic: true,
+          isPublic: false,
           backgroundImage: "",
           backgroundBlur: 6,
           backgroundMask: 0.3,
+          iconSize: 100,
         };
         iconType.value = "image";
       }
@@ -436,8 +439,10 @@ watch(
 const close = () => emit("update:show", false);
 
 // 处理图标加载错误
-const handleIconError = () => {
-  // 如果当前图标是普通 URL（非本地路径），且加载失败，尝试获取该域名的 favicon
+const iconInputFocused = ref(false);
+const isImgError = ref(false);
+
+const processIconError = () => {
   const val = form.value.icon;
   if (
     val &&
@@ -460,6 +465,25 @@ const handleIconError = () => {
   }
   // 否则直接清空
   form.value.icon = "";
+};
+
+const handleIconError = () => {
+  isImgError.value = true;
+  // 如果正在输入，不要打断用户
+  if (iconInputFocused.value) return;
+  processIconError();
+};
+
+const onIconInputBlur = () => {
+  iconInputFocused.value = false;
+  // 失去焦点时，如果有错误，尝试修正
+  if (isImgError.value) {
+    processIconError();
+  }
+};
+
+const onImgLoad = () => {
+  isImgError.value = false;
 };
 
 // 提交保存
@@ -664,8 +688,10 @@ const submit = () => {
                 <img
                   v-if="form.icon"
                   :src="form.icon"
-                  class="w-full h-full object-cover"
+                  class="w-full h-full object-cover transition-transform duration-200"
+                  :style="{ transform: `scale(${(form.iconSize ?? 100) / 100})` }"
                   @error="handleIconError"
+                  @load="onImgLoad"
                 />
                 <span v-else class="text-gray-300 text-xs">预览</span>
               </template>
@@ -697,12 +723,29 @@ const submit = () => {
               type="text"
               placeholder="图片 URL 地址..."
               class="w-full px-4 py-2 rounded-lg border border-gray-200 text-sm focus:border-blue-500 outline-none"
+              @focus="iconInputFocused = true"
+              @blur="onIconInputBlur"
             />
 
             <div
               class="text-xs text-gray-400 text-center flex items-center gap-2 before:h-px before:bg-gray-200 before:flex-1 after:h-px after:bg-gray-200 after:flex-1"
             >
               或
+            </div>
+
+            <div
+              class="flex items-center gap-2 bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-100"
+            >
+              <span class="text-xs text-gray-400 whitespace-nowrap">缩放</span>
+              <input
+                type="range"
+                v-model.number="form.iconSize"
+                min="20"
+                max="200"
+                step="5"
+                class="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+              <span class="text-xs text-gray-500 w-8 text-right">{{ form.iconSize }}%</span>
             </div>
 
             <IconUploader v-model="form.icon" />

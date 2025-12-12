@@ -6,6 +6,7 @@ import { useElementSize } from "@vueuse/core";
 const props = defineProps<{
   widget: WidgetConfig;
   isLanMode?: boolean;
+  isEditMode?: boolean;
 }>();
 
 const isLoading = ref(true);
@@ -121,6 +122,7 @@ watch(
       ref="iframeRef"
       :src="currentUrl"
       class="w-full h-full border-0 transition-all duration-300"
+      :class="props.isEditMode ? 'pointer-events-none' : ''"
       :style="scaleStyle"
       allowfullscreen
       allow="geolocation; microphone; camera; midi; vr; accelerometer; gyroscope; payment; ambient-light-sensor; encrypted-media; clipboard-write"

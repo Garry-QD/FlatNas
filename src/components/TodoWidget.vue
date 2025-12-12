@@ -22,7 +22,7 @@ const autoSave = useDebounceFn(async () => {
   saveStatus.value = "saving";
   await store.saveWidget();
 
-  store.socket.emit("memo:update", {
+  store.socket.emit("todo:update", {
     token: store.token || localStorage.getItem("flat-nas-token"),
     widgetId: props.widget.id,
     content: props.widget.data,

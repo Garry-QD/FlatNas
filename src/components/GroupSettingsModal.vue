@@ -504,6 +504,8 @@ const bgAlpha = computed({
                   @change="(e) => updateGroup({ iconShape: (e.target as HTMLInputElement).value })"
                   class="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:border-blue-500"
                 >
+                  <option value="none">无形状</option>
+                  <option value="hidden">不使用图标</option>
                   <option value="rounded">圆角矩形</option>
                   <option value="square">方形</option>
                   <option value="circle">圆形</option>

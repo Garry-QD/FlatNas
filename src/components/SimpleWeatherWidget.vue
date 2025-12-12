@@ -5,6 +5,34 @@ import { useMainStore } from "../stores/main";
 import type { WidgetConfig } from "@/types";
 import { cityData } from "@/utils/cityData";
 
+interface WeatherForecast {
+  date: string;
+  mintempC: string;
+  maxtempC: string;
+}
+
+interface WeatherData {
+  temp: string;
+  city: string;
+  text: string;
+  humidity: string;
+  today: {
+    min: string;
+    max: string;
+  };
+  forecast: WeatherForecast[];
+}
+
+interface WeatherPayload {
+  city: string;
+  data: WeatherData;
+}
+
+interface WeatherErrorPayload {
+  city: string;
+  error: unknown;
+}
+
 const props = defineProps<{
   widget?: WidgetConfig;
 }>();
@@ -28,13 +56,13 @@ const getInitialCity = () => {
   return "定位中...";
 };
 
-const weather = ref({
+const weather = ref<WeatherData>({
   temp: "--",
   city: getInitialCity(),
   text: "...",
   humidity: "",
   today: { min: "", max: "" },
-  forecast: [] as any[],
+  forecast: [],
 });
 const isNight = ref(false);
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -124,16 +152,14 @@ const fetchWeather = async () => {
   const city = props.widget?.data?.city || customCityInput.value || "Shanghai"; // Default fallback
 
   // Setup socket listener
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const onData = (payload: any) => {
+  const onData = (payload: WeatherPayload) => {
     if (payload.city === city || (payload.city === "Shanghai" && !props.widget?.data?.city)) {
       weather.value = payload.data;
       cleanup();
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const onError = async (payload: any) => {
+  const onError = async (payload: WeatherErrorPayload) => {
     if (payload.city === city) {
       console.error("Weather socket error", payload.error);
       const source = store.appConfig.weatherSource || "wttr";
@@ -144,7 +170,7 @@ const fetchWeather = async () => {
         if (!res.ok) throw new Error("REST weather failed");
         const j = await res.json();
         if (!j.success || !j.data) throw new Error("REST payload invalid");
-        weather.value = j.data;
+        weather.value = j.data as WeatherData;
       } catch {
         weather.value = {
           temp: "22",
@@ -153,7 +179,7 @@ const fetchWeather = async () => {
           humidity: "50%",
           today: { min: "18", max: "25" },
           forecast: [],
-        } as any;
+        };
       } finally {
         cleanup();
       }

@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   flatnas:
@@ -6,7 +6,10 @@ services:
     container_name: flatnas
     restart: unless-stopped
     ports:
-      - '23000:3000'
+      - "23000:3000"
     volumes:
       - ./data:/app/server/data #指定路径下新建data
       - ./music:/app/server/music #映射播放器路径
+      - ./Wallpaper/backgrounds:/app/server/backgrounds #映射背景路径
+      - ./Wallpaper/mobile_backgrounds:/app/server/mobile_backgrounds #映射移动端背景路径
+      - /var/run/docker.sock:/var/run/docker.sock #映射Docker Socket

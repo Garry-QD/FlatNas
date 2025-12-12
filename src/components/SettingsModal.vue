@@ -6,6 +6,7 @@ import IconUploader from "./IconUploader.vue";
 import WallpaperLibrary from "./WallpaperLibrary.vue";
 import PasswordConfirmModal from "./PasswordConfirmModal.vue";
 import { VueDraggable } from "vue-draggable-plus";
+import DockerWidget from "./DockerWidget.vue";
 
 defineProps<{ show: boolean }>();
 const emit = defineEmits(["update:show"]);
@@ -26,6 +27,7 @@ const handleWallpaperSelect = (payload: { url: string; type: string } | string) 
 
 const activeTab = ref("style");
 const searchWidget = computed(() => store.widgets.find((w) => w.id === "w5"));
+const dockerWidget = computed(() => store.widgets.find((w) => w.type === "docker"));
 const sortedWidgets = computed(() => {
   const list = [...store.widgets];
   const playerIndex = list.findIndex((w) => w.type === "player");
@@ -39,6 +41,15 @@ const sortedWidgets = computed(() => {
 });
 const passwordInput = ref("");
 const newPasswordInput = ref("");
+
+const toggleDockerMock = (checked: boolean) => {
+  const w = dockerWidget.value;
+  if (w) {
+    if (!w.data) w.data = {};
+    w.data.useMock = checked;
+    store.saveData();
+  }
+};
 
 // Delete Confirmation Logic
 const showDeleteWidgetConfirm = ref(false);
@@ -94,6 +105,24 @@ const uploadMusic = async (event: Event) => {
   }
 };
 
+const checkDockerConnection = async () => {
+  try {
+    const headers = store.getHeaders();
+    const res = await fetch("/api/docker/info", { headers });
+    const data = await res.json();
+    if (data.success) {
+      alert(
+        `✅ 连接成功!\n\nSocket: ${data.socketPath}\n版本: ${data.version.Version}\n系统: ${data.info.OSType} / ${data.info.Architecture}\n容器: ${data.info.Containers}\n名称: ${data.info.Name}`,
+      );
+    } else {
+      alert(`❌ 连接失败: ${data.error}\nSocket: ${data.socketPath}`);
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    alert("❌ 网络错误: " + msg);
+  }
+};
+
 const piClickCount = ref(0);
 const handlePiClick = () => {
   piClickCount.value++;
@@ -124,6 +153,8 @@ const onAuthSuccess = () => {
 
 const close = () => emit("update:show", false);
 
+const showPassword = ref(false);
+
 const handleLogin = async () => {
   try {
     const success = await store.login("admin", passwordInput.value);
@@ -138,9 +169,21 @@ const handleLogin = async () => {
 };
 const handleChangePassword = () => {
   if (!newPasswordInput.value || newPasswordInput.value.length < 4) return alert("密码至少4位");
-  store.changePassword(newPasswordInput.value);
-  alert("密码修改成功");
-  newPasswordInput.value = "";
+  requestAuth(async () => {
+    store.changePassword(newPasswordInput.value);
+    await store.saveData(true);
+    alert("密码修改成功");
+    newPasswordInput.value = "";
+  }, "请输入当前密码以确认修改");
+};
+
+const onMobileDockerDisplayChange = (e: Event) => {
+  const checked = (e.target as HTMLInputElement | null)?.checked ?? false;
+  const w = dockerWidget.value;
+  if (w) {
+    w.hideOnMobile = !checked;
+    store.saveData();
+  }
 };
 
 // Admin User Management
@@ -223,6 +266,121 @@ onMounted(() => {
   store.checkUpdate();
 });
 
+// 单用户模式：配置版本管理
+const versionLabel = ref("");
+const versions = ref<{ id: string; label: string; createdAt: number; size: number }[]>([]);
+const loadingVersions = ref(false);
+
+const fetchVersions = async () => {
+  try {
+    loadingVersions.value = true;
+    const token = localStorage.getItem("flat-nas-token");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const r = await fetch("/api/config-versions", { headers });
+    if (!r.ok) return;
+    const j = await r.json();
+    versions.value = j.versions || [];
+  } finally {
+    loadingVersions.value = false;
+  }
+};
+
+const saveVersion = async () => {
+  try {
+    const token = localStorage.getItem("flat-nas-token");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const r = await fetch("/api/config-versions", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ label: versionLabel.value.trim() }),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert("❌ 保存版本失败: " + (d.error || r.status));
+      return;
+    }
+    versionLabel.value = "";
+    await fetchVersions();
+  } catch (e) {
+    console.error("[SettingsModal][SaveVersion]", e);
+  }
+};
+
+const restoreVersion = async (id: string) => {
+  try {
+    if (!confirm("确认恢复该版本？当前配置将被覆盖（密码不变）")) return;
+    const token = localStorage.getItem("flat-nas-token");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const r = await fetch("/api/config-versions/restore", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ id }),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert("❌ 恢复失败: " + (d.error || r.status));
+      return;
+    }
+    window.location.reload();
+  } catch (e) {
+    console.error("[SettingsModal][RestoreVersion]", e);
+  }
+};
+
+const deleteVersion = async (id: string) => {
+  try {
+    if (!confirm("确认删除该版本？此操作不可撤销")) return;
+    const token = localStorage.getItem("flat-nas-token");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const r = await fetch(`/api/config-versions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers,
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      alert("❌ 删除失败: " + (d.error || r.status));
+      return;
+    }
+    await fetchVersions();
+  } catch (e) {
+    console.error("[SettingsModal][DeleteVersion]", e);
+  }
+};
+
+onMounted(() => {
+  if (store.username === "admin" && store.systemConfig.authMode === "single") {
+    fetchVersions();
+  }
+});
+
+const isUnknownWidget = (type: string) => {
+  const knownTypes = [
+    "clock",
+    "weather",
+    "clockweather",
+    "calendar",
+    "memo",
+    "search",
+    "quote",
+    "bookmarks",
+    "todo",
+    "calculator",
+    "ip",
+    "player",
+    "hot",
+    "rss",
+    "sidebar",
+    "iframe",
+    "countdown",
+  ];
+
+  return !knownTypes.includes(type);
+};
+
 const restoreMissingWidgets = () => {
   const defaultWidgets: WidgetConfig[] = [
     {
@@ -239,6 +397,13 @@ const restoreMissingWidgets = () => {
     { id: "w5", type: "search", enable: true, isPublic: true },
     { id: "w7", type: "quote", enable: true, isPublic: true },
     { id: "sidebar", type: "sidebar", enable: false, isPublic: true },
+    { id: "docker", type: "docker", enable: false, isPublic: true, colSpan: 1, rowSpan: 1 },
+    { id: "memo", type: "memo", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+    { id: "todo", type: "todo", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+    { id: "calculator", type: "calculator", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+    { id: "ip", type: "ip", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+    { id: "hot", type: "hot", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+    { id: "player", type: "player", enable: true, colSpan: 2, rowSpan: 1, isPublic: true },
   ];
 
   let addedCount = 0;
@@ -267,7 +432,6 @@ const handleExport = async () => {
       items: store.items,
       widgets: store.widgets,
       appConfig: store.appConfig,
-      password: store.password,
       groups: store.groups,
       rssFeeds: store.rssFeeds,
       rssCategories: store.rssCategories,
@@ -334,7 +498,6 @@ const handleFileChange = (event: Event) => {
           items: finalGroups.flatMap((g) => g.items),
           widgets: store.widgets,
           appConfig: store.appConfig,
-          password: store.password,
         };
       } else if ((!data.groups || data.groups.length === 0) && data.items) {
         const items = data.items.map((item: NavItem) => ({
@@ -342,6 +505,9 @@ const handleFileChange = (event: Event) => {
           isPublic: item.isPublic ?? true,
         }));
         data.groups = [{ id: Date.now().toString(), title: "默认分组", items: items }];
+      }
+      if ("password" in data) {
+        delete data.password;
       }
       const token = localStorage.getItem("flat-nas-token");
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -649,6 +815,10 @@ const removeWidget = (id: string) => {
   showDeleteWidgetConfirm.value = true;
 };
 
+const deleteWidget = (id: string) => {
+  removeWidget(id);
+};
+
 // Wallpaper Library Logic
 // Wallpaper logic moved to WallpaperLibrary.vue
 // Keeping minimal code if needed, or remove completely if unused.
@@ -700,7 +870,7 @@ onMounted(() => {
             "
             class="whitespace-nowrap md:whitespace-normal w-auto md:w-full text-left px-4 py-2 rounded-lg text-sm transition-colors mb-0 md:mb-1"
           >
-            🎨 外观与布局
+            🎨 外观布局
           </button>
           <button
             @click="activeTab = 'widgets'"
@@ -711,7 +881,7 @@ onMounted(() => {
             "
             class="whitespace-nowrap md:whitespace-normal w-auto md:w-full text-left px-4 py-2 rounded-lg text-sm transition-colors mb-0 md:mb-1"
           >
-            🧩 小组件
+            🧩 单开组件
           </button>
           <button
             @click="activeTab = 'rss'"
@@ -744,7 +914,18 @@ onMounted(() => {
             "
             class="whitespace-nowrap md:whitespace-normal w-auto md:w-full text-left px-4 py-2 rounded-lg text-sm transition-colors mb-0 md:mb-1"
           >
-            🖥️ 万能窗口
+            🖥️ 多开组件
+          </button>
+          <button
+            @click="activeTab = 'docker'"
+            :class="
+              activeTab === 'docker'
+                ? 'bg-blue-100 text-blue-700 font-bold'
+                : 'text-gray-600 hover:bg-gray-100'
+            "
+            class="whitespace-nowrap md:whitespace-normal w-auto md:w-full text-left px-4 py-2 rounded-lg text-sm transition-colors mb-0 md:mb-1"
+          >
+            🐳 Docker 管理
           </button>
           <button
             @click="activeTab = 'account'"
@@ -1041,7 +1222,7 @@ onMounted(() => {
           <div v-if="activeTab === 'widgets'" class="space-y-4">
             <div class="flex items-center justify-between mb-4 mr-8">
               <h4 class="text-lg font-bold text-gray-800 border-l-4 border-green-500 pl-3">
-                桌面小组件
+                桌面组件
               </h4>
               <div class="flex items-center gap-3 text-xs mr-[10px]">
                 <button
@@ -1065,14 +1246,22 @@ onMounted(() => {
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
               <template v-for="w in sortedWidgets" :key="w.id">
                 <div
-                  v-if="w.type !== 'iframe' && w.type !== 'countdown'"
+                  v-if="w.type !== 'iframe' && w.type !== 'countdown' && w.type !== 'docker'"
                   :class="[
-                    'border border-gray-100 rounded-xl bg-white hover:shadow-md transition-all',
+                    'border border-gray-100 rounded-xl bg-white hover:shadow-md transition-all relative',
                     w.type === 'player'
                       ? 'col-span-2 md:col-span-4 flex flex-col gap-3 p-4 md:grid md:grid-cols-[auto_1fr_auto] md:items-center md:gap-4'
                       : 'flex flex-col items-center justify-between p-4 aspect-square',
                   ]"
                 >
+                  <button
+                    v-if="isUnknownWidget(w.type)"
+                    @click="deleteWidget(w.id)"
+                    class="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-100 hover:bg-red-200 text-red-600 rounded-full text-xs transition-colors z-20"
+                    title="删除组件"
+                  >
+                    ✕
+                  </button>
                   <template v-if="w.type === 'player'">
                     <div class="flex items-center gap-3 flex-shrink-0">
                       <div
@@ -1233,7 +1422,9 @@ onMounted(() => {
                                                           ? "万能窗口"
                                                           : w.type === "countdown"
                                                             ? "倒计时"
-                                                            : `未知组件 (${w.type})`
+                                                            : w.type === "docker"
+                                                              ? "Docker 管理"
+                                                              : `未知组件 (${w.type})`
                         }}
                       </span>
                     </div>
@@ -1665,6 +1856,95 @@ onMounted(() => {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <div v-if="activeTab === 'docker'" class="space-y-4">
+            <div class="flex items-center justify-between mb-4 mr-8">
+              <h4 class="text-lg font-bold text-gray-800 border-l-4 border-blue-500 pl-3">
+                Docker 管理 (内测中)
+              </h4>
+              <div v-if="dockerWidget" class="flex items-center gap-3 text-xs mr-[10px]">
+                <button
+                  @click="checkDockerConnection"
+                  class="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg hover:bg-blue-100 transition-colors font-bold"
+                >
+                  ⚡ 测试连接
+                </button>
+              </div>
+            </div>
+
+            <div v-if="dockerWidget" class="space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-bold text-gray-800">Docker 组件</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" v-model="dockerWidget.enable" class="sr-only peer" />
+                  <div
+                    class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
+                  ></div>
+                </label>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-4 border-t border-gray-100 pt-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-700 font-medium">公开访问</span>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" v-model="dockerWidget.isPublic" class="sr-only peer" />
+                    <div
+                      class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
+                    ></div>
+                  </label>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-700 font-medium">手机端显示</span>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="!dockerWidget.hideOnMobile"
+                      @change="onMobileDockerDisplayChange"
+                      class="sr-only peer"
+                    />
+                    <div
+                      class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"
+                    ></div>
+                  </label>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-400">支持启动/停止/重启</span>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="!!dockerWidget.data?.useMock"
+                      @change="(e) => toggleDockerMock((e.target as HTMLInputElement).checked)"
+                      class="sr-only peer"
+                    />
+                    <div
+                      class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"
+                    ></div>
+                  </label>
+                  <span class="text-[10px] text-gray-500">使用模拟数据</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-700 font-medium">内网主机</span>
+                  <input
+                    v-model="dockerWidget.data.lanHost"
+                    @change="store.saveData()"
+                    type="text"
+                    placeholder="例如：192.168.1.10"
+                    class="px-2 py-1 border border-gray-200 rounded text-xs focus:border-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+              <div class="h-64">
+                <DockerWidget :widget="dockerWidget" :compact="true" />
+              </div>
+            </div>
+
+            <div v-else class="text-center py-8 text-gray-500">
+              <p>未找到 Docker 组件，请尝试恢复默认组件。</p>
+              <button @click="restoreMissingWidgets" class="mt-2 text-blue-500 underline">
+                恢复默认组件
+              </button>
             </div>
           </div>
 
@@ -2115,16 +2395,112 @@ onMounted(() => {
                 <p class="text-xs text-gray-500 mt-1">
                   单用户默认密码:admin 多用户模式用户名密码都默认：admin
                 </p>
+
+                <div v-if="store.systemConfig.authMode === 'single'" class="mt-4">
+                  <div class="flex gap-2 items-center mb-2">
+                    <input
+                      v-model="versionLabel"
+                      placeholder="版本备注（可选）"
+                      class="flex-1 px-3 py-2 rounded-lg border border-purple-300 text-sm"
+                    />
+                    <button
+                      @click="saveVersion"
+                      class="px-4 py-2 rounded-lg text-sm font-bold text-white transition-all bg-purple-600 hover:bg-purple-700"
+                    >
+                      保存为版本
+                    </button>
+                  </div>
+                  <div class="text-[10px] text-purple-600 mb-2">保存位置：data/config_versions</div>
+                  <div class="max-h-40 overflow-y-auto space-y-1">
+                    <div v-if="loadingVersions" class="text-xs text-gray-500">加载中...</div>
+                    <div
+                      v-for="v in versions"
+                      :key="v.id"
+                      class="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-purple-100"
+                    >
+                      <div class="flex-1">
+                        <div class="text-sm font-medium text-gray-800 truncate">
+                          {{ v.label || "未命名版本" }}
+                        </div>
+                        <div class="text-[10px] text-gray-500">
+                          {{ new Date(v.createdAt).toLocaleString() }} ·
+                          {{ Math.round(v.size / 1024) }}KB
+                        </div>
+                      </div>
+                      <div class="flex gap-2">
+                        <button
+                          @click="restoreVersion(v.id)"
+                          class="text-xs px-2 py-1 rounded bg-blue-500 text-white hover:bg-blue-600"
+                        >
+                          恢复
+                        </button>
+                        <button
+                          @click="deleteVersion(v.id)"
+                          class="text-xs px-2 py-1 rounded bg-red-500 text-white hover:bg-red-600"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div class="bg-gray-50 p-5 rounded-xl border border-gray-200 mb-6">
-                <h5 class="text-sm font-bold text-gray-700 mb-3">🔑 修改密码</h5>
+                <h5 class="text-sm font-bold text-gray-700 mb-1">🔑 修改密码</h5>
+                <p class="text-xs text-gray-500 mb-2">点击修改后请输入原来密码</p>
                 <div class="flex gap-2">
-                  <input
-                    v-model="newPasswordInput"
-                    type="password"
-                    placeholder="新密码..."
-                    class="flex-1 px-3 py-2 rounded-lg border border-gray-300"
-                  /><button
+                  <div class="relative flex-1">
+                    <input
+                      v-model="newPasswordInput"
+                      :type="showPassword ? 'text' : 'password'"
+                      placeholder="新密码..."
+                      class="w-full px-3 py-2 rounded-lg border border-gray-300 pr-10"
+                    />
+                    <button
+                      @click="showPassword = !showPassword"
+                      class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                      type="button"
+                      tabindex="-1"
+                      :title="showPassword ? '隐藏密码' : '显示密码'"
+                    >
+                      <svg
+                        v-if="showPassword"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="w-5 h-5"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"
+                        />
+                      </svg>
+                      <svg
+                        v-else
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke-width="1.5"
+                        stroke="currentColor"
+                        class="w-5 h-5"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
+                        />
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <button
                     @click="handleChangePassword"
                     class="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm"
                   >

@@ -267,7 +267,7 @@ const goToday = () => {
       </div>
     </div>
 
-    <div v-else class="w-full h-full flex flex-col p-3">
+    <div v-else class="w-full h-full flex flex-col p-2 md:p-3">
       <div class="flex items-center justify-center gap-2 mb-2">
         <button
           @click.stop="prevMonth"
@@ -309,7 +309,7 @@ const goToday = () => {
       </div>
 
       <div
-        class="grid grid-cols-7 gap-1 text-center flex-1 text-[11px] md:text-[12px] content-start"
+        class="grid grid-cols-7 gap-0.5 md:gap-1 text-center flex-1 text-[11px] md:text-[12px] content-start"
       >
         <div
           v-for="d in ['日', '一', '二', '三', '四', '五', '六']"
@@ -321,16 +321,18 @@ const goToday = () => {
         <div
           v-for="(d, i) in calendarDays"
           :key="i"
-          class="aspect-square flex items-center justify-center rounded-2xl transition-all"
+          class="aspect-square flex items-center justify-center rounded-xl transition-all"
           :class="{
-            'bg-red-500 text-white font-bold shadow-sm': d.today,
+            'text-red-600 font-bold': d.today,
             'hover:bg-red-100 text-gray-700': d.current && !d.today,
             invisible: !d.current,
             'cursor-pointer': d.current,
           }"
         >
           <div class="flex flex-col items-center justify-center leading-none h-full py-1">
-            <span v-if="d.day" class="text-base font-bold">{{ d.day }}</span>
+            <span v-if="d.day" class="text-base font-bold">{{
+              d.today ? "[" + d.day + "]" : d.day
+            }}</span>
             <span
               v-if="
                 widget.data?.style === 'month-lunar' ||
@@ -339,7 +341,7 @@ const goToday = () => {
               "
               class="text-[10px] md:text-[11px] opacity-80 mt-0.5"
               :class="{ 'scale-90': d.lunar.length > 3 }"
-              >{{ d.lunar }}</span
+              >{{ d.today ? "[" + d.lunar + "]" : d.lunar }}</span
             >
           </div>
         </div>

@@ -12,6 +12,7 @@ import BookmarkWidget from "./BookmarkWidget.vue";
 import HotWidget from "./HotWidget.vue";
 import ClockWeatherWidget from "./ClockWeatherWidget.vue";
 import RssWidget from "./RssWidget.vue";
+import DockerWidget from "./DockerWidget.vue";
 
 defineProps<{
   widget: WidgetConfig;
@@ -37,4 +38,8 @@ defineProps<{
   <HotWidget v-else-if="widget.type === 'hot'" :widget="widget" />
   <ClockWeatherWidget v-else-if="widget.type === 'clockweather'" :widget="widget" />
   <RssWidget v-else-if="widget.type === 'rss'" :widget="widget" />
+  <DockerWidget v-else-if="widget.type === 'docker'" :widget="widget" />
+  <div v-else class="flex items-center justify-center h-full bg-red-50 text-red-500 text-xs p-2">
+    Unknown: {{ widget.type }} ({{ widget.id }})
+  </div>
 </template>
