@@ -47,7 +47,7 @@ export const useMainStore = defineStore("main", () => {
     }));
 
   // Version Check
-  const currentVersion = "1.0.26";
+  const currentVersion = "1.0.27-dev";
   const latestVersion = ref("");
   const dockerUpdateAvailable = ref(false);
 
@@ -211,6 +211,42 @@ export const useMainStore = defineStore("main", () => {
 
       if (data.widgets) {
         widgets.value = data.widgets;
+
+        // 修复潜在的组件类型错乱问题 (例如备忘录被错误标记为 docker)
+        const memoW = widgets.value.find((w) => w.id === "memo");
+        if (memoW && memoW.type !== "memo") {
+          memoW.type = "memo";
+        }
+
+        // 确保 Docker 组件存在且类型正确
+        const dockerW = widgets.value.find((w) => w.id === "docker");
+        if (!dockerW) {
+          widgets.value.push({
+            id: "docker",
+            type: "docker",
+            enable: false,
+            isPublic: true,
+            colSpan: 1,
+            rowSpan: 1,
+          });
+        } else if (dockerW.type !== "docker") {
+          // 如果 ID 是 docker 但 type 错乱，强制修复并重置
+          dockerW.type = "docker";
+          dockerW.enable = false;
+          dockerW.isPublic = true;
+          // 重置尺寸，避免继承其他组件的错误尺寸
+          dockerW.colSpan = 1;
+          dockerW.rowSpan = 1;
+        } else {
+          // 如果 Docker 组件存在且类型正确，将其移动到列表末尾
+          // 这样启用时不会挤占其他未定位组件（如收藏夹）的位置
+          const idx = widgets.value.findIndex((w) => w.id === "docker");
+          if (idx > -1 && idx < widgets.value.length - 1) {
+            const [d] = widgets.value.splice(idx, 1);
+            if (d) widgets.value.push(d);
+          }
+        }
+
         if (!widgets.value.find((w) => w.type === "rss")) {
           widgets.value.push({
             id: "rss-reader",
@@ -246,6 +282,19 @@ export const useMainStore = defineStore("main", () => {
             isPublic: true,
           },
           { id: "sidebar", type: "sidebar", enable: false, isPublic: true },
+          { id: "memo", type: "memo", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+          { id: "todo", type: "todo", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+          {
+            id: "calculator",
+            type: "calculator",
+            enable: true,
+            colSpan: 1,
+            rowSpan: 1,
+            isPublic: true,
+          },
+          { id: "ip", type: "ip", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+          { id: "hot", type: "hot", enable: true, colSpan: 1, rowSpan: 1, isPublic: true },
+          { id: "player", type: "player", enable: true, colSpan: 2, rowSpan: 1, isPublic: true },
         ];
       }
 
@@ -291,6 +340,10 @@ export const useMainStore = defineStore("main", () => {
       checkUpdate();
       if (!socketListenersBound) {
         socket.on("memo:updated", ({ widgetId, content }) => {
+          const w = widgets.value.find((x) => x.id === widgetId);
+          if (w) w.data = content;
+        });
+        socket.on("todo:updated", ({ widgetId, content }) => {
           const w = widgets.value.find((x) => x.id === widgetId);
           if (w) w.data = content;
         });
@@ -634,6 +687,7 @@ export const useMainStore = defineStore("main", () => {
     isLogged,
     token,
     username, // Export username
+    getHeaders,
     isExpandedMode,
     rssFeeds,
     rssCategories,
