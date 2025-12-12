@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
+// 生成唯一ID，避免多个组件实例间clipPath冲突
+const uid = Math.random().toString(36).slice(2, 9);
+const maskId = `icon-mask-${uid}`;
+
 const props = defineProps<{
   shape: string;
   size?: number;
@@ -62,7 +66,7 @@ const pathD = computed(() => {
     case "circle":
       return "M50 0 A50 50 0 1 0 50 100 A50 50 0 1 0 50 0 Z";
     case "rounded":
-      return "M50 0 C68.3 0 82.6 0 91.3 8.7 C100 17.4 100 31.7 100 50 C100 68.3 100 82.6 91.3 91.3 C82.6 100 68.3 100 50 100 C31.7 100 17.4 100 8.7 91.3 C0 82.6 0 68.3 0 50 C0 31.7 0 17.4 8.7 8.7 C17.4 0 31.7 0 50 0 Z";
+      return "M35 0 H65 A35 35 0 0 1 100 35 V65 A35 35 0 0 1 65 100 H35 A35 35 0 0 1 0 65 V35 A35 35 0 0 1 35 0 Z";
     case "square":
       return "M0 0 H100 V100 H0 Z";
     case "diamond":
@@ -95,19 +99,25 @@ const pathD = computed(() => {
       :style="{ backgroundColor: 'transparent' }"
     >
       <defs>
-        <clipPath id="icon-clip">
-          <path :d="pathD" fill="none" />
-        </clipPath>
+        <mask :id="maskId">
+          <rect x="0" y="0" width="100" height="100" fill="black" />
+          <path :d="pathD" fill="white" />
+        </mask>
       </defs>
-      <path
-        v-if="shape !== 'none'"
-        :d="pathD"
-        class="transition-all duration-300"
-        :class="resolvedFillClass"
-        :style="fillStyle"
-      />
 
-      <g :clip-path="shape === 'none' ? undefined : 'url(#icon-clip)'">
+      <g :mask="shape === 'none' ? undefined : `url(#${maskId})`">
+        <!-- 背景层：放入裁剪区域内，解决边缘溢出白边问题 -->
+        <rect
+          v-if="shape !== 'none'"
+          x="0"
+          y="0"
+          width="100"
+          height="100"
+          class="transition-all duration-300"
+          :class="resolvedFillClass"
+          :style="fillStyle"
+        />
+
         <image
           v-if="isImg"
           :href="finalIcon"

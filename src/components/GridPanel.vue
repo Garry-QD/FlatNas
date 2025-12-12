@@ -500,6 +500,126 @@ const handleCardClick = (item: NavItem) => {
 
   window.open(targetUrl, "_blank");
 };
+
+const handleDockerAction = async (item: NavItem, action: string) => {
+  if (!item.containerId) return;
+  try {
+    const headers = store.getHeaders();
+    await fetch(`/api/docker/container/${item.containerId}/${action}`, {
+      method: "POST",
+      headers,
+    });
+    // Optimistic update or wait for poll? For now just wait for poll or refresh if needed.
+    // Ideally we should refresh status here, but status is on the card?
+    // We need to fetch container status to update the card UI if we display it.
+    // Let's implement status fetching for cards.
+    fetchContainerStatuses();
+  } catch (e) {
+    console.error(`Failed to ${action} container`, e);
+  }
+};
+
+const containerStatuses = ref<
+  Record<
+    string,
+    {
+      state: string;
+      stats?: {
+        cpuPercent: number;
+        memPercent: number;
+        memUsage: number;
+        netIO?: { rx: number; tx: number };
+        blockIO?: { read: number; write: number };
+      };
+    }
+  >
+>({});
+
+const formatBytes = (bytes: number) => {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+};
+
+const formatToMB = (bytes: number) => {
+  const mb = bytes / (1024 * 1024);
+  return mb.toFixed(1) + " MB";
+};
+
+const fetchContainerStatuses = async () => {
+  const statusMap: Record<string, any> = {};
+
+  // 1. Generate Mock Data for known mock containers (ALWAYS do this for testing)
+  store.groups.forEach((g) => {
+    g.items.forEach((item) => {
+      if (item.containerId && item.containerId.startsWith("mock-")) {
+        const existing = containerStatuses.value[item.containerId];
+        // Simulate fluctuating stats
+        const cpuPercent = Math.min(
+          100,
+          Math.max(0, (existing?.stats?.cpuPercent || 30) + (Math.random() - 0.5) * 20),
+        );
+        const memPercent = Math.min(
+          100,
+          Math.max(0, (existing?.stats?.memPercent || 40) + (Math.random() - 0.5) * 10),
+        );
+        const memUsage = (memPercent / 100) * 1024 * 1024 * 1024; // Mock 1GB limit
+
+        // Mock IO
+        const rx = Math.random() * 1024 * 1024; // 0-1MB
+        const tx = Math.random() * 512 * 1024; // 0-512KB
+        const read = Math.random() * 2 * 1024 * 1024; // 0-2MB
+        const write = Math.random() * 1024 * 1024; // 0-1MB
+
+        statusMap[item.containerId] = {
+          state: existing?.state || "running",
+          stats: {
+            cpuPercent,
+            memPercent,
+            memUsage,
+            netIO: { rx, tx },
+            blockIO: { read, write },
+          },
+        };
+      }
+    });
+  });
+
+  // 2. Try to fetch real data
+  try {
+    const headers = store.getHeaders();
+    // Only fetch if we are likely to have a backend (or let it fail silently)
+    const res = await fetch("/api/docker/containers", { headers });
+    const data = await res.json();
+    if (data.success) {
+      (data.data || []).forEach((c: any) => {
+        statusMap[c.Id] = {
+          state: c.State,
+          stats: c.stats,
+        };
+      });
+    }
+  } catch (e) {
+    // console.warn("Failed to fetch docker stats, using mocks if available", e);
+  }
+
+  // 3. Update State
+  containerStatuses.value = { ...containerStatuses.value, ...statusMap };
+};
+
+let containerPollTimer: ReturnType<typeof setInterval> | null = null;
+
+onMounted(() => {
+  fetchContainerStatuses();
+  containerPollTimer = setInterval(fetchContainerStatuses, 5000);
+});
+
+onUnmounted(() => {
+  if (containerPollTimer) clearInterval(containerPollTimer);
+});
+
 const handleAuthAction = () => {
   if (store.isLogged) {
     store.logout();
@@ -907,7 +1027,7 @@ onMounted(() => {
         :class="(store.appConfig.enableMobileWallpaper ?? true) ? 'hidden md:block' : 'block'"
         v-if="store.appConfig.background"
         :style="{
-          backgroundImage: `url(${store.appConfig.background})`,
+          backgroundImage: `url('${store.appConfig.background}')`,
           filter: `blur(${store.appConfig.backgroundBlur ?? 0}px)`,
         }"
       ></div>
@@ -917,7 +1037,7 @@ onMounted(() => {
         class="absolute inset-[-20px] bg-cover bg-center bg-no-repeat transition-all duration-300 md:hidden"
         v-if="(store.appConfig.enableMobileWallpaper ?? true) && store.appConfig.mobileBackground"
         :style="{
-          backgroundImage: `url(${store.appConfig.mobileBackground})`,
+          backgroundImage: `url('${store.appConfig.mobileBackground}')`,
           filter: `blur(${store.appConfig.mobileBackgroundBlur ?? 0}px)`,
         }"
       ></div>
@@ -1407,7 +1527,7 @@ onMounted(() => {
                   <div
                     class="absolute inset-0 bg-cover bg-center transition-all duration-300"
                     :style="{
-                      backgroundImage: `url(${item.backgroundImage || group.backgroundImage})`,
+                      backgroundImage: `url('${item.backgroundImage || group.backgroundImage}')`,
                       filter: `blur(${item.backgroundImage ? (item.backgroundBlur ?? 6) : (group.backgroundBlur ?? 6)}px)`,
                       transform: 'scale(1.1)',
                     }"
@@ -1420,6 +1540,44 @@ onMounted(() => {
                   ></div>
                 </div>
 
+                <!-- Docker Stats Background Bars -->
+                <div
+                  v-if="item.containerId && containerStatuses[item.containerId]?.stats"
+                  class="absolute inset-0 z-0 pointer-events-none overflow-hidden rounded-[inherit]"
+                >
+                  <!-- CPU Bar (Top, Right to Left) -->
+                  <div class="absolute top-0 right-0 w-full h-1/2 bg-transparent opacity-20">
+                    <div
+                      class="absolute top-0 right-0 h-full bg-blue-500 transition-all duration-1000 ease-out"
+                      :style="{
+                        width: (containerStatuses[item.containerId].stats.cpuPercent || 0) + '%',
+                      }"
+                    ></div>
+                  </div>
+                  <!-- CPU Label -->
+                  <div
+                    class="absolute top-0.5 right-3 font-black italic text-xl text-white opacity-40 select-none z-10 tracking-tighter"
+                  >
+                    CPU
+                  </div>
+
+                  <!-- Memory Bar (Bottom, Left to Right) -->
+                  <div class="absolute bottom-0 left-0 w-full h-1/2 bg-transparent opacity-20">
+                    <div
+                      class="absolute top-0 left-0 h-full bg-green-500 transition-all duration-1000 ease-out"
+                      :style="{
+                        width: (containerStatuses[item.containerId].stats.memPercent || 0) + '%',
+                      }"
+                    ></div>
+                  </div>
+                  <!-- MEM Label -->
+                  <div
+                    class="absolute bottom-0.5 left-3 font-black italic text-xl text-white opacity-40 select-none z-10 tracking-tighter"
+                  >
+                    MEM
+                  </div>
+                </div>
+
                 <div
                   v-if="isEditMode && item.isPublic"
                   class="absolute bottom-1 right-1 text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200 z-20"
@@ -1427,23 +1585,43 @@ onMounted(() => {
                   公开
                 </div>
 
-                <IconShape
+                <div
+                  class="relative flex items-center justify-center overflow-hidden flex-shrink-0 transition-all duration-300 relative z-10"
                   v-if="(group.iconShape || store.appConfig.iconShape) !== 'hidden'"
-                  :shape="group.iconShape || store.appConfig.iconShape"
-                  :size="getLayoutConfig(group).iconSize"
-                  :imgScale="item.iconSize"
-                  :bgClass="
-                    item.color &&
-                    !item.color.includes('sky') &&
-                    item.color !== '#000000' &&
-                    item.color !== 'bg-black'
-                      ? item.color
-                      : 'bg-white'
-                  "
-                  :icon="processIcon(item.icon || '')"
-                  class="transition-all duration-300 relative z-10"
-                  :class="item.backgroundImage || group.backgroundImage ? 'drop-shadow-lg' : ''"
-                />
+                  :style="{
+                    width: getLayoutConfig(group).iconSize + 'px',
+                    height: getLayoutConfig(group).iconSize + 'px',
+                  }"
+                >
+                  <IconShape
+                    :shape="group.iconShape || store.appConfig.iconShape"
+                    :size="getLayoutConfig(group).iconSize"
+                    :imgScale="item.iconSize"
+                    :bgClass="
+                      item.color &&
+                      !item.color.includes('sky') &&
+                      item.color !== '#000000' &&
+                      item.color !== 'bg-black'
+                        ? item.color
+                        : 'bg-white'
+                    "
+                    :icon="processIcon(item.icon || '')"
+                    class="transition-all duration-300 relative z-10 w-full h-full"
+                    :class="item.backgroundImage || group.backgroundImage ? 'drop-shadow-lg' : ''"
+                  />
+
+                  <!-- Container Status Indicator -->
+                  <div
+                    v-if="item.containerId && containerStatuses[item.containerId]"
+                    class="absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white z-20"
+                    :class="
+                      containerStatuses[item.containerId]?.state === 'running'
+                        ? 'bg-green-500'
+                        : 'bg-gray-400'
+                    "
+                    :title="containerStatuses[item.containerId]?.state"
+                  ></div>
+                </div>
 
                 <!-- Horizontal Mode: 3-Line Custom Text -->
                 <div
@@ -1456,7 +1634,7 @@ onMounted(() => {
                       !item.description1 && !item.description2 && !item.description3
                         ? 'text-left'
                         : 'text-xs',
-                      'truncate font-medium leading-tight',
+                      'truncate font-medium leading-tight flex justify-between items-center',
                     ]"
                     :style="{
                       color:
@@ -1472,7 +1650,109 @@ onMounted(() => {
                         item.description1 || (!item.description2 && !item.description3) ? 1 : 0.5,
                     }"
                   >
-                    {{ item.description1 || item.title }}
+                    <span class="truncate flex-1">{{ item.description1 || item.title }}</span>
+                  </div>
+
+                  <!-- Docker Stats Info -->
+                  <div
+                    v-if="item.containerId && containerStatuses[item.containerId]?.stats"
+                    class="flex flex-col gap-1 text-xs mt-1 w-full opacity-80 leading-none font-mono"
+                    :style="{
+                      color:
+                        item.titleColor ||
+                        (item.backgroundImage || group.backgroundImage
+                          ? '#ffffff'
+                          : group.cardTitleColor || store.appConfig.cardTitleColor || '#374151'),
+                      textShadow:
+                        item.backgroundImage || group.backgroundImage
+                          ? '0 1px 2px rgba(0,0,0,0.8)'
+                          : 'none',
+                    }"
+                  >
+                    <div class="flex justify-between items-center" title="Network I/O (RX/TX)">
+                      <span class="font-bold">NET</span>
+                      <span class="font-mono">
+                        ↓{{
+                          formatToMB(containerStatuses[item.containerId].stats?.netIO?.rx || 0)
+                        }}/s
+                      </span>
+                    </div>
+                    <div class="flex justify-between items-center" title="Block I/O (Read/Write)">
+                      <span class="font-bold">IO</span>
+                      <span class="font-mono">
+                        R:{{
+                          formatToMB(containerStatuses[item.containerId].stats?.blockIO?.read || 0)
+                        }}/s
+                      </span>
+                    </div>
+                  </div>
+                  <!-- Fallback Controls if no stats (e.g. stopped) -->
+                  <div
+                    v-else-if="item.containerId && (item.allowRestart || item.allowStop)"
+                    class="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-1.5"
+                    @click.stop
+                  >
+                    <button
+                      v-if="item.allowRestart"
+                      @click="handleDockerAction(item, 'restart')"
+                      class="p-1.5 hover:bg-blue-100 text-blue-600 rounded-lg bg-white/80 shadow-sm transition-transform active:scale-95"
+                      title="重启"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        class="w-4 h-4"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M4.755 10.059a7.5 7.5 0 0112.548-3.364l1.903 1.903h-3.183a.75.75 0 100 1.5h4.992a.75.75 0 00.75-.75V4.356a.75.75 0 00-1.5 0v3.18l-1.9-1.9A9 9 0 003.306 9.67a.75.75 0 101.45.388zm15.408 3.352a.75.75 0 00-.919.53 7.5 7.5 0 01-12.548 3.364l-1.902-1.903h3.183a.75.75 0 000-1.5H2.984a.75.75 0 00-.75.75v4.992a.75.75 0 001.5 0v-3.18l1.9 1.9a9 9 0 0015.059-4.035.75.75 0 00-.53-.919z"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      v-if="
+                        item.allowStop && containerStatuses[item.containerId]?.state === 'running'
+                      "
+                      @click="handleDockerAction(item, 'stop')"
+                      class="p-1.5 hover:bg-red-100 text-red-600 rounded-lg bg-white/80 shadow-sm transition-transform active:scale-95"
+                      title="停止"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        class="w-4 h-4"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3v-9z"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      v-if="
+                        item.allowStop && containerStatuses[item.containerId]?.state !== 'running'
+                      "
+                      @click="handleDockerAction(item, 'start')"
+                      class="p-1.5 hover:bg-green-100 text-green-600 rounded-lg bg-white/80 shadow-sm transition-transform active:scale-95"
+                      title="启动"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        class="w-4 h-4"
+                      >
+                        <path
+                          fill-rule="evenodd"
+                          d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
+                          clip-rule="evenodd"
+                        />
+                      </svg>
+                    </button>
                   </div>
 
                   <!-- Line 2 (Middle) -->
@@ -1666,6 +1946,40 @@ onMounted(() => {
       >
         <span>🛰️</span> 外网访问
       </div>
+
+      <!-- Docker Actions -->
+      <template v-if="contextMenuItem?.containerId">
+        <div
+          v-if="containerStatuses[contextMenuItem.containerId]?.state === 'running'"
+          @click="
+            handleDockerAction(contextMenuItem, 'stop');
+            closeContextMenu();
+          "
+          class="px-4 py-2 hover:bg-red-50 text-red-600 cursor-pointer flex items-center gap-2 text-sm transition-colors border-b border-gray-100"
+        >
+          <span>⏹️</span> 停止容器
+        </div>
+        <div
+          v-else
+          @click="
+            handleDockerAction(contextMenuItem, 'start');
+            closeContextMenu();
+          "
+          class="px-4 py-2 hover:bg-green-50 text-green-600 cursor-pointer flex items-center gap-2 text-sm transition-colors border-b border-gray-100"
+        >
+          <span>▶️</span> 启动容器
+        </div>
+
+        <div
+          @click="
+            handleDockerAction(contextMenuItem, 'restart');
+            closeContextMenu();
+          "
+          class="px-4 py-2 hover:bg-blue-50 text-blue-600 cursor-pointer flex items-center gap-2 text-sm transition-colors border-b border-gray-100"
+        >
+          <span>🔄</span> 重启容器
+        </div>
+      </template>
 
       <div
         @click="handleMenuEdit"

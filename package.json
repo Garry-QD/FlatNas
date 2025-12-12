@@ -1,6 +1,6 @@
 {
   "name": "flat-nas",
-  "version": "1.0.28-dev",
+  "version": "1.0.28",
   "license": "AGPL-3.0",
   "private": true,
   "type": "module",
@@ -33,6 +33,7 @@
     "multer": "^2.0.2",
     "pinia": "^3.0.4",
     "rss-parser": "^3.13.0",
+    "smooth-corners": "^1.1.0",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "systeminformation": "^5.27.13",

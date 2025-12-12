@@ -62,7 +62,7 @@ export function useWallpaperRotation() {
         ? store.appConfig.wallpaperPcImageBase || "/backgrounds"
         : store.appConfig.wallpaperMobileImageBase || "/mobile_backgrounds";
     const trimmed = base.endsWith("/") ? base.slice(0, -1) : base;
-    const url = `${trimmed}/${nextWallpaper}`;
+    const url = `${trimmed}/${encodeURIComponent(nextWallpaper)}`;
 
     if (type === "pc") {
       store.appConfig.background = url;

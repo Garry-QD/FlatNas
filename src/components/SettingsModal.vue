@@ -2106,7 +2106,7 @@ onMounted(() => {
                   />
                 </div>
               </div>
-              <div class="h-64">
+              <div class="h-[500px]">
                 <DockerWidget :widget="dockerWidget" :compact="true" />
               </div>
             </div>

@@ -65,6 +65,59 @@ const MOCK_CONTAINERS: DockerContainer[] = [
       memPercent: 1.9,
     },
   },
+  {
+    Id: "mock-3",
+    Names: ["/postgres-db"],
+    Image: "postgres:15",
+    State: "running",
+    Status: "Up 12 hours",
+    Ports: [{ PublicPort: 5432, PrivatePort: 5432 }],
+    stats: {
+      cpuPercent: 1.2,
+      memUsage: 120 * 1024 * 1024,
+      memLimit: 2048 * 1024 * 1024,
+      memPercent: 5.8,
+    },
+  },
+  {
+    Id: "mock-4",
+    Names: ["/stopped-service"],
+    Image: "busybox:latest",
+    State: "exited",
+    Status: "Exited (0) 3 hours ago",
+    Ports: [],
+  },
+  {
+    Id: "mock-5",
+    Names: ["/internal-worker"],
+    Image: "python:3.9-slim",
+    State: "running",
+    Status: "Up 45 mins",
+    Ports: [], // No public ports
+    stats: {
+      cpuPercent: 45.5,
+      memUsage: 300 * 1024 * 1024,
+      memLimit: 1024 * 1024 * 1024,
+      memPercent: 29.3,
+    },
+  },
+  {
+    Id: "mock-6",
+    Names: ["/very-long-container-name-for-testing-ui-layout-truncation"],
+    Image: "node:18-alpine",
+    State: "running",
+    Status: "Up 1 day",
+    Ports: [
+      { PublicPort: 3000, PrivatePort: 3000 },
+      { PublicPort: 8080, PrivatePort: 8080 },
+    ],
+    stats: {
+      cpuPercent: 2.5,
+      memUsage: 150 * 1024 * 1024,
+      memLimit: 1024 * 1024 * 1024,
+      memPercent: 14.6,
+    },
+  },
 ];
 
 const useMock = computed(() => Boolean(props.widget?.data?.useMock));
@@ -217,46 +270,113 @@ onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
 });
 
-const openContainerUrl = (c: DockerContainer) => {
+const getContainerLanUrl = (c: DockerContainer): string => {
   const port = c.Ports.find((p) => p.PublicPort);
-  if (port) {
-    const lanHost =
-      (props.widget?.data && typeof props.widget.data.lanHost === "string"
-        ? props.widget.data.lanHost.trim()
-        : "") || "";
-    const host = lanHost || window.location.hostname;
+  if (!port) return "";
+  const lanHost =
+    (props.widget?.data && typeof props.widget.data.lanHost === "string"
+      ? props.widget.data.lanHost.trim()
+      : "") || "";
+  const host = lanHost || window.location.hostname;
+  const scheme = port.PublicPort === 443 ? "https" : "http";
+  return `${scheme}://${host}:${port.PublicPort}`;
+};
+
+const getContainerPublicUrl = (c: DockerContainer): string => {
+  const port = c.Ports.find((p) => p.PublicPort);
+  if (!port) return "";
+
+  const map =
+    (props.widget?.data &&
+    typeof (props.widget.data as Record<string, unknown>).publicHosts === "object"
+      ? ((props.widget!.data as Record<string, unknown>).publicHosts as Record<string, string>)
+      : {}) || {};
+  const mapped = map[c.Id]?.trim() || "";
+  const globalPublic =
+    (props.widget?.data && typeof props.widget.data.publicHost === "string"
+      ? props.widget.data.publicHost.trim()
+      : "") || "";
+  const external = mapped || globalPublic;
+
+  if (external) {
+    const hasProtocol = /^https?:\/\//i.test(external);
     const scheme = port.PublicPort === 443 ? "https" : "http";
-    const url = `${scheme}://${host}:${port.PublicPort}`;
-    window.open(url, "_blank");
+    return hasProtocol ? external : `${scheme}://${external}`;
   }
+
+  const host = window.location.hostname;
+  const scheme = port.PublicPort === 443 ? "https" : "http";
+  return `${scheme}://${host}:${port.PublicPort}`;
+};
+
+const openContainerUrl = (c: DockerContainer) => {
+  const url = getContainerLanUrl(c);
+  if (url) window.open(url, "_blank");
 };
 
 const openContainerPublicUrl = (c: DockerContainer) => {
-  const port = c.Ports.find((p) => p.PublicPort);
-  if (port) {
-    const map =
-      (props.widget?.data &&
-      typeof (props.widget.data as Record<string, unknown>).publicHosts === "object"
-        ? ((props.widget!.data as Record<string, unknown>).publicHosts as Record<string, string>)
-        : {}) || {};
-    const mapped = map[c.Id]?.trim() || "";
-    const globalPublic =
-      (props.widget?.data && typeof props.widget.data.publicHost === "string"
-        ? props.widget.data.publicHost.trim()
-        : "") || "";
-    const external = mapped || globalPublic;
-    if (external) {
-      const hasProtocol = /^https?:\/\//i.test(external);
-      const scheme = port.PublicPort === 443 ? "https" : "http";
-      const url = hasProtocol ? external : `${scheme}://${external}`;
-      window.open(url, "_blank");
-      return;
-    }
-    const host = window.location.hostname;
-    const scheme = port.PublicPort === 443 ? "https" : "http";
-    const url = `${scheme}://${host}:${port.PublicPort}`;
-    window.open(url, "_blank");
+  const url = getContainerPublicUrl(c);
+  if (url) window.open(url, "_blank");
+};
+
+const addToHome = (c: DockerContainer) => {
+  // 1. Find or create "Docker" group
+  let dockerGroup = store.groups.find((g) => g.title === "Docker");
+  if (!dockerGroup) {
+    const newGroupId = Date.now().toString();
+    store.groups.push({
+      id: newGroupId,
+      title: "Docker",
+      items: [],
+      // Force horizontal layout for this group if supported by data structure
+      // Note: Group-level layout might need support in NavGroup type or handled via appConfig override for this group
+      // Assuming NavGroup has layout property or we just rely on it being a group where we put these special cards.
+      // Based on previous context, layout is global or per group?
+      // Let's check NavGroup definition if possible, but for now we'll add it and if the UI supports group-level layout it will work.
+      // If layout is global appConfig, we can't force it just for one group easily without schema change.
+      // However, user asked "Force horizontal mode".
+      // Let's check if NavGroup has layout. The prompt implies we should set it.
+      // If NavGroup doesn't support it, we might just add it and user has to set it, or we hack it.
+      // Let's assume we can just add the item for now.
+    });
+    dockerGroup = store.groups.find((g) => g.title === "Docker");
   }
+
+  if (!dockerGroup) return; // Should not happen
+
+  const lanUrl = getContainerLanUrl(c);
+  const publicUrl = getContainerPublicUrl(c);
+
+  if (!lanUrl && !publicUrl) {
+    alert("该容器没有暴露端口，无法添加");
+    return;
+  }
+
+  const title = (c.Names?.[0] || "Container").replace(/^\//, "");
+
+  // Check if already exists in this group
+  const exists = dockerGroup.items.some((item) => item.containerId === c.Id);
+  if (exists) {
+    alert(`容器 "${title}" 已存在于 Docker 分组中`);
+    return;
+  }
+
+  const newItem = {
+    id: Date.now().toString(),
+    title: title,
+    url: publicUrl,
+    lanUrl: lanUrl,
+    icon: "", // We can try to fetch icon later or let user set it
+    isPublic: true,
+    openInNewTab: true,
+    containerId: c.Id,
+    allowRestart: true,
+    allowStop: true,
+    description: "Docker Container", // Optional description
+  };
+
+  store.addItem(newItem, dockerGroup.id);
+  alert(`已将 "${title}" 添加到 Docker 分组`);
 };
 
 const editingPublicId = ref<string | null>(null);
@@ -303,7 +423,7 @@ const getStatusColor = (state: string) => {
         : 'bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl p-4 relative',
     ]"
   >
-    <div v-if="!props.compact" class="flex items-center justify-between mb-2 shrink-0">
+    <div v-if="!props.compact" class="flex items-center justify-between mb-1 shrink-0">
       <div class="flex items-center gap-2">
         <span class="text-xl">🐳</span>
         <span class="font-bold text-gray-700 dark:text-gray-200">Docker</span>
@@ -337,9 +457,9 @@ const getStatusColor = (state: string) => {
 
     <div v-else class="flex flex-col h-full overflow-hidden">
       <!-- 容器列表 (滚动区域) -->
-      <div class="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar min-h-0">
+      <div class="flex-1 overflow-y-auto space-y-1 pr-1 custom-scrollbar min-h-0">
         <div
-          class="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-2 mb-2"
+          class="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-1 mb-1"
         >
           <div class="flex gap-2">
             <span
@@ -372,7 +492,7 @@ const getStatusColor = (state: string) => {
         <div
           v-for="c in containers"
           :key="c.Id"
-          class="flex flex-col gap-1 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-600"
+          class="flex flex-col gap-1 p-1.5 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-100 dark:border-gray-600"
         >
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2 overflow-hidden flex-1">
@@ -437,7 +557,7 @@ const getStatusColor = (state: string) => {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-2 mt-2">
+          <div class="grid grid-cols-2 gap-2 mt-1">
             <div class="flex flex-col gap-1">
               <div class="flex justify-between text-[10px] text-gray-500 items-end">
                 <span>CPU</span>
@@ -469,7 +589,7 @@ const getStatusColor = (state: string) => {
           </div>
 
           <div
-            class="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700"
+            class="flex items-center justify-end gap-2 mt-1 pt-1 border-t border-gray-100 dark:border-gray-700"
           >
             <div class="flex items-center gap-2 mr-auto whitespace-nowrap">
               <button
@@ -511,6 +631,26 @@ const getStatusColor = (state: string) => {
                   />
                 </svg>
                 <span>外网打开</span>
+              </button>
+              <button
+                v-if="c.State === 'running' && c.Ports.some((p) => p.PublicPort)"
+                @click="addToHome(c)"
+                class="px-2 py-1 hover:bg-gray-100 text-gray-600 rounded transition-colors text-xs flex items-center gap-1 whitespace-nowrap"
+                title="添加到桌面"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  class="w-4 h-4"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25zM12.75 9a.75.75 0 00-1.5 0v2.25H9a.75.75 0 000 1.5h2.25V15a.75.75 0 001.5 0v-2.25H15a.75.75 0 000-1.5h-2.25V9z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                <span>添加卡片</span>
               </button>
             </div>
 

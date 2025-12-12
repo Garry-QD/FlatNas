@@ -116,40 +116,40 @@ onUnmounted(() => {
       class="flex shrink-0 transition-all rounded-xl"
       :class="[
         isWide
-          ? 'flex-col items-start justify-center text-left bg-gray-50/50 dark:bg-gray-700/30 px-3 py-2 h-full'
+          ? 'flex-col justify-between text-left bg-gray-50/50 dark:bg-gray-700/30 px-3 py-2 h-full'
           : 'flex-row items-center justify-between mb-3',
         isMedium ? 'w-[220px]' : '',
         isLarge ? 'w-[240px]' : '',
       ]"
     >
-      <div class="flex items-center gap-2" :class="{ 'flex-col items-start': isWide }">
-        <span class="text-xl">🖥️</span>
+      <div class="flex items-center justify-between w-full">
         <div class="flex flex-col">
           <span class="font-bold text-gray-700 dark:text-gray-200 leading-none">系统状态</span>
           <div
             v-if="systemStats?.os"
             class="mt-1 font-mono leading-tight text-gray-500 dark:text-gray-400"
-            :class="isWide ? 'text-xs flex flex-col items-start' : 'text-[10px]'"
+            :class="isWide ? 'text-base flex flex-col items-start' : 'text-sm'"
           >
             <div v-if="!isWide">
               {{ systemStats.os.distro }} {{ systemStats.os.release }}
-              <span class="opacity-75 text-[9px]">({{ systemStats.os.arch }})</span>
+              <span class="opacity-75 text-xs">({{ systemStats.os.arch }})</span>
             </div>
             <div v-else>
               {{ systemStats.os.distro }} {{ systemStats.os.release }}
-              <span class="opacity-75 text-[10px]">({{ systemStats.os.arch }})</span>
+              <span class="opacity-75 text-sm">({{ systemStats.os.arch }})</span>
             </div>
-            <div v-if="systemStats.os.kernel" class="opacity-80 scale-90 origin-left">
+            <div v-if="systemStats.os.kernel" class="opacity-80 origin-left">
               Kernel: {{ systemStats.os.kernel }}
             </div>
           </div>
         </div>
+        <span class="text-xl">🖥️</span>
       </div>
 
       <div
         v-if="systemStats"
-        class="text-[10px] text-gray-400"
-        :class="[isWide ? 'mt-1 text-left' : 'text-right']"
+        class="text-sm text-gray-400"
+        :class="[isWide ? 'mt-1 text-right' : 'text-right']"
       >
         <div>运行: {{ (systemStats.uptime / 86400).toFixed(1) }} 天</div>
         <div

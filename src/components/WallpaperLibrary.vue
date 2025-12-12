@@ -61,7 +61,7 @@ const getUrl = (name: string, type: "pc" | "mobile") => {
       ? store.appConfig.wallpaperPcImageBase || "/backgrounds"
       : store.appConfig.wallpaperMobileImageBase || "/mobile_backgrounds";
   const trimmed = base.endsWith("/") ? base.slice(0, -1) : base;
-  return `${trimmed}/${name}`;
+  return `${trimmed}/${encodeURIComponent(name)}`;
 };
 
 const selectWallpaper = (name: string, type: "pc" | "mobile") => {
