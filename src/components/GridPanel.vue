@@ -27,6 +27,7 @@ import CalendarWidget from "./CalendarWidget.vue";
 import ClockWidget from "./ClockWidget.vue";
 import AppSidebar from "./AppSidebar.vue";
 import CountdownWidget from "./CountdownWidget.vue";
+import DockerWidget from "./DockerWidget.vue";
 
 import SizeSelector from "./SizeSelector.vue";
 
@@ -571,6 +572,13 @@ const handleMenuLanOpen = () => {
   window.open(item.lanUrl, "_blank");
 };
 
+const handleMenuWanOpen = () => {
+  const item = contextMenuItem.value;
+  closeContextMenu();
+  if (!item || !item.url) return;
+  window.open(item.url, "_blank");
+};
+
 const handleMenuEdit = () => {
   if (contextMenuItem.value) {
     openEditModal(contextMenuItem.value, contextMenuGroupId.value);
@@ -941,7 +949,7 @@ onMounted(() => {
     />
 
     <div
-      class="flex-1 w-full p-8 transition-all pb-10 relative z-10"
+      class="flex-1 w-full p-4 md:p-8 transition-all pb-8 md:pb-10 relative z-10"
       :style="{
         backgroundColor: store.appConfig.background ? 'transparent' : '#f3f4f6',
         '--group-title-color': store.appConfig.groupTitleColor || '#ffffff',
@@ -1101,13 +1109,13 @@ onMounted(() => {
         <GridLayout
           v-if="layoutData.length > 0"
           v-model:layout="layoutData"
-          :col-num="isMobile ? 2 : store.isExpandedMode ? 8 : 4"
+          :col-num="isMobile ? 1 : store.isExpandedMode ? 8 : 4"
           :row-height="rowHeight"
           :is-draggable="isEditMode && deviceKey !== 'mobile' && !activeResizeWidgetId"
           :is-resizable="false"
           :vertical-compact="true"
           :use-css-transforms="true"
-          :margin="[24, 24]"
+          :margin="isMobile ? [12, 12] : [24, 24]"
           @layout-updated="handleLayoutUpdated"
           :class="[
             'mb-8 text-white select-none transition-all duration-300',
@@ -1141,9 +1149,6 @@ onMounted(() => {
             <button
               v-if="isEditMode"
               @click.stop="cycleWidgetSize(widget)"
-              @mousedown.stop
-              @touchstart.stop
-              @pointerdown.stop
               class="absolute bottom-2 right-2 w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg z-50 hover:bg-blue-600 hover:scale-110 transition-all"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1206,11 +1211,13 @@ onMounted(() => {
               v-else-if="widget.type === 'iframe'"
               :widget="widget"
               :is-lan-mode="effectiveIsLan"
+              :is-edit-mode="isEditMode"
             />
             <BookmarkWidget v-else-if="widget.type === 'bookmarks'" :widget="widget" />
             <HotWidget v-else-if="widget.type === 'hot'" :widget="widget" />
             <ClockWeatherWidget v-else-if="widget.type === 'clockweather'" :widget="widget" />
             <RssWidget v-else-if="widget.type === 'rss'" :widget="widget" />
+            <DockerWidget v-else-if="widget.type === 'docker'" :widget="widget" />
           </GridItem>
         </GridLayout>
 
@@ -1232,6 +1239,7 @@ onMounted(() => {
           :move="checkMove"
           :animation="300"
           :disabled="!isEditMode"
+          @end="() => store.saveData()"
           class="pb-20 flex flex-col"
           :style="{ gap: (store.appConfig.groupGap ?? 30) + 'px' }"
         >
@@ -1340,11 +1348,14 @@ onMounted(() => {
             <VueDraggable
               :model-value="group.items"
               @update:model-value="(newItems: NavItem[]) => onGroupItemsChange(group.id, newItems)"
+              @end="() => store.saveData()"
               group="apps"
               :animation="200"
               :disabled="!isEditMode || !!searchText"
               class="grid transition-all duration-300 min-h-[100px] rounded-xl"
-              :class="isEditMode ? 'bg-white/5 border-2 border-dashed border-white/20 p-4' : ''"
+              :class="
+                isEditMode ? 'bg-white/5 border-2 border-dashed border-white/20 p-2 md:p-4' : ''
+              "
               :style="{
                 gap: getLayoutConfig(group).gap + 'px',
                 gridTemplateColumns: `repeat(auto-fill, minmax(${getLayoutConfig(group).minWidth}px, 1fr))`,
@@ -1414,8 +1425,10 @@ onMounted(() => {
                 </div>
 
                 <IconShape
+                  v-if="(group.iconShape || store.appConfig.iconShape) !== 'hidden'"
                   :shape="group.iconShape || store.appConfig.iconShape"
                   :size="getLayoutConfig(group).iconSize"
+                  :imgScale="item.iconSize"
                   :bgClass="
                     item.color &&
                     !item.color.includes('sky') &&
@@ -1642,6 +1655,13 @@ onMounted(() => {
         class="px-4 py-2 hover:bg-green-50 text-green-700 cursor-pointer flex items-center gap-2 text-sm transition-colors border-b border-gray-100"
       >
         <span>🌐</span> 内网访问
+      </div>
+      <div
+        v-if="contextMenuItem?.url"
+        @click="handleMenuWanOpen"
+        class="px-4 py-2 hover:bg-blue-50 text-blue-700 cursor-pointer flex items-center gap-2 text-sm transition-colors border-b border-gray-100"
+      >
+        <span>🛰️</span> 外网访问
       </div>
 
       <div
