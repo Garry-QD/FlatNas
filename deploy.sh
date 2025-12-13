@@ -93,7 +93,8 @@ deploy_app() {
         cd "$APP_DIR"
         # Stash local changes to config files if any, to avoid conflict
         git stash
-        git pull
+        # Use rebase to avoid "divergent branches" error and keep history linear
+        git pull --rebase
         git stash pop || true
     fi
 
@@ -109,7 +110,7 @@ deploy_app() {
 
     # Prepare backend directories
     log "Preparing backend directories..."
-    mkdir -p server/data server/music
+    mkdir -p server/data server/music server/PC server/APP server/cgi-bin
 }
 
 # 4. Configure Systemd Service
@@ -164,6 +165,8 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP \$remote_addr;
     }
     
     # Music
@@ -171,11 +174,24 @@ server {
         proxy_pass http://localhost:3000/music/;
         proxy_set_header Host \$host;
     }
+
+    # PC Wallpapers
+    location /backgrounds/ {
+        proxy_pass http://localhost:3000/backgrounds/;
+        proxy_set_header Host \$host;
+    }
+
+    # Mobile Wallpapers
+    location /mobile_backgrounds/ {
+        proxy_pass http://localhost:3000/mobile_backgrounds/;
+        proxy_set_header Host \$host;
+    }
     
     # CGI
     location ~ \.cgi$ {
         proxy_pass http://localhost:3000;
         proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
     }
 }
 EOF
