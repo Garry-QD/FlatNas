@@ -37,25 +37,86 @@ const mobileListEndpoint = computed(
   () => store.appConfig.wallpaperApiMobileList || "/api/mobile_backgrounds",
 );
 
+const DEFAULT_WALLPAPER = "default-wallpaper.svg";
+
 const fetchWallpapers = async () => {
   loading.value = true;
   try {
     const res = await fetch(pcListEndpoint.value);
     if (res.ok) {
-      wallpapers.value = await res.json();
+      const list = await res.json();
+      // Ensure default wallpaper is always available and unique
+      const cleanList = list.filter((f: string) => f !== DEFAULT_WALLPAPER);
+
+      // Apply saved sort order if available
+      const savedOrder = store.appConfig.pcWallpaperOrder || [];
+      const orderedList: string[] = [];
+      const remainingList = new Set(cleanList);
+
+      // Add default first
+      orderedList.push(DEFAULT_WALLPAPER);
+
+      // Add items from saved order if they exist in current list
+      savedOrder.forEach((name) => {
+        if (remainingList.has(name) && name !== DEFAULT_WALLPAPER) {
+          orderedList.push(name);
+          remainingList.delete(name);
+        }
+      });
+
+      // Append remaining items
+      remainingList.forEach((name) => {
+        if (name !== DEFAULT_WALLPAPER) orderedList.push(name as string);
+      });
+
+      wallpapers.value = orderedList;
+    } else {
+      wallpapers.value = [DEFAULT_WALLPAPER];
     }
+
     const resMobile = await fetch(mobileListEndpoint.value);
     if (resMobile.ok) {
-      mobileWallpapers.value = await resMobile.json();
+      const list = await resMobile.json();
+      const cleanList = list.filter((f: string) => f !== DEFAULT_WALLPAPER);
+
+      // Apply saved sort order
+      const savedOrder = store.appConfig.mobileWallpaperOrder || [];
+      const orderedList: string[] = [];
+      const remainingList = new Set(cleanList);
+
+      orderedList.push(DEFAULT_WALLPAPER);
+
+      savedOrder.forEach((name) => {
+        if (remainingList.has(name) && name !== DEFAULT_WALLPAPER) {
+          orderedList.push(name);
+          remainingList.delete(name);
+        }
+      });
+
+      remainingList.forEach((name) => {
+        if (name !== DEFAULT_WALLPAPER) orderedList.push(name as string);
+      });
+
+      mobileWallpapers.value = orderedList;
+    } else {
+      mobileWallpapers.value = [DEFAULT_WALLPAPER];
     }
   } catch (e) {
     console.error(e);
+    // Fallback on error
+    if (!wallpapers.value.includes(DEFAULT_WALLPAPER))
+      wallpapers.value = [DEFAULT_WALLPAPER, ...wallpapers.value];
+    if (!mobileWallpapers.value.includes(DEFAULT_WALLPAPER))
+      mobileWallpapers.value = [DEFAULT_WALLPAPER, ...mobileWallpapers.value];
   } finally {
     loading.value = false;
   }
 };
 
 const getUrl = (name: string, type: "pc" | "mobile") => {
+  if (name === DEFAULT_WALLPAPER) {
+    return `/${DEFAULT_WALLPAPER}`;
+  }
   const base =
     type === "pc"
       ? store.appConfig.wallpaperPcImageBase || "/backgrounds"
@@ -99,8 +160,10 @@ const draggableList = computed({
   set(val) {
     if (activeTab.value === "pc") {
       wallpapers.value = val;
+      store.appConfig.pcWallpaperOrder = val;
     } else {
       mobileWallpapers.value = val;
+      store.appConfig.mobileWallpaperOrder = val;
     }
 
     const first = val[0];
@@ -185,12 +248,27 @@ const executeUpload = async () => {
 };
 
 const handleDelete = (name: string, type: "pc" | "mobile") => {
+  if (name === DEFAULT_WALLPAPER) {
+    alert("默认壁纸无法删除");
+    return;
+  }
   confirmMessage.value = "确定要删除这张壁纸吗？";
   confirmAction.value = () => executeDelete(name, type);
   showConfirmModal.value = true;
 };
 
 const executeDelete = async (name: string, type: "pc" | "mobile") => {
+  // Check if active wallpaper is being deleted
+  const url = getUrl(name, type);
+  const currentBg = type === "pc" ? store.appConfig.background : store.appConfig.mobileBackground;
+
+  if (url === currentBg) {
+    // Reset to default
+    const defaultUrl = getUrl(DEFAULT_WALLPAPER, type);
+    if (type === "pc") store.appConfig.background = defaultUrl;
+    else store.appConfig.mobileBackground = defaultUrl;
+  }
+
   const base =
     type === "pc"
       ? store.appConfig.wallpaperApiPcDeleteBase || "/api/backgrounds"

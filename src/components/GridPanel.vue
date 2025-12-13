@@ -56,9 +56,10 @@ const effectiveIsLan = computed(() => {
 });
 
 const sidebarCollapsed = ref(true);
-const isSidebarEnabled = computed(() =>
-  store.widgets.find((w) => w.type === "sidebar" && w.enable),
-);
+const isSidebarEnabled = computed(() => {
+  const w = store.widgets.find((w) => w.type === "sidebar" && w.enable);
+  return checkVisible(w) && !(isMobile.value && w?.hideOnMobile);
+});
 
 const toggleForceMode = () => {
   if (forceMode.value === "auto") forceMode.value = "lan";
@@ -188,7 +189,7 @@ watch(
 
     let colNum = store.isExpandedMode ? 8 : 4;
     if (deviceKey.value === "tablet") colNum = 4;
-    if (deviceKey.value === "mobile") colNum = 2;
+    if (deviceKey.value === "mobile") colNum = 1;
 
     const widgetsToLayout = visibleWidgets.map((w) => {
       const newW: WidgetConfig = { ...w };
@@ -535,21 +536,24 @@ const containerStatuses = ref<
   >
 >({});
 
-const formatBytes = (bytes: number) => {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-};
-
 const formatToMB = (bytes: number) => {
   const mb = bytes / (1024 * 1024);
   return mb.toFixed(1) + " MB";
 };
 
+interface ContainerStatus {
+  state: string;
+  stats?: {
+    cpuPercent: number;
+    memPercent: number;
+    memUsage: number;
+    netIO?: { rx: number; tx: number };
+    blockIO?: { read: number; write: number };
+  };
+}
+
 const fetchContainerStatuses = async () => {
-  const statusMap: Record<string, any> = {};
+  const statusMap: Record<string, ContainerStatus> = {};
 
   // 1. Generate Mock Data for known mock containers (ALWAYS do this for testing)
   store.groups.forEach((g) => {
@@ -594,6 +598,7 @@ const fetchContainerStatuses = async () => {
     const res = await fetch("/api/docker/containers", { headers });
     const data = await res.json();
     if (data.success) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (data.data || []).forEach((c: any) => {
         statusMap[c.Id] = {
           state: c.State,
@@ -601,8 +606,8 @@ const fetchContainerStatuses = async () => {
         };
       });
     }
-  } catch (e) {
-    // console.warn("Failed to fetch docker stats, using mocks if available", e);
+  } catch {
+    // console.warn("Failed to fetch docker stats, using mocks if available");
   }
 
   // 3. Update State
@@ -1064,7 +1069,8 @@ onMounted(() => {
     <AppSidebar
       v-if="isSidebarEnabled"
       v-model:collapsed="sidebarCollapsed"
-      class="fixed left-0 top-0 h-full z-40"
+      class="fixed left-0 top-0 z-40"
+      :class="isMobile && sidebarCollapsed ? 'h-auto' : 'h-full'"
       :onOpenSettings="() => (showSettingsModal = true)"
       :onOpenEdit="() => (isEditMode = !isEditMode)"
     />
@@ -1076,7 +1082,8 @@ onMounted(() => {
         '--group-title-color': store.appConfig.groupTitleColor || '#ffffff',
         '--card-bg-color': store.appConfig.cardBgColor || 'transparent',
         '--card-border-color': store.appConfig.cardBorderColor || 'transparent',
-        paddingLeft: isSidebarEnabled ? (sidebarCollapsed ? '100px' : '288px') : undefined,
+        paddingLeft:
+          isSidebarEnabled && !isMobile ? (sidebarCollapsed ? '100px' : '288px') : undefined,
       }"
     >
       <div
@@ -1301,14 +1308,14 @@ onMounted(() => {
             >
               <div
                 v-if="ipInfo.location"
-                class="text-[19px] font-bold w-full truncate flex-1 flex items-center justify-center -mt-px"
+                class="text-[19px] font-medium sm:font-bold w-full truncate flex-1 flex items-center justify-center -mt-px"
                 :title="ipInfo.location"
               >
                 {{ formattedLocation }}
               </div>
               <div class="flex items-center justify-center gap-2 w-full flex-1">
                 <span class="text-[14px] opacity-70 uppercase">IP</span>
-                <span class="text-2xl font-mono font-bold leading-tight">{{
+                <span class="text-2xl font-mono font-medium sm:font-bold leading-tight">{{
                   ipInfo.displayIp
                 }}</span>
               </div>
@@ -1366,7 +1373,12 @@ onMounted(() => {
           class="pb-20 flex flex-col"
           :style="{ gap: (store.appConfig.groupGap ?? 30) + 'px' }"
         >
-          <div v-for="group in displayGroups" :key="group.id" class="group-container">
+          <div
+            v-for="group in displayGroups"
+            :key="group.id"
+            class="group-container"
+            :id="'group-' + group.id"
+          >
             <div
               class="flex items-center gap-3 mb-2 group-header relative transition-opacity duration-200"
               :class="{ 'opacity-0 hover:opacity-100': group.autoHideTitle }"
@@ -1550,7 +1562,7 @@ onMounted(() => {
                     <div
                       class="absolute top-0 right-0 h-full bg-blue-500 transition-all duration-1000 ease-out"
                       :style="{
-                        width: (containerStatuses[item.containerId].stats.cpuPercent || 0) + '%',
+                        width: (containerStatuses[item.containerId]?.stats?.cpuPercent || 0) + '%',
                       }"
                     ></div>
                   </div>
@@ -1566,7 +1578,7 @@ onMounted(() => {
                     <div
                       class="absolute top-0 left-0 h-full bg-green-500 transition-all duration-1000 ease-out"
                       :style="{
-                        width: (containerStatuses[item.containerId].stats.memPercent || 0) + '%',
+                        width: (containerStatuses[item.containerId]?.stats?.memPercent || 0) + '%',
                       }"
                     ></div>
                   </div>
@@ -1673,7 +1685,7 @@ onMounted(() => {
                       <span class="font-bold">NET</span>
                       <span class="font-mono">
                         ↓{{
-                          formatToMB(containerStatuses[item.containerId].stats?.netIO?.rx || 0)
+                          formatToMB(containerStatuses[item.containerId]?.stats?.netIO?.rx || 0)
                         }}/s
                       </span>
                     </div>
@@ -1681,7 +1693,9 @@ onMounted(() => {
                       <span class="font-bold">IO</span>
                       <span class="font-mono">
                         R:{{
-                          formatToMB(containerStatuses[item.containerId].stats?.blockIO?.read || 0)
+                          formatToMB(
+                            containerStatuses[item.containerId]?.stats?.blockIO?.read || 0,
+                          )
                         }}/s
                       </span>
                     </div>

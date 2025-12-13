@@ -2,10 +2,12 @@
 defineOptions({
   name: "AppSidebar",
 });
-import { computed, onMounted, onUnmounted, ref, nextTick } from "vue";
+import { computed, onMounted, onUnmounted, ref, nextTick, toRef } from "vue";
 import { useMainStore } from "../stores/main";
+import { useDevice } from "../composables/useDevice";
 import type { BookmarkCategory } from "@/types";
 import { parseBookmarks } from "../utils/bookmark";
+import { VueDraggable } from "vue-draggable-plus";
 
 const props = defineProps<{
   onOpenSettings: () => void;
@@ -15,7 +17,25 @@ const props = defineProps<{
 
 const emit = defineEmits(["update:collapsed"]);
 const store = useMainStore();
+const { isMobile } = useDevice(toRef(store.appConfig, "deviceMode"));
 const fileInput = ref<HTMLInputElement | null>(null);
+const viewMode = ref<"bookmarks" | "groups">(store.appConfig.sidebarViewMode || "bookmarks");
+
+const toggleViewMode = () => {
+  viewMode.value = viewMode.value === "bookmarks" ? "groups" : "bookmarks";
+  store.appConfig.sidebarViewMode = viewMode.value;
+  store.saveData();
+};
+
+const scrollToGroup = (groupId: string) => {
+  const el = document.getElementById("group-" + groupId);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (isMobile.value) {
+      toggle();
+    }
+  }
+};
 
 // --- Bookmarks ---
 const bookmarks = computed(() => {
@@ -257,22 +277,53 @@ const menuItems = computed(() => {
 
 <template>
   <div
-    class="flex flex-col h-full transition-all duration-300 border-r z-50 backdrop-blur-md"
+    class="flex flex-col transition-all duration-300 z-50"
     :class="[
-      collapsed ? 'w-[68px]' : 'w-64',
+      isMobile && collapsed
+        ? 'w-auto h-auto rounded-lg top-2 left-2'
+        : 'h-full border-r backdrop-blur-md',
+      collapsed ? (isMobile ? 'w-auto' : 'w-[68px]') : 'w-64',
       store.appConfig.background
-        ? 'bg-black/40 border-white/10 text-white'
-        : 'bg-white border-gray-200 text-gray-700',
+        ? isMobile && collapsed
+          ? 'text-white'
+          : 'bg-black/40 border-white/10 text-white'
+        : isMobile && collapsed
+          ? 'text-gray-700'
+          : 'bg-white border-gray-200 text-gray-700',
     ]"
   >
     <!-- Toggle Button -->
     <div
-      class="p-4 flex items-center justify-between border-b"
-      :class="store.appConfig.background ? 'border-white/10' : 'border-gray-100'"
+      class="flex items-center justify-between"
+      :class="[
+        isMobile && collapsed ? 'p-1' : 'p-4 border-b',
+        store.appConfig.background ? 'border-white/10' : 'border-gray-100',
+      ]"
     >
-      <span v-if="!collapsed" class="font-bold text-lg truncate">菜单</span>
       <button
         v-if="!collapsed"
+        @click="toggleViewMode"
+        class="font-bold text-lg truncate hover:opacity-70 transition-opacity flex items-center gap-1"
+        :title="viewMode === 'bookmarks' ? '切换到分组导航' : '切换到书签'"
+      >
+        {{ viewMode === "bookmarks" ? "收藏夹" : "快捷导航" }}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke-width="2"
+          stroke="currentColor"
+          class="w-4 h-4 opacity-50"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"
+          />
+        </svg>
+      </button>
+      <button
+        v-if="!collapsed && viewMode === 'bookmarks'"
         @click="openAddModal"
         class="p-1.5 rounded-lg transition-colors group relative"
         :class="store.appConfig.background ? 'hover:bg-white/10' : 'hover:bg-gray-100'"
@@ -324,151 +375,214 @@ const menuItems = computed(() => {
       </button>
     </div>
 
-    <!-- Bookmarks (Main Content) -->
-    <div class="flex-1 overflow-y-auto py-4 space-y-2 px-3" :class="{ 'no-scrollbar': collapsed }">
-      <template v-if="bookmarks.length > 0">
-        <div v-for="category in bookmarks" :key="category.id" class="space-y-1">
-          <!-- Category Title -->
-          <div
-            v-if="!collapsed"
-            @click="toggleCategory(category)"
-            class="w-full px-2 py-1 flex items-center justify-between text-xs font-bold uppercase tracking-wider opacity-50 hover:opacity-100 transition-opacity cursor-pointer group/header"
-          >
-            <span class="truncate flex-1">{{ category.title }}</span>
+    <!-- Main Content -->
+    <div
+      class="flex-1 overflow-y-auto py-4 space-y-2 px-3"
+      :class="{ 'no-scrollbar': collapsed }"
+      v-show="!isMobile || !collapsed"
+    >
+      <!-- Bookmarks View -->
+      <template v-if="viewMode === 'bookmarks'">
+        <template v-if="bookmarks.length > 0">
+          <div v-for="category in bookmarks" :key="category.id" class="space-y-1">
+            <!-- Category Title -->
+            <div
+              v-if="!collapsed"
+              @click="toggleCategory(category)"
+              class="w-full px-2 py-1 flex items-center justify-between text-xs font-bold uppercase tracking-wider opacity-50 hover:opacity-100 transition-opacity cursor-pointer group/header"
+            >
+              <span class="truncate flex-1">{{ category.title }}</span>
 
-            <div class="flex items-center gap-2">
-              <!-- Delete Button -->
-              <button
-                @click.stop="handleDeleteCategory(category.id)"
-                class="p-0.5 rounded-full opacity-0 group-hover/header:opacity-100 transition-opacity hover:bg-red-500/10 text-red-500"
-                title="删除分组"
-              >
+              <div class="flex items-center gap-2">
+                <!-- Delete Button -->
+                <button
+                  @click.stop="handleDeleteCategory(category.id)"
+                  class="p-0.5 rounded-full opacity-0 group-hover/header:opacity-100 transition-opacity hover:bg-red-500/10 text-red-500"
+                  title="删除分组"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                    stroke="currentColor"
+                    class="w-3.5 h-3.5"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                    />
+                  </svg>
+                </button>
+
+                <!-- Chevron -->
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
-                  stroke-width="1.5"
+                  stroke-width="2"
                   stroke="currentColor"
-                  class="w-3.5 h-3.5"
+                  class="w-3 h-3 transition-transform duration-200"
+                  :class="{ '-rotate-90': category.collapsed }"
                 >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                    d="M19.5 8.25l-7.5 7.5-7.5-7.5"
                   />
                 </svg>
-              </button>
-
-              <!-- Chevron -->
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke-width="2"
-                stroke="currentColor"
-                class="w-3 h-3 transition-transform duration-200"
-                :class="{ '-rotate-90': category.collapsed }"
-              >
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M19.5 8.25l-7.5 7.5-7.5-7.5"
-                />
-              </svg>
+              </div>
             </div>
-          </div>
 
-          <!-- Items -->
-          <div v-show="!category.collapsed || collapsed">
-            <div
-              v-for="item in category.children"
-              :key="item.id"
-              class="w-full flex items-center gap-2 p-1.5 rounded-lg transition-all group relative"
-              :class="[
-                store.appConfig.background
-                  ? 'hover:bg-white/10 text-white/90'
-                  : 'hover:bg-gray-100 text-gray-600',
-              ]"
-            >
-              <a :href="item.url" target="_blank" class="flex-1 flex items-center gap-2 min-w-0">
-                <!-- Icon -->
-                <div class="w-4 h-4 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                  <img
-                    v-if="item.icon"
-                    :src="item.icon"
-                    class="w-full h-full object-contain"
-                    alt=""
-                  />
-                  <span v-else class="text-[10px] font-bold opacity-70 leading-none">{{
-                    item.title.substring(0, 1).toUpperCase()
-                  }}</span>
-                </div>
-
-                <!-- Label -->
-                <span
-                  class="font-medium whitespace-nowrap transition-all duration-300 origin-left flex-1 truncate text-sm"
-                  :class="collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'"
-                >
-                  {{ item.title }}
-                </span>
-              </a>
-
-              <!-- Delete Button -->
-              <button
-                v-if="!collapsed"
-                @click.stop="handleDeleteBookmark(category, item.id)"
-                class="p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+            <!-- Items -->
+            <div v-show="!category.collapsed || collapsed">
+              <div
+                v-for="item in category.children"
+                :key="item.id"
+                class="w-full flex items-center gap-2 p-1.5 rounded-lg transition-all group relative"
                 :class="[
                   store.appConfig.background
-                    ? 'hover:bg-red-500/20 text-red-400'
-                    : 'hover:bg-red-500/10 text-red-500',
+                    ? 'hover:bg-white/10 text-white/90'
+                    : 'hover:bg-gray-100 text-gray-600',
                 ]"
-                title="删除书签"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke-width="1.5"
-                  stroke="currentColor"
-                  class="w-3 h-3"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+                <a :href="item.url" target="_blank" class="flex-1 flex items-center gap-2 min-w-0">
+                  <!-- Icon -->
+                  <div
+                    class="w-4 h-4 flex-shrink-0 flex items-center justify-center overflow-hidden"
+                  >
+                    <img
+                      v-if="item.icon"
+                      :src="item.icon"
+                      class="w-full h-full object-contain"
+                      alt=""
+                    />
+                    <span v-else class="text-[10px] font-bold opacity-70 leading-none">{{
+                      item.title.substring(0, 1).toUpperCase()
+                    }}</span>
+                  </div>
 
-              <!-- Tooltip for collapsed -->
-              <div
-                v-if="collapsed"
-                class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[60] flex items-center gap-2 shadow-lg"
-              >
-                {{ item.title }}
-                <!-- Arrow -->
+                  <!-- Label -->
+                  <span
+                    class="font-medium whitespace-nowrap transition-all duration-300 origin-left flex-1 truncate text-sm"
+                    :class="collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'"
+                  >
+                    {{ item.title }}
+                  </span>
+                </a>
+
+                <!-- Delete Button -->
+                <button
+                  v-if="!collapsed"
+                  @click.stop="handleDeleteBookmark(category, item.id)"
+                  class="p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                  :class="[
+                    store.appConfig.background
+                      ? 'hover:bg-red-500/20 text-red-400'
+                      : 'hover:bg-red-500/10 text-red-500',
+                  ]"
+                  title="删除书签"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke-width="1.5"
+                    stroke="currentColor"
+                    class="w-3 h-3"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+
+                <!-- Tooltip for collapsed -->
                 <div
-                  class="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-800"
-                ></div>
+                  v-if="collapsed"
+                  class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[60] flex items-center gap-2 shadow-lg"
+                >
+                  {{ item.title }}
+                  <!-- Arrow -->
+                  <div
+                    class="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-800"
+                  ></div>
+                </div>
               </div>
             </div>
           </div>
+        </template>
+        <div v-else class="flex flex-col items-center justify-center h-full opacity-40 gap-2">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke-width="1.5"
+            stroke="currentColor"
+            class="w-8 h-8"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
+            />
+          </svg>
+          <span class="text-xs">暂无书签</span>
         </div>
       </template>
-      <div v-else class="flex flex-col items-center justify-center h-full opacity-40 gap-2">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke-width="1.5"
-          stroke="currentColor"
-          class="w-8 h-8"
+
+      <!-- Groups View -->
+      <template v-else>
+        <VueDraggable
+          v-if="store.groups.length > 0"
+          v-model="store.groups"
+          class="space-y-1"
+          :animation="150"
+          handle=".drag-handle"
+          @end="store.saveData()"
         >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"
-          />
-        </svg>
-        <span class="text-xs">暂无书签</span>
-      </div>
+          <button
+            v-for="group in store.groups"
+            :key="group.id"
+            @click="scrollToGroup(group.id)"
+            class="w-full flex items-center gap-2 p-2 rounded-lg transition-all group relative text-left"
+            :class="[
+              store.appConfig.background
+                ? 'hover:bg-white/10 text-white/90'
+                : 'hover:bg-gray-100 text-gray-600',
+            ]"
+          >
+            <!-- Icon/Indicator -->
+            <div
+              class="w-5 h-5 flex-shrink-0 flex items-center justify-center cursor-move drag-handle"
+            >
+              <span class="text-xs font-bold opacity-70">=</span>
+            </div>
+
+            <!-- Label -->
+            <span
+              class="font-medium whitespace-nowrap transition-all duration-300 origin-left flex-1 truncate text-sm"
+              :class="collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'"
+            >
+              {{ group.title }}
+            </span>
+
+            <!-- Tooltip for collapsed -->
+            <div
+              v-if="collapsed"
+              class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[60] flex items-center gap-2 shadow-lg"
+            >
+              {{ group.title }}
+              <!-- Arrow -->
+              <div
+                class="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-800"
+              ></div>
+            </div>
+          </button>
+        </VueDraggable>
+        <div v-else class="flex flex-col items-center justify-center h-full opacity-40 gap-2">
+          <span class="text-xs">暂无分组</span>
+        </div>
+      </template>
     </div>
 
     <!-- Bottom Toolbar (Menu Items + Import) -->

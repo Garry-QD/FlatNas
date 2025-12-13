@@ -14,13 +14,21 @@ export function useWallpaperRotation() {
     try {
       const res = await fetch(store.appConfig.wallpaperApiPcList || "/api/backgrounds");
       if (res.ok) pcWallpapers.value = await res.json();
+      if (pcWallpapers.value.length === 0) {
+        pcWallpapers.value = ["default-wallpaper.svg"];
+      }
 
       const resMobile = await fetch(
         store.appConfig.wallpaperApiMobileList || "/api/mobile_backgrounds",
       );
       if (resMobile.ok) mobileWallpapers.value = await resMobile.json();
+      if (mobileWallpapers.value.length === 0) {
+        mobileWallpapers.value = ["default-wallpaper.svg"];
+      }
     } catch (e) {
       console.error("Failed to fetch wallpapers for rotation", e);
+      if (pcWallpapers.value.length === 0) pcWallpapers.value = ["default-wallpaper.svg"];
+      if (mobileWallpapers.value.length === 0) mobileWallpapers.value = ["default-wallpaper.svg"];
     }
   };
 
@@ -43,7 +51,13 @@ export function useWallpaperRotation() {
       // Extract name from URL: /backgrounds/name.jpg or /mobile_backgrounds/name.jpg
       const prefix = type === "pc" ? "/backgrounds/" : "/mobile_backgrounds/";
       // Be careful with URL encoding if used, but usually it's plain
-      const currentName = currentUrl?.startsWith(prefix) ? currentUrl.replace(prefix, "") : "";
+      
+      let currentName = "";
+      if (currentUrl === "/default-wallpaper.svg") {
+        currentName = "default-wallpaper.svg";
+      } else if (currentUrl?.startsWith(prefix)) {
+        currentName = currentUrl.replace(prefix, "");
+      }
 
       let currentIndex = -1;
       if (currentName) {
@@ -57,12 +71,17 @@ export function useWallpaperRotation() {
       nextWallpaper = list[nextIndex] || "";
     }
 
-    const base =
-      type === "pc"
-        ? store.appConfig.wallpaperPcImageBase || "/backgrounds"
-        : store.appConfig.wallpaperMobileImageBase || "/mobile_backgrounds";
-    const trimmed = base.endsWith("/") ? base.slice(0, -1) : base;
-    const url = `${trimmed}/${encodeURIComponent(nextWallpaper)}`;
+    let url = "";
+    if (nextWallpaper === "default-wallpaper.svg") {
+      url = "/default-wallpaper.svg";
+    } else {
+      const base =
+        type === "pc"
+          ? store.appConfig.wallpaperPcImageBase || "/backgrounds"
+          : store.appConfig.wallpaperMobileImageBase || "/mobile_backgrounds";
+      const trimmed = base.endsWith("/") ? base.slice(0, -1) : base;
+      url = `${trimmed}/${encodeURIComponent(nextWallpaper)}`;
+    }
 
     if (type === "pc") {
       store.appConfig.background = url;

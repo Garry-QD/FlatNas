@@ -26,11 +26,21 @@ type DockerContainer = {
   mockStartAt?: number;
 };
 
+interface DockerInfo {
+  OSType: string;
+  Architecture: string;
+  Containers: number;
+  Name: string;
+  Images: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
+}
+
 const store = useMainStore();
 const props = defineProps<{ widget?: WidgetConfig; compact?: boolean }>();
 
 const MB = 1024 * 1024;
-const dockerInfo = ref<any>(null);
+const dockerInfo = ref<DockerInfo | null>(null);
 const unhealthyCount = computed(
   () =>
     containers.value.filter((c) => c.Status && c.Status.toLowerCase().includes("unhealthy")).length,
@@ -328,16 +338,12 @@ const addToHome = (c: DockerContainer) => {
       id: newGroupId,
       title: "Docker",
       items: [],
-      // Force horizontal layout for this group if supported by data structure
-      // Note: Group-level layout might need support in NavGroup type or handled via appConfig override for this group
-      // Assuming NavGroup has layout property or we just rely on it being a group where we put these special cards.
-      // Based on previous context, layout is global or per group?
-      // Let's check NavGroup definition if possible, but for now we'll add it and if the UI supports group-level layout it will work.
-      // If layout is global appConfig, we can't force it just for one group easily without schema change.
-      // However, user asked "Force horizontal mode".
-      // Let's check if NavGroup has layout. The prompt implies we should set it.
-      // If NavGroup doesn't support it, we might just add it and user has to set it, or we hack it.
-      // Let's assume we can just add the item for now.
+      // Default settings for Docker group
+      cardLayout: "horizontal",
+      gridGap: 8,
+      cardSize: 120,
+      iconSize: 48,
+      showCardBackground: true,
     });
     dockerGroup = store.groups.find((g) => g.title === "Docker");
   }

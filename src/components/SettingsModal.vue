@@ -2092,12 +2092,14 @@ onMounted(() => {
                 <div class="flex items-center gap-2">
                   <span class="text-xs text-gray-700 font-medium">内网主机</span>
                   <input
-                    :value="dockerWidget.data?.lanHost"
+                    :value="dockerWidget?.data?.lanHost"
                     @change="
                       (e) => {
-                        if (!dockerWidget.data) dockerWidget.data = {};
-                        dockerWidget.data.lanHost = (e.target as HTMLInputElement).value;
-                        store.saveData();
+                        if (dockerWidget) {
+                          if (!dockerWidget.data) dockerWidget.data = {};
+                          dockerWidget.data.lanHost = (e.target as HTMLInputElement).value;
+                          store.saveData();
+                        }
                       }
                     "
                     type="text"

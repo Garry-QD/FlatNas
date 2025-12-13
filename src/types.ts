@@ -15,6 +15,9 @@ export interface NavItem {
   backgroundBlur?: number;
   backgroundMask?: number;
   iconSize?: number;
+  containerId?: string;
+  allowRestart?: boolean;
+  allowStop?: boolean;
 }
 
 export interface NavGroup {
@@ -128,6 +131,10 @@ export interface AppConfig {
   wallpaperApiMobileUpload?: string;
   wallpaperApiMobileDeleteBase?: string;
   wallpaperMobileImageBase?: string;
+  // Wallpaper Sorting
+  pcWallpaperOrder?: string[];
+  mobileWallpaperOrder?: string[];
+  sidebarViewMode?: "bookmarks" | "groups";
 }
 
 export interface WidgetConfig {

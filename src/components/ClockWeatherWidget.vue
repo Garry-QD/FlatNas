@@ -513,26 +513,31 @@ onUnmounted(() => {
       </div>
 
       <!-- 中部：绝对居中的时间 -->
-      <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div
+        class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pt-8"
+      >
         <div
           class="text-3xl sm:text-4xl font-bold tracking-tighter font-mono leading-none bg-gradient-to-b from-white to-white/80 bg-clip-text text-transparent"
           :class="isBrightWeather ? 'drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]' : 'drop-shadow-lg'"
         >
           {{ time }}
         </div>
+        <!-- 天气文字 -->
+        <div class="flex items-center gap-2 mt-2">
+          <span class="text-sm sm:text-base font-medium opacity-90 drop-shadow-md">{{
+            weather.text
+          }}</span>
+          <div
+            v-if="weatherType === 'sunny' || weatherType === 'clear-night'"
+            class="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]"
+          ></div>
+        </div>
       </div>
 
       <!-- 底部：天气详情 (优化对齐) -->
       <div class="flex items-end justify-between pb-0.5">
-        <!-- 左侧：天气状况 + 大温度 -->
+        <!-- 左侧：大温度 -->
         <div class="flex flex-col justify-end">
-          <div class="flex items-center gap-2 mb-0.5">
-            <span class="text-sm sm:text-base font-medium opacity-90">{{ weather.text }}</span>
-            <div
-              v-if="weatherType === 'sunny' || weatherType === 'clear-night'"
-              class="w-1.5 h-1.5 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.6)]"
-            ></div>
-          </div>
           <div class="text-2xl sm:text-3xl font-bold tracking-tight drop-shadow-md leading-none">
             {{ weather.temp }}<span class="text-base align-top">°</span>
           </div>

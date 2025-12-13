@@ -38,7 +38,6 @@ const isMedium = computed(
 );
 const isLarge = computed(() => (props.widget?.w || 1) >= 4 && (props.widget?.h || 1) <= 1);
 const isWide = computed(() => isMedium.value || isLarge.value);
-const isTall = computed(() => (props.widget?.h || 1) >= 4 && (props.widget?.w || 1) <= 1);
 
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -149,13 +148,13 @@ onUnmounted(() => {
       <div
         v-if="systemStats"
         class="text-sm text-gray-400"
-        :class="[isWide ? 'mt-1 text-right' : 'text-right']"
+        :class="[isWide ? 'mt-1 text-left' : 'text-left']"
       >
         <div>运行: {{ (systemStats.uptime / 86400).toFixed(1) }} 天</div>
         <div
           v-if="systemStats.os"
           class="truncate"
-          :class="[isWide ? 'max-w-[120px]' : 'scale-90 origin-right max-w-[80px]']"
+          :class="[isWide ? 'max-w-[120px]' : 'scale-90 origin-left max-w-[80px]']"
           :title="systemStats.os.hostname"
         >
           {{ systemStats.os.hostname }}
@@ -259,7 +258,7 @@ onUnmounted(() => {
       >
         <div
           v-for="(net, idx) in systemStats.network
-            .filter((n) => n.rx_sec > 0 || n.tx_sec > 0 || n.iface === 'eth0' || idx === 0)
+            .filter((n, i) => n.rx_sec > 0 || n.tx_sec > 0 || n.iface === 'eth0' || i === 0)
             .slice(0, isWide ? 1 : 3)"
           :key="idx"
           class="flex items-center justify-between text-[10px] text-gray-500 font-mono"

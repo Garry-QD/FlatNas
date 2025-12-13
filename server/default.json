@@ -196,7 +196,8 @@
           "description2": "",
           "description3": "",
           "titleColor": "",
-          "isPublic": true
+          "isPublic": true,
+          "iconSize": 75
         },
         {
           "title": "Stack Overflow",
@@ -209,7 +210,12 @@
           "backgroundImage": "",
           "backgroundBlur": 6,
           "backgroundMask": 0.3,
-          "isPublic": true
+          "isPublic": true,
+          "description1": "",
+          "description2": "",
+          "description3": "",
+          "titleColor": "",
+          "iconSize": 65
         },
         {
           "title": "CSDN",
@@ -222,7 +228,12 @@
           "backgroundImage": "",
           "backgroundBlur": 6,
           "backgroundMask": 0.3,
-          "isPublic": true
+          "isPublic": true,
+          "description1": "",
+          "description2": "",
+          "description3": "",
+          "titleColor": "",
+          "iconSize": 75
         },
         {
           "title": "Juejin",
@@ -235,7 +246,12 @@
           "backgroundImage": "",
           "backgroundBlur": 6,
           "backgroundMask": 0.3,
-          "isPublic": true
+          "isPublic": true,
+          "description1": "",
+          "description2": "",
+          "description3": "",
+          "titleColor": "",
+          "iconSize": 90
         },
         {
           "title": "V2EX",
@@ -248,7 +264,12 @@
           "backgroundImage": "",
           "backgroundBlur": 6,
           "backgroundMask": 0.3,
-          "isPublic": true
+          "isPublic": true,
+          "description1": "",
+          "description2": "",
+          "description3": "",
+          "titleColor": "",
+          "iconSize": 80
         },
         {
           "title": "MDN",
@@ -498,7 +519,8 @@
       ],
       "colSpan": 1,
       "rowSpan": 4,
-      "isPublic": false
+      "isPublic": false,
+      "hideOnMobile": true
     },
     {
       "id": "clockweather",
@@ -526,7 +548,8 @@
       "enable": false,
       "colSpan": 1,
       "rowSpan": 1,
-      "isPublic": false
+      "isPublic": false,
+      "hideOnMobile": true
     },
     {
       "id": "w8",
@@ -535,7 +558,7 @@
       "data": [],
       "colSpan": 1,
       "rowSpan": 2,
-      "isPublic": true,
+      "isPublic": false,
       "x": 1,
       "y": 0,
       "w": 1,
@@ -553,10 +576,10 @@
       "id": "w4",
       "type": "memo",
       "enable": true,
-      "data": "",
+      "data": "添加了容器的卡片管理\n侧边栏添加快捷分组\n优化了手机端在侧边栏的展现\n优化了侧边栏默认公开的BUG\n优化了图天气状态位置\n优化了快捷分组的拖动逻辑\n优化自动添加容器管理卡片的展现逻辑",
       "colSpan": 1,
       "rowSpan": 2,
-      "isPublic": true,
+      "isPublic": false,
       "x": 2,
       "y": 0,
       "w": 1,
@@ -588,7 +611,8 @@
             "enabled": false
           }
         ]
-      }
+      },
+      "hideOnMobile": true
     },
     {
       "id": "w1",
@@ -599,7 +623,8 @@
       "isPublic": false,
       "data": {
         "style": "retro"
-      }
+      },
+      "hideOnMobile": true
     },
     {
       "id": "w2",
@@ -610,7 +635,8 @@
       "isPublic": false,
       "data": {
         "city": "嘉峪关"
-      }
+      },
+      "hideOnMobile": true
     },
     {
       "id": "w11",
@@ -655,7 +681,8 @@
       "enable": false,
       "colSpan": 1,
       "rowSpan": 1,
-      "isPublic": false
+      "isPublic": false,
+      "hideOnMobile": true
     },
     {
       "id": "rss-reader",
@@ -686,8 +713,9 @@
     {
       "id": "sidebar",
       "type": "sidebar",
-      "enable": false,
-      "isPublic": false
+      "enable": true,
+      "isPublic": false,
+      "hideOnMobile": false
     },
     {
       "id": "w-cd-1765359997069",
@@ -714,11 +742,19 @@
           "h": 1
         }
       }
+    },
+    {
+      "id": "docker",
+      "type": "docker",
+      "enable": false,
+      "isPublic": true,
+      "colSpan": 1,
+      "rowSpan": 1
     }
   ],
   "appConfig": {
-    "background": "/backgrounds/unnamed-2_01-1765141998720.gif",
-    "mobileBackground": "/mobile_backgrounds/155548-17409885482e02.jpg",
+    "background": "/default-wallpaper.svg",
+    "mobileBackground": "/mobile_backgrounds/104933-1741661373383a.jpg",
     "enableMobileWallpaper": true,
     "fixedWallpaper": false,
     "deviceMode": "auto",
@@ -782,6 +818,17 @@
     "wallpaperApiMobileList": "/api/mobile_backgrounds",
     "wallpaperApiMobileUpload": "/api/mobile_backgrounds/upload",
     "wallpaperApiMobileDeleteBase": "/api/mobile_backgrounds",
-    "wallpaperMobileImageBase": "/mobile_backgrounds"
+    "wallpaperMobileImageBase": "/mobile_backgrounds",
+    "sidebarViewMode": "groups",
+    "mobileWallpaperOrder": [
+      "104933-1741661373383a.jpg",
+      "155548-17409885482e02.jpg",
+      "default-wallpaper.svg",
+      "4344d0a5f8952648eee71c7cebdff48de91dc46434ef9e-uAUwUV_fw1200.jpg",
+      "img1.wallspic.com-zi_se_de-tian_wen_xue_dui_xiang-zi_luo_lan_se-yi_shu-ke_xue-3240x5760.jpg",
+      "img2.wallspic.com-azure-dian_lan_se_de-yuan_quan-fu_hao-yi_shu-2340x5070.png",
+      "img2.wallspic.com-yi_shu-ye_ti-liu_ti-pin_hong_se-1440x2560.png",
+      "img3.wallspic.com-sheng_dan_jie-sheng_dan_cai_deng-sheng_dan_shu-jia_ri-sheng_dan_jie_de_zhuang_shi_pin-3178x4768.jpg"
+    ]
   }
 }
