@@ -111,6 +111,12 @@ deploy_app() {
     # Prepare backend directories
     log "Preparing backend directories..."
     mkdir -p server/data server/music server/PC server/APP server/cgi-bin
+
+    # Set permissions for CGI scripts
+    log "Setting permissions for CGI scripts..."
+    if [ -d "server/cgi-bin" ]; then
+        chmod +x server/cgi-bin/* 2>/dev/null || true
+    fi
 }
 
 # 4. Configure Systemd Service
@@ -129,6 +135,7 @@ WorkingDirectory=${APP_DIR}
 ExecStart=$(which node) server/server.js
 Restart=on-failure
 Environment=NODE_ENV=production
+Environment=PORT=3000
 
 [Install]
 WantedBy=multi-user.target
