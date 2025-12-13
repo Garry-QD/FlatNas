@@ -212,7 +212,7 @@ ensureInit();
 
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
 // Helper to get user file path
 function getUserFile(username) {
@@ -980,6 +980,35 @@ app.post("/api/default/save", authenticateToken, async (req, res) => {
   }
 });
 
+// Import Data (New API for Importing)
+app.post("/api/data", authenticateToken, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  const username = req.user.username;
+  try {
+    const data = req.body;
+    if (!data || typeof data !== "object") {
+      return res.status(400).json({ error: "Invalid JSON data" });
+    }
+
+    // Preserve password
+    if (cachedUsersData[username] && cachedUsersData[username].password) {
+      data.password = cachedUsersData[username].password;
+    }
+
+    // Ensure groups exist if items are present (legacy format support)
+    if (!data.groups && data.items) {
+      data.groups = [{ id: Date.now().toString(), title: "默认分组", items: data.items }];
+    }
+
+    cachedUsersData[username] = data;
+    await atomicWrite(getUserFile(username), JSON.stringify(data, null, 2));
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[Import Failed]:", err);
+    res.status(500).json({ error: "Failed to import data" });
+  }
+});
+
 // Save
 app.post("/api/save", authenticateToken, async (req, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized" });
@@ -1249,6 +1278,29 @@ app.post("/api/data/import", authenticateToken, async (req, res) => {
     await atomicWrite(getUserFile(username), JSON.stringify(finalData, null, 2));
     res.json({ success: true });
   } catch {
+    res.status(500).json({ error: "Failed to import" });
+  }
+});
+
+// Import Data (Deprecated but kept for compatibility, now handled by /api/data)
+app.post("/api/data/import", authenticateToken, async (req, res) => {
+  // Redirect logic to /api/data handler internally or just reuse logic
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  const username = req.user.username;
+  try {
+    const data = req.body;
+    if (!data || typeof data !== "object") {
+      return res.status(400).json({ error: "Invalid JSON data" });
+    }
+    // Preserve password
+    if (cachedUsersData[username] && cachedUsersData[username].password) {
+      data.password = cachedUsersData[username].password;
+    }
+    cachedUsersData[username] = data;
+    await atomicWrite(getUserFile(username), JSON.stringify(data, null, 2));
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[Import Failed]:", err);
     res.status(500).json({ error: "Failed to import" });
   }
 });
