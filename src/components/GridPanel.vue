@@ -505,6 +505,20 @@ const handleCardClick = (item: NavItem) => {
   // 如果确实没有链接可跳，则不做反应
   if (!targetUrl) return;
 
+  // Lucky STUN Port Replacement
+  // 当配置了 Lucky STUN 且当前访问域名与卡片链接域名一致时，自动替换端口
+  if (store.luckyStunData?.data?.stun === "success" && store.luckyStunData?.data?.port) {
+    try {
+      const urlObj = new URL(targetUrl);
+      if (urlObj.hostname === window.location.hostname) {
+        urlObj.port = String(store.luckyStunData.data.port);
+        targetUrl = urlObj.toString();
+      }
+    } catch {
+      // Ignore relative or invalid URLs
+    }
+  }
+
   window.open(targetUrl, "_blank");
 };
 
@@ -1660,6 +1674,13 @@ onMounted(() => {
                   (group.showCardBackground ?? store.appConfig.showCardBackground) === false
                     ? ''
                     : 'border backdrop-blur-sm',
+                  store.appConfig.mouseHoverEffect === 'lift'
+                    ? 'hover:-translate-y-1 hover:shadow-lg'
+                    : store.appConfig.mouseHoverEffect === 'glow'
+                      ? 'hover:shadow-[0_0_15px_rgba(168,85,247,0.5)]'
+                      : store.appConfig.mouseHoverEffect === 'none'
+                        ? ''
+                        : 'hover:scale-105 active:scale-95',
                 ]"
                 :style="{
                   height: getLayoutConfig(group).height + 'px',

@@ -58,6 +58,7 @@ const MUSIC_DIR = path.join(__dirname, "music");
 const BACKGROUNDS_DIR = path.join(__dirname, "PC");
 const MOBILE_BACKGROUNDS_DIR = path.join(__dirname, "APP");
 const CONFIG_VERSIONS_DIR = path.join(DATA_DIR, "config_versions");
+const AMAP_STATS_FILE = path.join(DATA_DIR, "amap_stats.json");
 
 // Helper to ensure directory exists safely
 async function ensureDir(dirPath) {
@@ -265,6 +266,15 @@ app.get("/api/docker-status", async (req, res) => {
     }
     console.error("[Docker Status Error]:", err);
     res.status(500).json({ error: "Failed to read docker status" });
+  }
+});
+
+app.get("/api/stats/amap", async (req, res) => {
+  try {
+    const data = await fs.readFile(AMAP_STATS_FILE, "utf8");
+    res.json(JSON.parse(data));
+  } catch {
+    res.json({ total: 0, today: 0, lastDate: new Date().toISOString().split("T")[0] });
   }
 });
 
@@ -1198,6 +1208,38 @@ app.get("/api/ip", async (req, res) => {
   res.json({ success: false, ip: clientIp, location: "Unknown", source: "fallback", clientIp });
 });
 
+// Lucky STUN Cache
+let LUCKY_STUN_CACHE = {
+  ts: 0,
+  data: null,
+};
+
+// Lucky STUN Webhook
+app.post("/api/webhook/lucky/stun", (req, res) => {
+  try {
+    const data = req.body;
+    console.log("[Lucky STUN Webhook] Received data:", JSON.stringify(data));
+
+    LUCKY_STUN_CACHE = {
+      ts: Date.now(),
+      data: data,
+    };
+
+    // Emit to all connected clients
+    io.emit("lucky:stun", LUCKY_STUN_CACHE);
+
+    res.json({ success: true, message: "Webhook received" });
+  } catch (error) {
+    console.error("[Lucky STUN Webhook] Error:", error);
+    res.status(500).json({ error: "Failed to process webhook" });
+  }
+});
+
+// Get Lucky STUN Status
+app.get("/api/lucky/stun", (req, res) => {
+  res.json(LUCKY_STUN_CACHE);
+});
+
 // Weather Helper
 async function fetchWeatherFromWttr(city) {
   const response = await fetch(`https://wttr.in/${encodeURIComponent(city)}?format=j1&lang=zh`);
@@ -1224,6 +1266,31 @@ async function fetchWeatherFromWttr(city) {
   };
 }
 
+async function incrementAmapCount() {
+  try {
+    let stats = { total: 0, today: 0, lastDate: new Date().toISOString().split("T")[0] };
+    try {
+      const data = await fs.readFile(AMAP_STATS_FILE, "utf8");
+      stats = JSON.parse(data);
+    } catch {
+      // File not found or invalid, use default
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+    if (stats.lastDate !== today) {
+      stats.today = 0;
+      stats.lastDate = today;
+    }
+
+    stats.total += 1;
+    stats.today += 1;
+
+    await fs.writeFile(AMAP_STATS_FILE, JSON.stringify(stats));
+  } catch (e) {
+    console.error("Failed to update AMap stats:", e);
+  }
+}
+
 async function fetchWeatherFromAMap(city, key) {
   if (!key) throw new Error("AMap Key required");
 
@@ -1234,6 +1301,7 @@ async function fetchWeatherFromAMap(city, key) {
   if (!city || city === "auto" || city === "本地" || !/^\d+$/.test(city)) {
     if (!city || city === "auto" || city === "本地") {
       // IP Location
+      await incrementAmapCount();
       const ipRes = await fetch(`https://restapi.amap.com/v3/ip?key=${key}`);
       const ipData = await ipRes.json();
       if (ipData.status !== "1") throw new Error("AMap IP Location failed: " + ipData.info);
@@ -1241,6 +1309,7 @@ async function fetchWeatherFromAMap(city, key) {
       cityName = ipData.city;
     } else {
       // Geocoding
+      await incrementAmapCount();
       const geoRes = await fetch(
         `https://restapi.amap.com/v3/geocode/geo?address=${encodeURIComponent(city)}&key=${key}`,
       );
@@ -1253,6 +1322,7 @@ async function fetchWeatherFromAMap(city, key) {
   }
 
   // Weather Info (All = Forecast + Current)
+  await incrementAmapCount();
   const weatherRes = await fetch(
     `https://restapi.amap.com/v3/weather/weatherInfo?city=${adcode}&key=${key}&extensions=all`,
   );
@@ -1262,6 +1332,7 @@ async function fetchWeatherFromAMap(city, key) {
 
   const forecast = weatherData.forecasts[0];
   const today = forecast.casts?.[0];
+  await incrementAmapCount();
   const currentLiveRes = await fetch(
     `https://restapi.amap.com/v3/weather/weatherInfo?city=${adcode}&key=${key}&extensions=base`,
   );

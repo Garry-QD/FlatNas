@@ -98,5 +98,42 @@ jspm_packages/
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
-# GitHub Workflows
-.github/workflows/docker-build.yml
+# yarn v2
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# IntelliJ IDEA
+.idea/
+
+# Visual Studio Code
+.vscode/
+
+# FlatNas specific
+server/data/visitors.json
+flatnas-helper/
+
+dist/
+.trae/documents/
+server/flat-nas-backup-*.json
+
+# FlatNas Media Files (防止上传本地音乐文件)
+server/music/*.mp3
+server/music/*.flac
+server/music/*.wav
+server/music/*.m4a
+server/music/*.ape
+server/music/*.ogg
+
+# User Data (保留你的新增规则)
+server/data/*
+!server/data/.gitkeep
+
+# IDE and System Files (保留你的新增规则)
+.trae/
+*.bak
+Thumbs.db
+.DS_Store
+desktop.ini

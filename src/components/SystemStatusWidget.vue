@@ -107,7 +107,7 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="w-full h-full flex overflow-hidden bg-white/80 dark:bg-gray-800/80 dark:ring-2 dark:ring-amber-400 dark:ring-inset backdrop-blur-md rounded-2xl p-3 relative transition-all"
+    class="w-full h-full flex overflow-hidden bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl p-3 relative transition-all"
     :class="[isWide ? 'flex-row items-center gap-3' : 'flex-col']"
   >
     <!-- Header -->

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from "vue";
 import { useMainStore } from "../stores/main";
-import type { RssFeed, WidgetConfig, RssCategory, SearchEngine, NavGroup, NavItem } from "@/types";
+import type { WidgetConfig, NavGroup, NavItem } from "@/types";
 import IconUploader from "./IconUploader.vue";
 import WallpaperLibrary from "./WallpaperLibrary.vue";
 import PasswordConfirmModal from "./PasswordConfirmModal.vue";
-import { VueDraggable } from "vue-draggable-plus";
 import DockerWidget from "./DockerWidget.vue";
 import SystemStatusWidget from "./SystemStatusWidget.vue";
+import RssSettings from "./RssSettings.vue";
+import SearchSettings from "./SearchSettings.vue";
 
 defineProps<{ show: boolean }>();
 const emit = defineEmits(["update:show"]);
@@ -27,7 +28,6 @@ const handleWallpaperSelect = (payload: { url: string; type: string } | string) 
 };
 
 const activeTab = ref("style");
-const searchWidget = computed(() => store.widgets.find((w) => w.id === "w5"));
 const dockerWidget = computed(() => store.widgets.find((w) => w.type === "docker"));
 const systemStatusWidget = computed(() => store.widgets.find((w) => w.type === "system-status"));
 const sortedWidgets = computed(() => {
@@ -412,6 +412,25 @@ onMounted(() => {
   }
 });
 
+const getWebhookUrl = () => {
+  return `${window.location.protocol}//${window.location.hostname}:${window.location.port || "3000"}/api/webhook/lucky/stun`;
+};
+
+const copyWebhookUrl = () => {
+  navigator.clipboard.writeText(getWebhookUrl()).then(() => {
+    alert("已复制 Webhook 地址");
+  });
+};
+
+const formatTime = (ts: number) => {
+  if (!ts) return "-";
+  return new Date(ts).toLocaleString();
+};
+
+onMounted(() => {
+  store.fetchLuckyStunData();
+});
+
 const isUnknownWidget = (type: string) => {
   const knownTypes = [
     "clock",
@@ -721,186 +740,6 @@ onMounted(() => {
   });
 });
 
-const addSearchEngine = () => {
-  const id = Date.now().toString();
-  const key = "custom-" + id;
-  const label = "新搜索引擎";
-  const urlTemplate = "https://example.com/search?q={q}";
-
-  if (!store.appConfig.searchEngines) {
-    store.appConfig.searchEngines = [];
-  }
-  store.appConfig.searchEngines.push({ id, key, label, urlTemplate });
-};
-const removeSearchEngine = (key: string) => {
-  const list = (store.appConfig.searchEngines || []).filter((e: SearchEngine) => e.key !== key);
-  store.appConfig.searchEngines = list;
-  if (store.appConfig.defaultSearchEngine === key) {
-    store.appConfig.defaultSearchEngine = list[0]?.key || "";
-  }
-};
-
-// RSS Logic
-const rssForm = ref({
-  id: "",
-  title: "",
-  url: "",
-  category: "",
-  tags: "",
-  enable: true,
-  isPublic: true,
-});
-const editingRss = ref(false);
-
-const editRss = (feed?: RssFeed) => {
-  if (feed) {
-    rssForm.value = { ...feed, category: feed.category || "", tags: (feed.tags || []).join(", ") };
-    editingRss.value = true;
-  } else {
-    rssForm.value = {
-      id: "",
-      title: "",
-      url: "",
-      category: "",
-      tags: "",
-      enable: true,
-      isPublic: true,
-    };
-    editingRss.value = true;
-  }
-};
-
-const saveRss = () => {
-  if (!rssForm.value.title || !rssForm.value.url) return alert("请填写标题和 URL");
-
-  const tags = rssForm.value.tags
-    .split(/[,，]/)
-    .map((t) => t.trim())
-    .filter((t) => t);
-  const newItem = {
-    id: rssForm.value.id || Date.now().toString(),
-    title: rssForm.value.title,
-    url: rssForm.value.url,
-    category: rssForm.value.category,
-    tags,
-    enable: rssForm.value.enable,
-    isPublic: rssForm.value.isPublic,
-  };
-
-  if (!store.rssFeeds) store.rssFeeds = [];
-
-  if (rssForm.value.id) {
-    const index = store.rssFeeds.findIndex((f: RssFeed) => f.id === rssForm.value.id);
-    if (index !== -1) store.rssFeeds[index] = newItem;
-  } else {
-    store.rssFeeds.push(newItem);
-  }
-
-  // Auto-add category
-  if (rssForm.value.category) {
-    if (!store.rssCategories) store.rssCategories = [];
-    const exists = store.rssCategories.some((c: RssCategory) => c.name === rssForm.value.category);
-    if (!exists) {
-      store.rssCategories.push({
-        id: Date.now().toString() + "-cat",
-        name: rssForm.value.category,
-        feeds: [],
-      });
-    }
-  }
-
-  store.saveData(); // Trigger save
-  editingRss.value = false;
-};
-
-const deleteRss = (id: string) => {
-  if (!confirm("确定删除此订阅源？")) return;
-  store.rssFeeds = store.rssFeeds.filter((f: RssFeed) => f.id !== id);
-};
-
-const rssWidget = computed(() => store.widgets.find((w: WidgetConfig) => w.type === "rss"));
-
-// RSS Category Management
-const managingCategories = ref(false);
-const newCategoryName = ref("");
-const editingCategoryId = ref<string | null>(null);
-const editCategoryName = ref("");
-
-const addCategory = () => {
-  const name = newCategoryName.value.trim();
-  if (!name) return;
-  if (!store.rssCategories) store.rssCategories = [];
-  if (store.rssCategories.some((c: RssCategory) => c.name === name)) return alert("分类已存在");
-
-  store.rssCategories.push({ id: Date.now().toString() + "-cat", name, feeds: [] });
-  newCategoryName.value = "";
-  store.saveData();
-};
-
-const startEditCategory = (cat: { id: string; name: string }) => {
-  editingCategoryId.value = cat.id;
-  editCategoryName.value = cat.name;
-};
-
-const updateCategory = () => {
-  if (!editingCategoryId.value || !editCategoryName.value.trim()) return;
-  const index = store.rssCategories.findIndex((c: RssCategory) => c.id === editingCategoryId.value);
-  if (index !== -1) {
-    // Update category name in feeds
-    const cat = store.rssCategories[index];
-    if (cat) {
-      const oldName = cat.name;
-      const newName = editCategoryName.value.trim();
-      cat.name = newName;
-
-      // Update associated feeds
-      if (store.rssFeeds) {
-        store.rssFeeds.forEach((f: RssFeed) => {
-          if (f.category === oldName) f.category = newName;
-        });
-      }
-      store.saveData();
-    }
-  }
-  editingCategoryId.value = null;
-  editCategoryName.value = "";
-};
-
-const deleteCategory = (id: string) => {
-  if (!confirm("确定删除该分类？(该分类下的订阅源将变为无分类)")) return;
-  const cat = store.rssCategories.find((c: RssCategory) => c.id === id);
-  if (cat) {
-    // Clear category from feeds
-    if (store.rssFeeds) {
-      store.rssFeeds.forEach((f: RssFeed) => {
-        if (f.category === cat.name) f.category = "";
-      });
-    }
-    store.rssCategories = store.rssCategories.filter((c: RssCategory) => c.id !== id);
-    store.saveData();
-  }
-};
-
-// Tag Suggestions
-const allTags = computed(() => {
-  const tags = new Set<string>();
-  store.rssFeeds?.forEach((f: RssFeed) => {
-    f.tags?.forEach((t: string) => tags.add(t));
-  });
-  return Array.from(tags);
-});
-
-const addTagToForm = (tag: string) => {
-  const currentTags = rssForm.value.tags
-    .split(/[,，]/)
-    .map((t) => t.trim())
-    .filter((t) => t);
-  if (!currentTags.includes(tag)) {
-    currentTags.push(tag);
-    rssForm.value.tags = currentTags.join(", ");
-  }
-};
-
 const addIframeWidget = () => {
   const newId = "w-" + Date.now();
   store.widgets.push({
@@ -954,12 +793,47 @@ const deleteWidget = (id: string) => {
 onMounted(() => {
   // Removed wallpaper fetches
 });
+
+// Dragging Logic
+const modalPosition = ref({ x: 0, y: 0 });
+const isDragging = ref(false);
+const dragStart = { x: 0, y: 0 };
+const initialModalPosition = { x: 0, y: 0 };
+
+const onMouseDown = (e: MouseEvent) => {
+  // Prevent dragging if clicking on interactive elements
+  if ((e.target as HTMLElement).closest("button, input, textarea, a, .no-drag")) return;
+
+  isDragging.value = true;
+  dragStart.x = e.clientX;
+  dragStart.y = e.clientY;
+  initialModalPosition.x = modalPosition.value.x;
+  initialModalPosition.y = modalPosition.value.y;
+
+  window.addEventListener("mousemove", onMouseMove);
+  window.addEventListener("mouseup", onMouseUp);
+};
+
+const onMouseMove = (e: MouseEvent) => {
+  if (!isDragging.value) return;
+  const dx = e.clientX - dragStart.x;
+  const dy = e.clientY - dragStart.y;
+  modalPosition.value.x = initialModalPosition.x + dx;
+  modalPosition.value.y = initialModalPosition.y + dy;
+};
+
+const onMouseUp = () => {
+  isDragging.value = false;
+  window.removeEventListener("mousemove", onMouseMove);
+  window.removeEventListener("mouseup", onMouseUp);
+};
 </script>
 
 <template>
   <div v-if="show" class="fixed inset-0 z-50 flex items-center justify-center p-4">
     <div
       class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col md:flex-row h-[600px] md:h-[480px] relative"
+      :style="{ transform: `translate(${modalPosition.x}px, ${modalPosition.y}px)` }"
     >
       <button
         @click="close"
@@ -978,7 +852,8 @@ onMounted(() => {
       </button>
 
       <div
-        class="w-full md:w-1/4 bg-gray-50 border-b md:border-b-0 md:border-r border-gray-100 p-4 flex flex-col md:flex-col shrink-0"
+        class="w-full md:w-1/4 bg-gray-50 border-b md:border-b-0 md:border-r border-gray-100 p-4 flex flex-col md:flex-col shrink-0 cursor-move"
+        @mousedown="onMouseDown"
       >
         <h3 class="text-xl font-bold text-gray-800 mb-4 md:mb-6 px-2">⚙️ 设置</h3>
         <nav
@@ -1006,28 +881,7 @@ onMounted(() => {
           >
             🧩 单开组件
           </button>
-          <button
-            @click="activeTab = 'rss'"
-            :class="
-              activeTab === 'rss'
-                ? 'bg-orange-100 text-orange-700 font-bold'
-                : 'text-gray-600 hover:bg-gray-100'
-            "
-            class="whitespace-nowrap md:whitespace-normal w-auto md:w-full text-left px-4 py-2 rounded-lg text-sm transition-colors mb-0 md:mb-1"
-          >
-            📡 RSS 订阅
-          </button>
-          <button
-            @click="activeTab = 'search'"
-            :class="
-              activeTab === 'search'
-                ? 'bg-blue-100 text-blue-700 font-bold'
-                : 'text-gray-600 hover:bg-gray-100'
-            "
-            class="whitespace-nowrap md:whitespace-normal w-auto md:w-full text-left px-4 py-2 rounded-lg text-sm transition-colors mb-0 md:mb-1"
-          >
-            🔎 搜索引擎
-          </button>
+
           <button
             @click="activeTab = 'universal-window'"
             :class="
@@ -1062,6 +916,17 @@ onMounted(() => {
             🔒 账户管理
           </button>
           <button
+            @click="activeTab = 'lucky-stun'"
+            :class="
+              activeTab === 'lucky-stun'
+                ? 'bg-blue-100 text-blue-700 font-bold'
+                : 'text-gray-600 hover:bg-gray-100'
+            "
+            class="whitespace-nowrap md:whitespace-normal w-auto md:w-full text-left px-4 py-2 rounded-lg text-sm transition-colors mb-0 md:mb-1"
+          >
+            🍀 开放中心
+          </button>
+          <button
             @click="activeTab = 'about'"
             :class="
               activeTab === 'about'
@@ -1078,10 +943,8 @@ onMounted(() => {
       <div class="flex-1 flex flex-col bg-white overflow-hidden">
         <div class="flex-1 p-4 overflow-y-auto">
           <div v-if="activeTab === 'style'" class="space-y-4">
-            <div>
-              <h4 class="text-lg font-bold mb-2 text-gray-800 border-l-4 border-blue-500 pl-2">
-                基础信息
-              </h4>
+            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+              <h4 class="text-lg font-bold mb-4 text-gray-800">基础信息</h4>
               <div class="space-y-2">
                 <div>
                   <label class="text-sm font-bold text-gray-600 mb-1 block">网站标题</label>
@@ -1093,7 +956,7 @@ onMounted(() => {
                 </div>
                 <div>
                   <label class="text-sm font-bold text-gray-600 mb-1 block">背景图片</label>
-                  <div class="border border-gray-200 rounded-xl p-2 bg-gray-50">
+                  <div class="border border-gray-200 rounded-xl p-2 bg-white">
                     <IconUploader
                       v-model="store.appConfig.background"
                       :crop="false"
@@ -1125,14 +988,10 @@ onMounted(() => {
               </div>
             </div>
 
-            <div class="border-t border-gray-100"></div>
-
             <WallpaperLibrary v-model:show="showWallpaperLibrary" @select="handleWallpaperSelect" />
 
-            <div>
-              <h4 class="text-lg font-bold mb-2 text-gray-800 border-l-4 border-purple-500 pl-2">
-                布局与排版
-              </h4>
+            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+              <h4 class="text-lg font-bold mb-4 text-gray-800">布局与排版</h4>
               <div class="mb-2">
                 <h5 class="text-sm font-bold text-gray-600 mb-2">顶部栏布局</h5>
                 <div class="flex gap-2">
@@ -1142,7 +1001,7 @@ onMounted(() => {
                     :class="
                       store.appConfig.titleAlign === 'left'
                         ? 'border-purple-500 bg-purple-50 text-purple-700'
-                        : 'border-gray-200 text-gray-500'
+                        : 'border-gray-200 text-gray-500 bg-white'
                     "
                   >
                     <span>⬅️</span><span class="text-sm font-bold">标准布局</span>
@@ -1153,7 +1012,7 @@ onMounted(() => {
                     :class="
                       store.appConfig.titleAlign === 'right'
                         ? 'border-purple-500 bg-purple-50 text-purple-700'
-                        : 'border-gray-200 text-gray-500'
+                        : 'border-gray-200 text-gray-500 bg-white'
                     "
                   >
                     <span class="text-sm font-bold">反转布局</span><span>➡️</span>
@@ -1220,6 +1079,19 @@ onMounted(() => {
                     <span class="text-xs text-gray-500">开启明黄云纹模式</span>
                   </div>
                 </div>
+                <div>
+                  <h4 class="text-sm font-bold text-gray-600 mb-1">鼠标悬停效果</h4>
+                  <select
+                    v-model="store.appConfig.mouseHoverEffect"
+                    class="w-full px-3 py-2 border border-gray-200 rounded-xl focus:border-purple-500 outline-none text-sm bg-white"
+                  >
+                    <option value="scale">缩放 (默认)</option>
+                    <option value="lift">上浮</option>
+                    <option value="glow">发光</option>
+                    <option value="none">无</option>
+                  </select>
+                </div>
+
                 <div class="flex items-end justify-end">
                   <button
                     @click="handlePiClick"
@@ -1232,10 +1104,8 @@ onMounted(() => {
               </div>
             </div>
 
-            <div>
-              <h4 class="text-lg font-bold mb-2 text-gray-800 border-l-4 border-purple-500 pl-2">
-                页脚设置
-              </h4>
+            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+              <h4 class="text-lg font-bold mb-4 text-gray-800">页脚设置</h4>
               <div class="space-y-2">
                 <div class="flex items-center justify-between">
                   <label class="text-sm font-bold text-gray-600">显示访客统计</label>
@@ -1619,439 +1489,14 @@ onMounted(() => {
               </template>
             </div>
 
-            <!-- Weather Service Settings -->
-            <div class="flex items-center justify-between mt-8 mb-4 border-t border-gray-100 pt-6">
-              <h4 class="text-lg font-bold text-gray-800">天气服务设置</h4>
-            </div>
-            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
-              <div class="space-y-3">
-                <div>
-                  <label class="block text-xs font-bold text-gray-600 mb-2">天气源选择</label>
-                  <div class="flex items-center gap-4 mb-3">
-                    <label class="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        v-model="store.appConfig.weatherSource"
-                        value="wttr"
-                        class="text-blue-500"
-                      />
-                      <span class="text-sm">Wttr.in (默认)</span>
-                    </label>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        v-model="store.appConfig.weatherSource"
-                        value="amap"
-                        class="text-blue-500"
-                      />
-                      <span class="text-sm">高德地图 (AMap)</span>
-                    </label>
-                    <label class="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="radio"
-                        v-model="store.appConfig.weatherSource"
-                        value="qweather"
-                        class="text-blue-500"
-                      />
-                      <span class="text-sm">和风天气 (QWeather)</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div v-if="store.appConfig.weatherSource === 'amap'" class="animate-fade-in">
-                  <label class="block text-xs font-bold text-gray-600 mb-1">高德 API Key</label>
-                  <input
-                    v-model="store.appConfig.amapKey"
-                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
-                    placeholder="请输入高德 Web 服务 Key"
-                  />
-                  <p class="text-[10px] text-gray-500 mt-1">
-                    请前往
-                    <a
-                      href="https://console.amap.com/dev/key/app"
-                      target="_blank"
-                      class="text-blue-500 underline"
-                      >高德开放平台</a
-                    >
-                    申请 Web 服务 Key。
-                  </p>
-                </div>
-
-                <div
-                  v-if="store.appConfig.weatherSource === 'qweather'"
-                  class="animate-fade-in space-y-2"
-                >
-                  <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">Project ID</label>
-                    <input
-                      v-model="store.appConfig.qweatherProjectId"
-                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
-                      placeholder="请输入 Project ID"
-                    />
-                  </div>
-                  <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">Key ID</label>
-                    <input
-                      v-model="store.appConfig.qweatherKeyId"
-                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
-                      placeholder="请输入 Key ID"
-                    />
-                  </div>
-                  <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">Private Key</label>
-                    <textarea
-                      v-model="store.appConfig.qweatherPrivateKey"
-                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none min-h-[80px]"
-                      placeholder="请输入 Private Key (需包含 -----BEGIN PRIVATE KEY----- 头尾)"
-                    ></textarea>
-                  </div>
-                  <p class="text-[10px] text-gray-500 mt-1">
-                    请前往
-                    <a
-                      href="https://console.qweather.com/"
-                      target="_blank"
-                      class="text-blue-500 underline"
-                      >和风天气控制台</a
-                    >
-                    获取 JWT 凭证。
-                  </p>
-                  <div class="flex items-center gap-2 mt-2">
-                    <button
-                      @click="testQWeather"
-                      class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition-colors flex items-center gap-1"
-                      :disabled="isTestingWeather"
-                    >
-                      <span v-if="isTestingWeather" class="animate-spin">⏳</span>
-                      {{ isTestingWeather ? "测试中..." : "测试连接" }}
-                    </button>
-                    <span
-                      v-if="testWeatherResult"
-                      class="text-xs"
-                      :class="testWeatherResult.success ? 'text-green-600' : 'text-red-600'"
-                    >
-                      {{ testWeatherResult.message }}
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <label class="block text-xs font-bold text-gray-600 mb-1">自定义天气源 URL</label>
-                  <input
-                    v-model="store.appConfig.weatherApiUrl"
-                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
-                    placeholder="默认使用内置源，输入 URL 以自定义"
-                  />
-                  <p class="text-[10px] text-gray-500 mt-1">
-                    若填写，将直接请求该地址获取天气数据。返回格式需包含：
-                    <code>{ data: { temp, text, city, humidity, today: { min, max } } }</code>
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="activeTab === 'rss'" class="space-y-3">
-            <div class="flex items-center justify-between border-l-2 border-orange-500 pl-2 mb-2">
-              <h4 class="text-lg font-bold text-gray-800">RSS 订阅管理</h4>
-              <span
-                class="text-[10px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full border border-green-100 flex items-center gap-1"
-              >
-                <span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                云端同步已开启
-              </span>
-            </div>
-
-            <!-- RSS Widget Master Switch -->
-            <div
-              v-if="rssWidget"
-              class="flex items-center justify-between p-3 border border-gray-100 rounded-lg bg-gray-50 hover:bg-white hover:shadow-md transition-all"
-            >
-              <div class="flex items-center gap-3">
-                <div
-                  class="w-8 h-8 rounded-full bg-white flex items-center justify-center text-lg shadow-sm"
-                >
-                  📡
-                </div>
-                <div>
-                  <h5 class="font-bold text-gray-700">RSS 阅读器组件</h5>
-                  <p class="text-xs text-gray-400">桌面组件总开关</p>
-                </div>
-              </div>
-              <div class="flex items-center gap-3">
-                <div class="flex flex-col items-end gap-1">
-                  <span class="text-[10px] text-gray-400 font-medium">公开</span
-                  ><label class="relative inline-flex items-center cursor-pointer"
-                    ><input type="checkbox" v-model="rssWidget.isPublic" class="sr-only peer" />
-                    <div
-                      class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-500"
-                    ></div
-                  ></label>
-                </div>
-                <div class="flex flex-col items-end gap-1">
-                  <span class="text-[10px] text-gray-400 font-medium">启用</span
-                  ><label class="relative inline-flex items-center cursor-pointer"
-                    ><input type="checkbox" v-model="rssWidget.enable" class="sr-only peer" />
-                    <div
-                      class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500"
-                    ></div
-                  ></label>
-                </div>
-              </div>
-            </div>
-
-            <!-- Add/Edit Form -->
-            <div
-              v-if="editingRss"
-              class="bg-orange-50 border border-orange-100 rounded-lg p-3 mb-3 animate-fade-in"
-            >
-              <h5 class="text-sm font-bold text-orange-800 mb-3">
-                {{ rssForm.id ? "编辑订阅源" : "新增订阅源" }}
-              </h5>
-              <div class="space-y-3">
-                <div>
-                  <label class="block text-xs font-bold text-gray-600 mb-1">标题</label>
-                  <input
-                    v-model="rssForm.title"
-                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-orange-500 outline-none"
-                    placeholder="例如：少数派"
-                  />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-gray-600 mb-1">RSS 地址</label>
-                  <input
-                    v-model="rssForm.url"
-                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-orange-500 outline-none"
-                    placeholder="https://..."
-                  />
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                  <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1">分类</label>
-                    <input
-                      v-model="rssForm.category"
-                      list="rss-categories"
-                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-orange-500 outline-none"
-                      placeholder="选择或输入分类"
-                    />
-                    <datalist id="rss-categories">
-                      <option v-for="c in store.rssCategories" :key="c.id" :value="c.name"></option>
-                    </datalist>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1"
-                      >标签 (逗号分隔)</label
-                    >
-                    <input
-                      v-model="rssForm.tags"
-                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-orange-500 outline-none"
-                      placeholder="科技, 设计"
-                    />
-                    <div v-if="allTags.length > 0" class="mt-2 flex flex-wrap gap-2">
-                      <span class="text-[10px] text-gray-400">常用标签：</span>
-                      <button
-                        v-for="tag in allTags"
-                        :key="tag"
-                        @click="addTagToForm(tag)"
-                        class="text-[10px] px-1.5 py-0.5 bg-gray-100 hover:bg-orange-100 text-gray-500 hover:text-orange-600 rounded transition-colors"
-                      >
-                        {{ tag }}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3 pt-2">
-                  <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" v-model="rssForm.enable" class="accent-orange-500" />
-                    启用
-                  </label>
-                  <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" v-model="rssForm.isPublic" class="accent-orange-500" />
-                    公开
-                  </label>
-                </div>
-                <div class="flex justify-end gap-3 mt-2">
-                  <button
-                    @click="editingRss = false"
-                    class="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded-lg text-sm font-bold"
-                  >
-                    取消
-                  </button>
-                  <button
-                    @click="saveRss"
-                    class="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-bold hover:bg-orange-600"
-                  >
-                    保存
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- RSS List / Category Management -->
-            <div v-if="!editingRss">
-              <div class="flex gap-2 mb-3">
-                <button
-                  @click="editRss()"
-                  class="flex-1 py-2 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 hover:border-orange-400 hover:text-orange-500 hover:bg-orange-50 transition-all text-sm font-bold flex items-center justify-center gap-2"
-                >
-                  <span>+</span> 新增订阅源
-                </button>
-                <button
-                  @click="managingCategories = !managingCategories"
-                  :class="
-                    managingCategories
-                      ? 'bg-orange-100 text-orange-600 border-orange-200'
-                      : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                  "
-                  class="px-3 py-2 border rounded-lg text-sm font-bold transition-all"
-                >
-                  {{ managingCategories ? "返回订阅列表" : "🗂️ 管理分类" }}
-                </button>
-              </div>
-
-              <!-- Category Management View -->
-              <div v-if="managingCategories" class="space-y-3 animate-fade-in">
-                <div class="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                  <h5 class="text-sm font-bold text-gray-700 mb-2">添加新分类</h5>
-                  <div class="flex gap-2">
-                    <input
-                      v-model="newCategoryName"
-                      @keyup.enter="addCategory"
-                      placeholder="输入分类名称..."
-                      class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-orange-500"
-                    />
-                    <button
-                      @click="addCategory"
-                      class="bg-orange-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-600"
-                    >
-                      添加
-                    </button>
-                  </div>
-                </div>
-
-                <div class="space-y-2">
-                  <div
-                    v-for="cat in store.rssCategories"
-                    :key="cat.id"
-                    class="flex items-center justify-between p-2 bg-white border border-gray-100 rounded-lg hover:shadow-sm"
-                  >
-                    <div v-if="editingCategoryId === cat.id" class="flex-1 flex gap-2 mr-4">
-                      <input
-                        v-model="editCategoryName"
-                        class="flex-1 px-2 py-1 border border-orange-300 rounded text-sm outline-none"
-                      />
-                      <button @click="updateCategory" class="text-green-600 text-xs font-bold">
-                        保存
-                      </button>
-                      <button @click="editingCategoryId = null" class="text-gray-400 text-xs">
-                        取消
-                      </button>
-                    </div>
-                    <div v-else class="flex items-center gap-3">
-                      <span class="text-xl">📁</span>
-                      <span class="text-sm font-bold text-gray-700">{{ cat.name }}</span>
-                      <span class="text-xs text-gray-400"
-                        >({{
-                          store.rssFeeds?.filter((f) => f.category === cat.name).length || 0
-                        }})</span
-                      >
-                    </div>
-
-                    <div v-if="editingCategoryId !== cat.id" class="flex items-center gap-2">
-                      <button
-                        @click="startEditCategory(cat)"
-                        class="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        @click="deleteCategory(cat.id)"
-                        class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
-                  <div
-                    v-if="!store.rssCategories || store.rssCategories.length === 0"
-                    class="text-center py-6 text-gray-400 text-sm"
-                  >
-                    暂无分类
-                  </div>
-                </div>
-              </div>
-
-              <!-- RSS Feed List -->
-              <div v-else class="space-y-2 animate-fade-in">
-                <div
-                  v-if="!store.rssFeeds || store.rssFeeds.length === 0"
-                  class="text-center py-6 text-gray-400 text-sm"
-                >
-                  暂无订阅源，点击上方按钮添加
-                </div>
-
-                <div
-                  v-for="feed in store.rssFeeds"
-                  :key="feed.id"
-                  class="p-3 border border-gray-100 rounded-lg bg-white hover:shadow-md transition-all group"
-                >
-                  <div class="flex items-start justify-between mb-1">
-                    <div class="flex items-center gap-2">
-                      <div
-                        class="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-base"
-                      >
-                        {{ feed.title.substring(0, 1) }}
-                      </div>
-                      <div>
-                        <h5 class="font-bold text-gray-800">{{ feed.title }}</h5>
-                        <div class="flex items-center gap-2 mt-0.5">
-                          <span
-                            v-if="feed.category"
-                            class="px-2 py-0.5 rounded bg-gray-100 text-xs text-gray-500"
-                            >{{ feed.category }}</span
-                          >
-                          <span class="text-[10px] text-gray-400 truncate max-w-[200px]">{{
-                            feed.url
-                          }}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div
-                      class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <button
-                        @click="editRss(feed)"
-                        class="p-1.5 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-blue-50"
-                      >
-                        ✏️
-                      </button>
-                      <button
-                        @click="deleteRss(feed.id)"
-                        class="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
-                  <div class="flex items-center justify-between pt-1 border-t border-gray-50 mt-1">
-                    <div class="flex gap-2">
-                      <span v-for="tag in feed.tags" :key="tag" class="text-[10px] text-orange-400"
-                        >#{{ tag }}</span
-                      >
-                    </div>
-                    <div class="flex gap-2">
-                      <span
-                        :class="feed.enable ? 'text-green-500' : 'text-gray-300'"
-                        class="text-xs font-bold"
-                        >{{ feed.enable ? "已启用" : "已禁用" }}</span
-                      >
-                      <span
-                        :class="feed.isPublic ? 'text-blue-500' : 'text-gray-300'"
-                        class="text-xs font-bold"
-                        >{{ feed.isPublic ? "公开" : "私有" }}</span
-                      >
-                    </div>
-                  </div>
-                </div>
+            <div class="border-2 border-blue-500 rounded-xl p-4 mt-6 bg-white">
+              <h4 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <span class="text-2xl">⚙️</span> 高级组件配置
+              </h4>
+              <div class="space-y-8">
+                <RssSettings />
+                <div class="border-t border-gray-200"></div>
+                <SearchSettings />
               </div>
             </div>
           </div>
@@ -2240,128 +1685,6 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="activeTab === 'search'" class="space-y-6">
-            <h4 class="text-lg font-bold mb-2 text-gray-800 border-l-4 border-blue-500 pl-3">
-              搜索引擎设置
-            </h4>
-
-            <div
-              v-if="searchWidget"
-              class="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-xl shadow-sm mb-4"
-            >
-              <div class="flex flex-col">
-                <span class="text-sm font-bold text-gray-800">显示搜索栏</span>
-                <span class="text-xs text-gray-500">开启后将在桌面顶部显示搜索输入框</span>
-              </div>
-              <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" v-model="searchWidget.enable" class="sr-only peer" />
-                <div
-                  class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-500"
-                ></div>
-              </label>
-            </div>
-
-            <div class="flex items-center justify-between mb-2">
-              <div class="text-xs text-gray-500">拖拽调整优先级；点击单选框设置默认搜索引擎。</div>
-              <label
-                class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer hover:text-blue-600 transition-colors bg-blue-50 px-2 py-1 rounded-lg border border-blue-100"
-              >
-                <input
-                  type="checkbox"
-                  v-model="store.appConfig.rememberLastEngine"
-                  class="w-3 h-3 accent-blue-500 rounded"
-                />
-                记住上次选择
-              </label>
-            </div>
-            <VueDraggable
-              v-model="store.appConfig.searchEngines"
-              :animation="300"
-              handle=".drag-handle"
-              class="space-y-3"
-            >
-              <div
-                v-for="e in store.appConfig.searchEngines"
-                :key="e.id"
-                class="p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-white transition-all flex flex-col gap-2"
-              >
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2 flex-1">
-                    <div
-                      class="drag-handle cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 p-1"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      >
-                        <circle cx="9" cy="12" r="1" />
-                        <circle cx="9" cy="5" r="1" />
-                        <circle cx="9" cy="19" r="1" />
-                        <circle cx="15" cy="12" r="1" />
-                        <circle cx="15" cy="5" r="1" />
-                        <circle cx="15" cy="19" r="1" />
-                      </svg>
-                    </div>
-                    <input
-                      v-model="e.label"
-                      class="text-sm font-bold text-gray-700 bg-transparent border border-transparent hover:border-gray-300 focus:border-blue-500 rounded px-1 py-0.5 outline-none transition-all w-32"
-                      placeholder="名称"
-                    />
-                    <span class="text-[10px] text-gray-400 font-mono">{{ e.key }}</span>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <label
-                      class="flex items-center gap-1 text-[10px] text-gray-500 cursor-pointer hover:text-blue-600 transition-colors px-2 py-1 rounded-lg border border-transparent hover:border-gray-200 hover:bg-white"
-                      :class="{
-                        'text-blue-600 font-bold bg-blue-50 border-blue-100':
-                          store.appConfig.defaultSearchEngine === e.key,
-                      }"
-                    >
-                      <span>{{
-                        store.appConfig.defaultSearchEngine === e.key ? "当前默认" : "设为默认"
-                      }}</span>
-                      <input
-                        type="radio"
-                        :value="e.key"
-                        v-model="store.appConfig.defaultSearchEngine"
-                        class="accent-blue-500 w-3 h-3 cursor-pointer"
-                      />
-                    </label>
-                    <button
-                      class="text-xs text-red-500 hover:underline px-1"
-                      @click="removeSearchEngine(e.key)"
-                    >
-                      删除
-                    </button>
-                  </div>
-                </div>
-                <div class="flex items-center gap-2">
-                  <label class="text-[10px] text-gray-500">URL 模板</label>
-                  <input
-                    v-model="e.urlTemplate"
-                    class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-blue-500 outline-none"
-                    placeholder="例如：https://example.com/search?q={q}"
-                  />
-                </div>
-              </div>
-            </VueDraggable>
-            <div class="flex items-center gap-3">
-              <button
-                @click="addSearchEngine"
-                class="flex-1 p-2 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50 transition-all text-sm font-bold"
-              >
-                + 添加搜索引擎
-              </button>
-            </div>
-          </div>
-
           <div v-if="activeTab === 'universal-window'" class="flatnas-handshake-signal space-y-4">
             <!-- Universal Window Widget Section -->
             <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-4">
@@ -2479,7 +1802,12 @@ onMounted(() => {
                     />
                   </div>
                   <p class="text-[10px] text-gray-500 mt-1">
-                    加群下载浏览器插件可以解决无法正常访问问题
+                    点击<a
+                      href="/flatnas-helper.zip"
+                      download="flatnas-helper.zip"
+                      class="text-blue-500 underline mx-1"
+                      >下载浏览器插件</a
+                    >解除限制
                   </p>
                   <p class="text-[10px] text-gray-400 mt-1">
                     系统将根据当前网络环境自动切换：内网环境优先使用内网地址，外网环境使用默认地址。
@@ -2596,6 +1924,241 @@ onMounted(() => {
                 </div>
               </div>
             </template>
+          </div>
+
+          <div v-if="activeTab === 'lucky-stun'" class="p-4 space-y-4">
+            <div class="flex items-center gap-2 mb-4">
+              <h4 class="text-lg font-bold text-gray-800 border-l-4 border-blue-500 pl-3">
+                开放中心
+              </h4>
+            </div>
+
+            <!-- Custom CSS Section -->
+            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
+              <h4 class="text-lg font-bold mb-4 text-gray-800">自定义 CSS</h4>
+              <div>
+                <textarea
+                  v-model="store.appConfig.customCss"
+                  rows="6"
+                  placeholder="/* 输入自定义 CSS 代码 */
+.card-item {
+  border-radius: 20px;
+}"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-xl focus:border-blue-500 outline-none text-sm font-mono"
+                ></textarea>
+                <div class="text-xs text-gray-500 mt-2">
+                  提示：在此处输入的 CSS 将直接应用到页面，可用于微调样式。
+                </div>
+              </div>
+            </div>
+
+            <!-- Weather Service Settings -->
+            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="text-lg font-bold text-gray-800">天气服务设置</h4>
+              </div>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs font-bold text-gray-600 mb-2">天气源选择</label>
+                  <div class="flex items-center gap-4 mb-3">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        v-model="store.appConfig.weatherSource"
+                        value="wttr"
+                        class="text-blue-500"
+                      />
+                      <span class="text-sm">Wttr.in (默认)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        v-model="store.appConfig.weatherSource"
+                        value="amap"
+                        class="text-blue-500"
+                      />
+                      <span class="text-sm">高德地图 (AMap)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        v-model="store.appConfig.weatherSource"
+                        value="qweather"
+                        class="text-blue-500"
+                      />
+                      <span class="text-sm">和风天气 (QWeather)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div v-if="store.appConfig.weatherSource === 'amap'" class="animate-fade-in">
+                  <label class="block text-xs font-bold text-gray-600 mb-1">高德 API Key</label>
+                  <input
+                    v-model="store.appConfig.amapKey"
+                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                    placeholder="请输入高德 Web 服务 Key"
+                  />
+                  <p class="text-[10px] text-gray-500 mt-1">
+                    请前往
+                    <a
+                      href="https://console.amap.com/dev/key/app"
+                      target="_blank"
+                      class="text-blue-500 underline"
+                      >高德开放平台</a
+                    >
+                    申请 Web 服务 Key。
+                  </p>
+                </div>
+
+                <div
+                  v-if="store.appConfig.weatherSource === 'qweather'"
+                  class="animate-fade-in space-y-2"
+                >
+                  <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">Project ID</label>
+                    <input
+                      v-model="store.appConfig.qweatherProjectId"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                      placeholder="请输入 Project ID"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">Key ID</label>
+                    <input
+                      v-model="store.appConfig.qweatherKeyId"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                      placeholder="请输入 Key ID"
+                    />
+                  </div>
+                  <div>
+                    <label class="block text-xs font-bold text-gray-600 mb-1">Private Key</label>
+                    <textarea
+                      v-model="store.appConfig.qweatherPrivateKey"
+                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none min-h-[80px]"
+                      placeholder="请输入 Private Key (需包含 -----BEGIN PRIVATE KEY----- 头尾)"
+                    ></textarea>
+                  </div>
+                  <p class="text-[10px] text-gray-500 mt-1">
+                    请前往
+                    <a
+                      href="https://console.qweather.com/"
+                      target="_blank"
+                      class="text-blue-500 underline"
+                      >和风天气控制台</a
+                    >
+                    获取 JWT 凭证。
+                  </p>
+                  <div class="flex items-center gap-2 mt-2">
+                    <button
+                      @click="testQWeather"
+                      class="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded transition-colors flex items-center gap-1"
+                      :disabled="isTestingWeather"
+                    >
+                      <span v-if="isTestingWeather" class="animate-spin">⏳</span>
+                      {{ isTestingWeather ? "测试中..." : "测试连接" }}
+                    </button>
+                    <span
+                      v-if="testWeatherResult"
+                      class="text-xs"
+                      :class="testWeatherResult.success ? 'text-green-600' : 'text-red-600'"
+                    >
+                      {{ testWeatherResult.message }}
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-bold text-gray-600 mb-1">自定义天气源 URL</label>
+                  <input
+                    v-model="store.appConfig.weatherApiUrl"
+                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:border-blue-500 outline-none"
+                    placeholder="默认使用内置源，输入 URL 以自定义"
+                  />
+                  <p class="text-[10px] text-gray-500 mt-1">
+                    若填写，将直接请求该地址获取天气数据。返回格式需包含：
+                    <code>{ data: { temp, text, city, humidity, today: { min, max } } }</code>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Webhook Settings -->
+            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+              <div class="flex items-center justify-between mb-4">
+                <h4 class="text-lg font-bold text-gray-800">Webhook 设置 (内测中)</h4>
+              </div>
+
+              <div class="mb-6">
+                <h5 class="font-bold text-blue-800 mb-2">Webhook 地址</h5>
+                <div class="flex items-center gap-2 bg-white p-2 rounded border border-blue-200">
+                  <code class="text-xs text-gray-600 flex-1 break-all">{{ getWebhookUrl() }}</code>
+                  <button
+                    @click="copyWebhookUrl"
+                    class="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200 font-bold"
+                  >
+                    复制
+                  </button>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">
+                  请在 STUN 穿透配置中，将全局 Webhook 的地址设置为上述地址。
+                </p>
+              </div>
+
+              <div class="space-y-3">
+                <h5 class="font-bold text-gray-800">最新状态</h5>
+                <div
+                  v-if="store.luckyStunData && store.luckyStunData.data"
+                  class="grid grid-cols-2 gap-3"
+                >
+                  <div class="bg-white p-3 rounded-lg border border-blue-100">
+                    <div class="text-xs text-gray-500 mb-1">状态</div>
+                    <div
+                      class="font-bold"
+                      :class="
+                        store.luckyStunData.data.stun === 'success'
+                          ? 'text-green-600'
+                          : 'text-red-500'
+                      "
+                    >
+                      {{ store.luckyStunData.data.stun || "未知" }}
+                    </div>
+                  </div>
+                  <div class="bg-white p-3 rounded-lg border border-blue-100">
+                    <div class="text-xs text-gray-500 mb-1">公网 IP</div>
+                    <div class="font-bold text-gray-800">
+                      {{ store.luckyStunData.data.ip || "-" }}
+                    </div>
+                  </div>
+                  <div class="bg-white p-3 rounded-lg border border-blue-100">
+                    <div class="text-xs text-gray-500 mb-1">端口</div>
+                    <div class="font-bold text-gray-800">
+                      {{ store.luckyStunData.data.port || "-" }}
+                    </div>
+                  </div>
+                  <div class="bg-white p-3 rounded-lg border border-blue-100">
+                    <div class="text-xs text-gray-500 mb-1">更新时间</div>
+                    <div class="text-xs text-gray-800">
+                      {{ formatTime(store.luckyStunData.ts) }}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  v-else
+                  class="text-center py-8 text-gray-400 text-sm bg-white rounded-xl border border-dashed border-gray-200"
+                >
+                  暂无数据，请等待 Webhook 触发...
+                </div>
+              </div>
+
+              <div class="flex justify-end mt-4">
+                <button
+                  @click="store.fetchLuckyStunData"
+                  class="text-sm text-blue-500 hover:underline flex items-center gap-1 font-bold"
+                >
+                  <span>🔄</span> 刷新数据
+                </button>
+              </div>
+            </div>
           </div>
 
           <div v-if="activeTab === 'account'" class="min-h-full flex flex-col justify-center">

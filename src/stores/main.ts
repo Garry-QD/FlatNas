@@ -16,6 +16,23 @@ export const useMainStore = defineStore("main", () => {
     isConnected.value = false;
   });
 
+  // Lucky STUN Data
+  const luckyStunData = ref<unknown>(null);
+  socket.on("lucky:stun", (data: unknown) => {
+    luckyStunData.value = data;
+  });
+
+  const fetchLuckyStunData = async () => {
+    try {
+      const res = await fetch("/api/lucky/stun");
+      if (res.ok) {
+        luckyStunData.value = await res.json();
+      }
+    } catch (e) {
+      console.error("Failed to fetch lucky stun data", e);
+    }
+  };
+
   const groups = ref<NavGroup[]>([]);
   const items = computed(() => groups.value.flatMap((g) => g.items));
   const rssFeeds = ref<RssFeed[]>([]);
@@ -47,7 +64,7 @@ export const useMainStore = defineStore("main", () => {
     }));
 
   // Version Check
-  const currentVersion = "1.0.30";
+  const currentVersion = "1.0.31";
   const latestVersion = ref("");
   const dockerUpdateAvailable = ref(false);
 
@@ -149,6 +166,7 @@ export const useMainStore = defineStore("main", () => {
     mobileWallpaperOrder: [],
     sidebarViewMode: "bookmarks",
     empireMode: false,
+    mouseHoverEffect: "scale",
   });
 
   const fetchSystemConfig = async () => {
@@ -780,5 +798,7 @@ export const useMainStore = defineStore("main", () => {
     addUser,
     deleteUser,
     uploadLicense,
+    luckyStunData,
+    fetchLuckyStunData,
   };
 });

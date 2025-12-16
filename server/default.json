@@ -643,14 +643,14 @@
       "type": "iframe",
       "enable": false,
       "data": {
-        "url": "https://www.ip138.com/",
+        "url": "",
         "scaled": true,
-        "lanUrl": "http://192.168.100.70"
+        "lanUrl": ""
       },
       "colSpan": 3,
       "rowSpan": 2,
       "isPublic": false,
-      "hideOnMobile": false
+      "hideOnMobile": true
     },
     {
       "id": "w3",
@@ -830,6 +830,12 @@
       "img3.wallspic.com-sheng_dan_jie-sheng_dan_cai_deng-sheng_dan_shu-jia_ri-sheng_dan_jie_de_zhuang_shi_pin-3178x4768.jpg"
     ],
     "sidebarViewMode": "groups",
-    "empireMode": false
+    "empireMode": false,
+    "mouseHoverEffect": "scale",
+    "weatherSource": "wttr",
+    "qweatherProjectId": "",
+    "qweatherKeyId": "",
+    "qweatherPrivateKey": "",
+    "amapKey": ""
   }
 }

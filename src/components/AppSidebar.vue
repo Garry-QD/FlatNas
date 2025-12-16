@@ -343,10 +343,11 @@ const menuItems = computed(() => {
   >
     <!-- Toggle Button -->
     <div
-      class="flex items-center justify-between"
+      class="flex items-center"
       :class="[
-        isMobile && collapsed ? 'p-1' : 'p-4 border-b',
+        isMobile && collapsed ? 'p-1' : 'px-3 py-4 border-b',
         store.appConfig.background ? 'border-white/10' : 'border-gray-100',
+        collapsed ? 'justify-center' : 'justify-between',
       ]"
     >
       <button
@@ -392,7 +393,10 @@ const menuItems = computed(() => {
       <button
         @click="toggle"
         class="p-1.5 rounded-lg transition-colors group relative"
-        :class="store.appConfig.background ? 'hover:bg-white/10' : 'hover:bg-gray-100'"
+        :class="[
+          store.appConfig.background ? 'hover:bg-white/10' : 'hover:bg-gray-100',
+          collapsed ? 'w-full flex justify-center' : '',
+        ]"
         title="Ctrl+B 切换侧边栏"
       >
         <svg
@@ -496,26 +500,33 @@ const menuItems = computed(() => {
                     : 'hover:bg-gray-100 text-gray-600',
                 ]"
               >
-                <a :href="item.url" target="_blank" class="flex-1 flex items-center gap-2 min-w-0">
+                <a
+                  :href="item.url"
+                  target="_blank"
+                  class="flex-1 flex items-center min-w-0"
+                  :class="collapsed ? 'justify-center' : 'gap-2'"
+                >
                   <!-- Icon -->
                   <div
-                    class="w-4 h-4 flex-shrink-0 flex items-center justify-center overflow-hidden"
+                    class="w-6 h-6 flex-shrink-0 flex items-center justify-center overflow-hidden"
                   >
                     <img
                       v-if="item.icon"
                       :src="item.icon"
-                      class="w-full h-full object-contain"
+                      class="max-w-full max-h-full object-contain"
                       alt=""
                     />
-                    <span v-else class="text-[10px] font-bold opacity-70 leading-none">{{
+                    <span v-else class="text-xs font-bold opacity-70 leading-none">{{
                       item.title.substring(0, 1).toUpperCase()
                     }}</span>
                   </div>
 
                   <!-- Label -->
                   <span
-                    class="font-medium whitespace-nowrap transition-all duration-300 origin-left flex-1 truncate text-sm"
-                    :class="collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'"
+                    class="font-medium whitespace-nowrap transition-all duration-300 origin-left truncate text-sm"
+                    :class="
+                      collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto flex-1'
+                    "
                   >
                     {{ item.title }}
                   </span>
@@ -616,11 +627,12 @@ const menuItems = computed(() => {
             v-for="group in store.groups"
             :key="group.id"
             @click="scrollToGroup(group.id)"
-            class="w-full flex items-center gap-2 p-2 rounded-lg transition-all group relative text-left"
+            class="w-full flex items-center p-2 rounded-lg transition-all group relative text-left"
             :class="[
               store.appConfig.background
                 ? 'hover:bg-white/10 text-white/90'
                 : 'hover:bg-gray-100 text-gray-600',
+              collapsed ? 'justify-center' : 'gap-2',
             ]"
           >
             <!-- Icon/Indicator -->

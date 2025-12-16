@@ -39,8 +39,8 @@ jobs:
           # 这里开启了三个架构：AMD64, ARM64, ARMv7
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
-          # 指定版本号 1.0.24，不加 latest
-          tags: qdnas/flatnas:1.0.30, qdnas/flatnas:latest
+          # 指定版本号 1.0.31，不加 latest
+          tags: qdnas/flatnas:1.0.31
           # 开启缓存
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -137,6 +137,8 @@ export interface AppConfig {
   mobileWallpaperOrder?: string[];
   sidebarViewMode?: "bookmarks" | "groups";
   empireMode?: boolean;
+  customCss?: string;
+  mouseHoverEffect?: "scale" | "lift" | "glow" | "none" | string;
 }
 
 export interface WidgetConfig {

@@ -13,6 +13,20 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => store.appConfig.customCss,
+  (newCss) => {
+    let style = document.getElementById('custom-css')
+    if (!style) {
+      style = document.createElement('style')
+      style.id = 'custom-css'
+      document.head.appendChild(style)
+    }
+    style.innerHTML = newCss || ''
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
   const style = document.createElement('style')
   style.id = 'devtools-hider'

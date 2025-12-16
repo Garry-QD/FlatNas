@@ -435,7 +435,7 @@ const getStatusColor = (state: string) => {
       'w-full h-full flex flex-col overflow-hidden',
       props.compact
         ? ''
-        : 'bg-white/80 dark:bg-gray-800/80 dark:ring-2 dark:ring-amber-400 dark:ring-inset backdrop-blur-md rounded-2xl p-4 relative',
+        : 'bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl p-4 relative',
     ]"
   >
     <div v-if="!props.compact" class="flex items-center justify-between mb-1 shrink-0">
