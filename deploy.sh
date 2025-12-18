@@ -110,7 +110,7 @@ deploy_app() {
 
     # Prepare backend directories
     log "Preparing backend directories..."
-    mkdir -p server/data server/music server/PC server/APP server/cgi-bin
+    mkdir -p server/data server/doc server/music server/PC server/APP server/cgi-bin
 
     # Set permissions for CGI scripts
     log "Setting permissions for CGI scripts..."

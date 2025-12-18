@@ -12,4 +12,5 @@ services:
       - ./music:/app/server/music #映射播放器路径
       - ./PC:/app/server/PC #映射背景路径
       - ./APP:/app/server/APP #映射移动端背景路径
+      - ./doc:/app/server/doc #映射文件传输助手路径
       - /var/run/docker.sock:/var/run/docker.sock #映射Docker Socket

@@ -49,6 +49,7 @@ const loginAttempts = {};
 
 // Directories
 const DATA_DIR = path.join(__dirname, "data");
+const DOC_DIR = path.join(__dirname, "doc");
 const USERS_DIR = path.join(DATA_DIR, "users");
 const OLD_DATA_FILE = path.join(DATA_DIR, "data.json");
 const SYSTEM_CONFIG_FILE = path.join(DATA_DIR, "system.json");
@@ -59,6 +60,10 @@ const BACKGROUNDS_DIR = path.join(__dirname, "PC");
 const MOBILE_BACKGROUNDS_DIR = path.join(__dirname, "APP");
 const CONFIG_VERSIONS_DIR = path.join(DATA_DIR, "config_versions");
 const AMAP_STATS_FILE = path.join(DATA_DIR, "amap_stats.json");
+const TRANSFER_ROOT = path.join(DOC_DIR, "transfer");
+const TRANSFER_INDEX = path.join(TRANSFER_ROOT, "index.json");
+const TRANSFER_UPLOADS = path.join(TRANSFER_ROOT, "uploads");
+const TRANSFER_CHUNKS = path.join(TRANSFER_ROOT, "chunks");
 
 // Helper to ensure directory exists safely
 async function ensureDir(dirPath) {
@@ -131,11 +136,15 @@ async function atomicWrite(filePath, content) {
 // Ensure directories and migrate data
 async function ensureInit() {
   await ensureDir(DATA_DIR);
+  await ensureDir(DOC_DIR);
   await ensureDir(USERS_DIR);
   await ensureDir(MUSIC_DIR);
   await ensureDir(BACKGROUNDS_DIR);
   await ensureDir(MOBILE_BACKGROUNDS_DIR);
   await ensureDir(CONFIG_VERSIONS_DIR);
+  await ensureDir(TRANSFER_ROOT);
+  await ensureDir(TRANSFER_UPLOADS);
+  await ensureDir(TRANSFER_CHUNKS);
 
   // Load System Config
   try {
@@ -1161,11 +1170,30 @@ app.get("/api/ping", async (req, res) => {
   });
 });
 
+// Trust Proxy Configuration
+app.set("trust proxy", true); // Enable trusting X-Forwarded-For
+
+// Helper to get client IP
+const getClientIp = (req) => {
+  // If trust proxy is set, req.ip is automatically the first IP in X-Forwarded-For
+  let ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
+
+  // Fallback manual parsing if needed (though req.ip should handle it with trust proxy)
+  if (ip && ip.includes(",")) {
+    ip = ip.split(",")[0].trim();
+  }
+
+  // Clean IPv6 mapped IPv4
+  if (ip && ip.startsWith("::ffff:")) {
+    ip = ip.substring(7);
+  }
+
+  return ip;
+};
+
 // IP Proxy
 app.get("/api/ip", async (req, res) => {
-  let clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
-  if (clientIp.startsWith("::ffff:")) clientIp = clientIp.substring(7);
-  if (clientIp.includes(",")) clientIp = clientIp.split(",")[0].trim();
+  const clientIp = getClientIp(req);
 
   const sources = [
     { url: "https://whois.pconline.com.cn/ipJson.jsp?json=true", type: "pconline" },
@@ -1206,6 +1234,289 @@ app.get("/api/ip", async (req, res) => {
     }
   }
   res.json({ success: false, ip: clientIp, location: "Unknown", source: "fallback", clientIp });
+});
+
+// --- File Transfer Helper ---
+
+// Helper to read transfer index
+async function readTransferIndex() {
+  try {
+    const data = await fs.readFile(TRANSFER_INDEX, "utf-8");
+    return JSON.parse(data);
+  } catch {
+    return { items: [] };
+  }
+}
+
+// Helper to write transfer index
+async function writeTransferIndex(data) {
+  await atomicWrite(TRANSFER_INDEX, JSON.stringify(data, null, 2));
+}
+
+// GET Items
+app.get("/api/transfer/items", authenticateToken, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { type, limit } = req.query;
+    const data = await readTransferIndex();
+    let items = data.items || [];
+
+    if (type && type !== "all") {
+      if (type === "photo") {
+        items = items.filter(
+          (item) =>
+            item.type === "file" &&
+            item.file &&
+            item.file.type &&
+            item.file.type.startsWith("image/"),
+        );
+      } else {
+        items = items.filter((item) => item.type === type);
+      }
+    }
+
+    // Sort by timestamp desc
+    items.sort((a, b) => b.timestamp - a.timestamp);
+
+    if (limit) {
+      items = items.slice(0, parseInt(limit));
+    }
+
+    res.json({ success: true, items });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// POST Text
+app.post("/api/transfer/text", authenticateToken, express.json(), async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ error: "Text required" });
+
+    const newItem = {
+      id: crypto.randomUUID(),
+      type: "text",
+      content: text,
+      timestamp: Date.now(),
+      sender: req.user.username,
+    };
+
+    const data = await readTransferIndex();
+    if (!data.items) data.items = [];
+    data.items.unshift(newItem);
+    // Limit total items
+    if (data.items.length > 1000) data.items = data.items.slice(0, 1000);
+
+    await writeTransferIndex(data);
+    res.json({ success: true, item: newItem });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Upload Init
+app.post("/api/transfer/upload/init", authenticateToken, express.json(), async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { fileName, size, mime, fileKey, chunkSize } = req.body;
+    const uploadId = crypto.randomUUID();
+    const uploadDir = path.join(TRANSFER_CHUNKS, uploadId);
+    await ensureDir(uploadDir);
+
+    // Store metadata
+    const meta = {
+      fileName,
+      size,
+      mime,
+      fileKey,
+      chunkSize,
+      uploadId,
+      startTime: Date.now(),
+      sender: req.user.username,
+    };
+    await fs.writeFile(path.join(uploadDir, "meta.json"), JSON.stringify(meta));
+
+    res.json({
+      success: true,
+      uploadId,
+      chunkSize,
+      totalChunks: Math.ceil(size / chunkSize),
+      uploaded: [],
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Upload Chunk
+// Use multer for multipart/form-data
+const chunkUpload = multer({ dest: os.tmpdir() });
+app.post(
+  "/api/transfer/upload/chunk",
+  authenticateToken,
+  chunkUpload.single("chunk"),
+  async (req, res) => {
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    try {
+      const { uploadId, index } = req.body;
+      const file = req.file;
+
+      if (!uploadId || index === undefined || !file) {
+        return res.status(400).json({ error: "Missing parameters" });
+      }
+
+      const uploadDir = path.join(TRANSFER_CHUNKS, uploadId);
+      // Validate uploadDir exists
+      try {
+        await fs.access(uploadDir);
+      } catch {
+        return res.status(404).json({ error: "Upload session not found" });
+      }
+
+      const chunkPath = path.join(uploadDir, `${index}.part`);
+
+      // Move file
+      await fs.copyFile(file.path, chunkPath);
+      await fs.unlink(file.path);
+
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Chunk upload error:", e);
+      res.status(500).json({ success: false, error: e.message });
+    }
+  },
+);
+
+// Upload Complete
+app.post("/api/transfer/upload/complete", authenticateToken, express.json(), async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { uploadId } = req.body;
+    const uploadDir = path.join(TRANSFER_CHUNKS, uploadId);
+
+    // Read meta
+    const metaPath = path.join(uploadDir, "meta.json");
+    const metaData = JSON.parse(await fs.readFile(metaPath, "utf-8"));
+
+    const { fileName, size, mime, sender } = metaData;
+    const totalChunks = Math.ceil(size / metaData.chunkSize);
+
+    // Verify all chunks
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkPath = path.join(uploadDir, `${i}.part`);
+      try {
+        await fs.access(chunkPath);
+      } catch {
+        return res.status(400).json({ error: `Missing chunk ${i}` });
+      }
+    }
+
+    // Merge chunks
+    const finalFileName = `${Date.now()}_${fileName}`;
+    const finalPath = path.join(TRANSFER_UPLOADS, finalFileName);
+
+    await fs.writeFile(finalPath, Buffer.alloc(0));
+
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkPath = path.join(uploadDir, `${i}.part`);
+      const chunkBuffer = await fs.readFile(chunkPath);
+      await fs.appendFile(finalPath, chunkBuffer);
+    }
+
+    // Clean up chunks
+    try {
+      await fs.rm(uploadDir, { recursive: true, force: true });
+    } catch (e) {
+      console.error("Failed to clean up chunks:", e);
+    }
+
+    // Add to index
+    const newItem = {
+      id: crypto.randomUUID(),
+      type: "file",
+      file: {
+        name: fileName,
+        size: size,
+        type: mime,
+        url: `/api/transfer/file/${finalFileName}`,
+      },
+      timestamp: Date.now(),
+      sender: sender,
+    };
+
+    const data = await readTransferIndex();
+    if (!data.items) data.items = [];
+    data.items.unshift(newItem);
+    if (data.items.length > 1000) data.items = data.items.slice(0, 1000);
+    await writeTransferIndex(data);
+
+    res.json({ success: true, item: newItem });
+  } catch (e) {
+    console.error("Complete upload error:", e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Serve Files
+app.get("/api/transfer/file/:filename", authenticateToken, async (req, res) => {
+  // Allow access if logged in. authenticateToken sets req.user
+  if (!req.user) return res.status(401).send("Unauthorized");
+
+  const { filename } = req.params;
+  // Security check
+  if (filename.includes("..") || filename.includes("/") || filename.includes("\\")) {
+    return res.status(403).send("Invalid filename");
+  }
+
+  const filePath = path.join(TRANSFER_UPLOADS, filename);
+  try {
+    await fs.access(filePath);
+
+    if (req.query.download) {
+      res.download(filePath);
+    } else {
+      res.sendFile(filePath);
+    }
+  } catch {
+    res.status(404).send("File not found");
+  }
+});
+
+// Delete Item
+app.delete("/api/transfer/items/:id", authenticateToken, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const { id } = req.params;
+    const data = await readTransferIndex();
+    if (!data.items) return res.json({ success: true });
+
+    const item = data.items.find((x) => x.id === id);
+    if (!item) return res.json({ success: true });
+
+    // Remove from index
+    data.items = data.items.filter((x) => x.id !== id);
+    await writeTransferIndex(data);
+
+    // If file, delete file
+    if (item.type === "file" && item.file && item.file.url) {
+      const parts = item.file.url.split("/");
+      const filename = parts[parts.length - 1];
+      if (filename) {
+        const filePath = path.join(TRANSFER_UPLOADS, filename);
+        try {
+          await fs.unlink(filePath);
+        } catch (e) {
+          console.error("Failed to delete file:", e);
+        }
+      }
+    }
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // Lucky STUN Cache

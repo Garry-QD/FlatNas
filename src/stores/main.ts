@@ -72,7 +72,7 @@ export const useMainStore = defineStore("main", () => {
     }));
 
   // Version Check
-  const currentVersion = "1.0.32";
+  const currentVersion = "1.0.33";
   const latestVersion = ref("");
   const dockerUpdateAvailable = ref(false);
 
@@ -334,6 +334,25 @@ export const useMainStore = defineStore("main", () => {
 
         // 4. 将规范化后的 Docker 组件添加到列表末尾
         widgets.value.push(finalDockerWidget);
+
+        const fileTransferList = widgets.value.filter((w) => w.type === "file-transfer");
+        if (fileTransferList.length > 1) {
+          const keep =
+            fileTransferList.find((w) => w.id === "file-transfer") || fileTransferList[0]!;
+          widgets.value = widgets.value.filter((w) => w.type !== "file-transfer" || w === keep);
+          if (
+            keep.id !== "file-transfer" &&
+            !widgets.value.some((w) => w.id === "file-transfer" && w.type !== "file-transfer")
+          ) {
+            keep.id = "file-transfer";
+          }
+        } else if (
+          fileTransferList.length === 1 &&
+          fileTransferList[0]!.id !== "file-transfer" &&
+          !widgets.value.some((w) => w.id === "file-transfer" && w.type !== "file-transfer")
+        ) {
+          fileTransferList[0]!.id = "file-transfer";
+        }
 
         if (!widgets.value.find((w) => w.type === "rss")) {
           widgets.value.push({

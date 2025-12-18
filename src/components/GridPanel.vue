@@ -30,6 +30,7 @@ import CountdownWidget from "./CountdownWidget.vue";
 import DockerWidget from "./DockerWidget.vue";
 import SystemStatusWidget from "./SystemStatusWidget.vue";
 import CustomCssWidget from "./CustomCssWidget.vue";
+import FileTransferWidget from "./FileTransferWidget.vue";
 
 import SizeSelector from "./SizeSelector.vue";
 
@@ -134,7 +135,23 @@ const processIcon = (iconStr: string) => {
 
 const isInternalNetwork = (url: string) => {
   if (!url) return false;
-  return url.includes("localhost") || /^(192\.168|10\.|172\.(1[6-9]|2\d|3[0-1]))\./.test(url);
+
+  // 1. IPv4 Private Ranges & Localhost
+  if (url.includes("localhost") || url.includes("127.0.0.1")) return true;
+  if (/^(192\.168|10\.|172\.(1[6-9]|2\d|3[0-1]))\./.test(url)) return true;
+
+  // 2. IPv6 Private Ranges
+  // ::1 (Loopback)
+  if (url === "::1" || url.includes("[::1]")) return true;
+  // fe80::/10 (Link-Local) -> fe8... to feb...
+  if (/^fe[89ab][0-9a-f]:/i.test(url)) return true;
+  // fc00::/7 (Unique Local) -> fc... or fd...
+  if (/^f[cd][0-9a-f]{2}:/i.test(url)) return true;
+
+  // 3. mDNS (.local)
+  if (url.toLowerCase().endsWith(".local")) return true;
+
+  return false;
 };
 
 const checkVisible = (obj?: WidgetConfig | NavItem) => {
@@ -417,10 +434,17 @@ const checkNetwork = async () => {
   const start = performance.now();
   try {
     const pingUrl = `/api/ping?target=localhost&ts=${Date.now()}`;
-    await fetch(pingUrl, { method: "GET", cache: "no-cache" });
-    const end = performance.now();
-    latency.value = Math.round(end - start);
+    const res = await fetch(pingUrl, { method: "GET", cache: "no-cache" });
+    const data = await res.json();
+    if (data.success && data.latency) {
+      latency.value = parseInt(data.latency);
+    } else {
+      const end = performance.now();
+      latency.value = Math.round(end - start);
+    }
     // 判定逻辑优化：只要 Hostname 是内网 IP，或者后端检测到的 Client IP 是内网 IP，都算内网环境
+    // 支持 Split-Horizon DNS：即使 Hostname 是公网域名（如 nas.domain.com），
+    // 只要后端检测到 Client IP 是内网 IP（如 192.168.x.x），依然判定为内网环境。
     isLanMode.value =
       isInternalNetwork(window.location.hostname) || isInternalNetwork(ipInfo.value.clientIp);
   } catch {
@@ -558,9 +582,14 @@ const containerStatuses = ref<
   >
 >({});
 
-const formatToMB = (bytes: number) => {
-  const mb = bytes / (1024 * 1024);
-  return mb.toFixed(1) + " MB";
+const formatBytes = (bytes: number, decimals = 1) => {
+  if (!bytes) return "0B";
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const index = Math.min(i, sizes.length - 1);
+  return parseFloat((bytes / Math.pow(k, index)).toFixed(dm)) + (sizes[index] || "B");
 };
 
 interface ContainerStatus {
@@ -603,6 +632,18 @@ const fetchContainerStatuses = async () => {
   const statusMap: Record<string, ContainerStatus> = {};
   const now = Date.now();
 
+  // 0. Ensure every docker-bound item has at least a placeholder status
+  store.groups.forEach((g) => {
+    g.items.forEach((item) => {
+      if (!item.containerId) return;
+      const existing = containerStatuses.value[item.containerId];
+      statusMap[item.containerId] = {
+        state: existing?.state || "unknown",
+        stats: existing?.stats,
+      };
+    });
+  });
+
   // 1. Generate Mock Data for known mock containers (ALWAYS do this for testing)
   store.groups.forEach((g) => {
     g.items.forEach((item) => {
@@ -639,116 +680,136 @@ const fetchContainerStatuses = async () => {
     });
   });
 
+  const dockerWidget = store.widgets.find((w) => w.type === "docker" || w.id === "docker");
+  const dockerMockEnabled = Boolean(dockerWidget?.data && dockerWidget.data.useMock);
+
+  if (dockerMockEnabled) {
+    store.groups.forEach((g) => {
+      g.items.forEach((item) => {
+        if (!item.containerId || item.containerId.startsWith("mock-")) return;
+        const existing = containerStatuses.value[item.containerId];
+        const cpuPercent = Math.min(
+          100,
+          Math.max(0, (existing?.stats?.cpuPercent || 30) + (Math.random() - 0.5) * 20),
+        );
+        const memPercent = Math.min(
+          100,
+          Math.max(0, (existing?.stats?.memPercent || 40) + (Math.random() - 0.5) * 10),
+        );
+        const memUsage = (memPercent / 100) * 1024 * 1024 * 1024;
+        const rx = Math.random() * 1024 * 1024;
+        const tx = Math.random() * 512 * 1024;
+        const read = Math.random() * 2 * 1024 * 1024;
+        const write = Math.random() * 1024 * 1024;
+        statusMap[item.containerId] = {
+          state: existing?.state || "running",
+          stats: {
+            cpuPercent,
+            memPercent,
+            memUsage,
+            netIO: { rx, tx },
+            blockIO: { read, write },
+          },
+        };
+      });
+    });
+  }
+
   // 2. Try to fetch real data
   // Only fetch if there are container items to update
-  const hasDockerItems = store.groups.some((g) =>
+  const hasRealDockerItems = store.groups.some((g) =>
     g.items.some((item) => item.containerId && !item.containerId.startsWith("mock-")),
   );
 
-  if (!hasDockerItems) {
-    // If no docker items, just schedule next poll and return
-    if (isMounted.value) {
-      containerPollTimer = setTimeout(fetchContainerStatuses, 5000);
-    }
-    return;
-  }
+  if (hasRealDockerItems && !dockerMockEnabled) {
+    try {
+      const headers = store.getHeaders();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-  try {
-    const headers = store.getHeaders();
-    // Only fetch if we are likely to have a backend (or let it fail silently)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const res = await fetch("/api/docker/containers", { headers, signal: controller.signal });
+      clearTimeout(timeoutId);
+      const data = await res.json();
+      if (data.success) {
+        const liveContainers = (data.data || []) as DockerContainer[];
 
-    const res = await fetch("/api/docker/containers", { headers, signal: controller.signal });
-    clearTimeout(timeoutId);
-    const data = await res.json();
-    if (data.success) {
-      const liveContainers = (data.data || []) as DockerContainer[];
-
-      // 自动修复逻辑：检查已绑定的容器 ID 是否存在，若不存在则尝试通过名称匹配
-      let needsSave = false;
-      store.groups.forEach((g) => {
-        g.items.forEach((item) => {
-          if (item.containerId && !item.containerId.startsWith("mock-")) {
-            // 检查当前 ID 是否在 liveContainers 中
-            const foundById = liveContainers.find((c) => c.Id === item.containerId);
-            if (!foundById) {
-              // ID 没找到，尝试通过名称匹配
-              // 优先使用 item.containerName，如果没有则尝试 item.title（假设标题即容器名）
-              // 注意：docker API 返回的 Names 通常以 / 开头，如 ["/nginx"]
-              const targetName = item.containerName || item.title;
-              if (targetName) {
-                const foundByName = liveContainers.find((c) =>
-                  (c.Names || []).some((n) => n.replace(/^\//, "") === targetName),
-                );
-                if (foundByName) {
-                  console.log(
-                    `[Docker Fix] Container ID changed for "${targetName}". Updating ${item.containerId} -> ${foundByName.Id}`,
+        let needsSave = false;
+        store.groups.forEach((g) => {
+          g.items.forEach((item) => {
+            if (item.containerId && !item.containerId.startsWith("mock-")) {
+              const foundById = liveContainers.find((c) => c.Id === item.containerId);
+              if (!foundById) {
+                const targetName = item.containerName || item.title;
+                if (targetName) {
+                  const foundByName = liveContainers.find((c) =>
+                    (c.Names || []).some((n) => n.replace(/^\//, "") === targetName),
                   );
-                  item.containerId = foundByName.Id;
-                  needsSave = true;
+                  if (foundByName) {
+                    console.log(
+                      `[Docker Fix] Container ID changed for "${targetName}". Updating ${item.containerId} -> ${foundByName.Id}`,
+                    );
+                    item.containerId = foundByName.Id;
+                    needsSave = true;
+                  }
                 }
               }
             }
-          }
+          });
         });
-      });
 
-      if (needsSave) {
-        store.saveData();
-      }
-
-      liveContainers.forEach((c) => {
-        let stats = c.stats;
-
-        // Calculate rates if accumulated stats are present
-        if (stats && stats.netIO && stats.blockIO) {
-          const prev = previousStatsMap.value[c.Id];
-          const currentNetRx = stats.netIO.rx || 0;
-          const currentNetTx = stats.netIO.tx || 0;
-          const currentBlockRead = stats.blockIO.read || 0;
-          const currentBlockWrite = stats.blockIO.write || 0;
-
-          let rxRate = 0;
-          let txRate = 0;
-          let readRate = 0;
-          let writeRate = 0;
-
-          if (prev) {
-            const dt = (now - prev.time) / 1000;
-            if (dt > 0) {
-              rxRate = Math.max(0, (currentNetRx - (prev.netIO?.rx || 0)) / dt);
-              txRate = Math.max(0, (currentNetTx - (prev.netIO?.tx || 0)) / dt);
-              readRate = Math.max(0, (currentBlockRead - (prev.blockIO?.read || 0)) / dt);
-              writeRate = Math.max(0, (currentBlockWrite - (prev.blockIO?.write || 0)) / dt);
-            }
-          }
-
-          // Update previous map
-          previousStatsMap.value[c.Id] = {
-            time: now,
-            netIO: { rx: currentNetRx, tx: currentNetTx },
-            blockIO: { read: currentBlockRead, write: currentBlockWrite },
-          };
-
-          // Override stats with rates for display
-          stats = {
-            ...stats,
-            netIO: { rx: rxRate, tx: txRate },
-            blockIO: { read: readRate, write: writeRate },
-          };
+        if (needsSave) {
+          store.saveData();
         }
 
-        statusMap[c.Id] = {
-          state: c.State,
-          stats: stats,
-        };
-      });
+        liveContainers.forEach((c) => {
+          let stats = c.stats;
+
+          if (stats && stats.netIO && stats.blockIO) {
+            const prev = previousStatsMap.value[c.Id];
+            const currentNetRx = stats.netIO.rx || 0;
+            const currentNetTx = stats.netIO.tx || 0;
+            const currentBlockRead = stats.blockIO.read || 0;
+            const currentBlockWrite = stats.blockIO.write || 0;
+
+            let rxRate = 0;
+            let txRate = 0;
+            let readRate = 0;
+            let writeRate = 0;
+
+            if (prev) {
+              const dt = (now - prev.time) / 1000;
+              if (dt > 0) {
+                rxRate = Math.max(0, (currentNetRx - (prev.netIO?.rx || 0)) / dt);
+                txRate = Math.max(0, (currentNetTx - (prev.netIO?.tx || 0)) / dt);
+                readRate = Math.max(0, (currentBlockRead - (prev.blockIO?.read || 0)) / dt);
+                writeRate = Math.max(0, (currentBlockWrite - (prev.blockIO?.write || 0)) / dt);
+              }
+            }
+
+            previousStatsMap.value[c.Id] = {
+              time: now,
+              netIO: { rx: currentNetRx, tx: currentNetTx },
+              blockIO: { read: currentBlockRead, write: currentBlockWrite },
+            };
+
+            stats = {
+              ...stats,
+              netIO: { rx: rxRate, tx: txRate },
+              blockIO: { read: readRate, write: writeRate },
+            };
+          }
+
+          statusMap[c.Id] = {
+            state: c.State,
+            stats: stats,
+          };
+        });
+      }
+    } catch {
+      // ignore
+    } finally {
+      // ignore
     }
-  } catch {
-    // console.warn("Failed to fetch docker stats, using mocks if available");
-  } finally {
-    // Ensure cleanup if added later
   }
 
   // 3. Update State
@@ -806,8 +867,9 @@ const showContextMenu = ref(false);
 const contextMenuPosition = ref({ x: 0, y: 0 });
 const contextMenuItem = ref<NavItem | null>(null);
 const contextMenuGroupId = ref<string | undefined>(undefined);
+let ignoreNextNativeContextMenu = false;
 
-const handleContextMenu = (e: MouseEvent, item: NavItem, groupId?: string) => {
+const openContextMenu = (e: MouseEvent, item: NavItem, groupId?: string) => {
   if (!store.isLogged) return;
 
   e.preventDefault();
@@ -825,6 +887,22 @@ const handleContextMenu = (e: MouseEvent, item: NavItem, groupId?: string) => {
 
   contextMenuPosition.value = { x, y };
   showContextMenu.value = true;
+};
+
+const handleContextMenu = (e: MouseEvent, item: NavItem, groupId?: string) => {
+  if (!store.isLogged) return;
+  if (ignoreNextNativeContextMenu && e.type === "contextmenu") {
+    ignoreNextNativeContextMenu = false;
+    e.preventDefault();
+    return;
+  }
+  openContextMenu(e, item, groupId);
+};
+
+const handleContextMenuPointerDown = (e: MouseEvent, item: NavItem, groupId?: string) => {
+  if (!store.isLogged) return;
+  ignoreNextNativeContextMenu = true;
+  openContextMenu(e, item, groupId);
 };
 
 const closeContextMenu = () => {
@@ -1474,8 +1552,8 @@ onMounted(() => {
             <CalculatorWidget v-else-if="widget.type === 'calculator'" />
             <div
               v-else-if="widget.type === 'ip'"
-              class="w-full h-full p-3 rounded-2xl backdrop-blur border border-white/10 flex flex-col items-center transition-colors text-center"
-              :style="{ backgroundColor: `rgba(168, 85, 247, ${widget.opacity ?? 0.2})` }"
+              class="w-full h-full p-3 rounded-2xl backdrop-blur border border-white/15 flex flex-col items-center transition-colors text-center"
+              :style="{ backgroundColor: `rgba(255, 255, 255, ${widget.opacity ?? 0.2})` }"
             >
               <div
                 v-if="ipInfo.location"
@@ -1494,7 +1572,7 @@ onMounted(() => {
               <div class="flex items-center justify-center gap-2 w-full flex-1">
                 <span class="text-[12px] opacity-70 uppercase">PING测试</span>
                 <div
-                  class="text-base font-mono font-medium text-purple-100 bg-purple-500/30 px-2 py-0.5 rounded"
+                  class="text-base font-mono font-medium text-white/90 bg-white/20 backdrop-blur-sm border border-white/20 px-2 py-0.5 rounded"
                 >
                   {{ ipInfo.baiduLatency }}
                 </div>
@@ -1520,6 +1598,7 @@ onMounted(() => {
             <DockerWidget v-else-if="widget.type === 'docker'" :widget="widget" />
             <SystemStatusWidget v-else-if="widget.type === 'system-status'" :widget="widget" />
             <CustomCssWidget v-else-if="widget.type === 'custom-css'" :widget="widget" />
+            <FileTransferWidget v-else-if="widget.type === 'file-transfer'" :widget="widget" />
           </GridItem>
         </GridLayout>
 
@@ -1648,8 +1727,9 @@ onMounted(() => {
               <span
                 v-if="group.preset"
                 class="text-[10px] bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded border border-yellow-200"
-                >预设</span
               >
+                预设
+              </span>
             </div>
 
             <VueDraggable
@@ -1673,7 +1753,8 @@ onMounted(() => {
                 v-for="item in group.items"
                 :key="item.id"
                 @click="handleCardClick(item)"
-                @contextmenu="handleContextMenu($event, item, group.id)"
+                @mousedown.right.prevent.stop="handleContextMenuPointerDown($event, item, group.id)"
+                @contextmenu.prevent.stop="handleContextMenu($event, item, group.id)"
                 class="flex items-center justify-center cursor-pointer transition-all select-none relative group overflow-hidden"
                 :class="[
                   isEditMode ? 'animate-pulse cursor-move ring-2 ring-blue-400' : '',
@@ -1733,7 +1814,7 @@ onMounted(() => {
 
                 <!-- Docker Stats Background Bars -->
                 <div
-                  v-if="item.containerId && containerStatuses[item.containerId]?.stats"
+                  v-if="item.containerId"
                   class="absolute inset-0 z-0 pointer-events-none overflow-hidden rounded-[inherit]"
                 >
                   <!-- CPU Bar (Top, Right to Left) -->
@@ -1741,7 +1822,14 @@ onMounted(() => {
                     <div
                       class="absolute top-0 right-0 h-full bg-blue-500 transition-all duration-1000 ease-out"
                       :style="{
-                        width: (containerStatuses[item.containerId]?.stats?.cpuPercent || 0) + '%',
+                        width:
+                          Math.min(
+                            100,
+                            Math.max(
+                              0,
+                              containerStatuses[item.containerId]?.stats?.cpuPercent || 0,
+                            ),
+                          ) + '%',
                       }"
                     ></div>
                   </div>
@@ -1757,7 +1845,14 @@ onMounted(() => {
                     <div
                       class="absolute top-0 left-0 h-full bg-green-500 transition-all duration-1000 ease-out"
                       :style="{
-                        width: (containerStatuses[item.containerId]?.stats?.memPercent || 0) + '%',
+                        width:
+                          Math.min(
+                            100,
+                            Math.max(
+                              0,
+                              containerStatuses[item.containerId]?.stats?.memPercent || 0,
+                            ),
+                          ) + '%',
                       }"
                     ></div>
                   </div>
@@ -1833,6 +1928,7 @@ onMounted(() => {
                         (item.backgroundImage || group.backgroundImage
                           ? '#ffffff'
                           : group.cardTitleColor || store.appConfig.cardTitleColor || '#111827'),
+                      fontSize: group.cardTitleSize ? group.cardTitleSize + 'px' : undefined,
                       textShadow:
                         item.backgroundImage || group.backgroundImage
                           ? '0 1px 2px rgba(0,0,0,0.8)'
@@ -1846,8 +1942,8 @@ onMounted(() => {
 
                   <!-- Docker Stats Info -->
                   <div
-                    v-if="item.containerId && containerStatuses[item.containerId]?.stats"
-                    class="flex flex-col gap-1 text-xs mt-1 w-full opacity-80 leading-none font-mono"
+                    v-if="item.containerId"
+                    class="flex flex-col gap-0.5 text-[10px] mt-0.5 w-full opacity-90 leading-none font-mono"
                     :style="{
                       color:
                         item.titleColor ||
@@ -1861,91 +1957,33 @@ onMounted(() => {
                     }"
                   >
                     <div class="flex justify-between items-center" title="Network I/O (RX/TX)">
-                      <span class="font-bold">NET</span>
-                      <span class="font-mono">
-                        ↓{{
-                          formatToMB(containerStatuses[item.containerId]?.stats?.netIO?.rx || 0)
-                        }}/s
+                      <span class="font-bold opacity-70">NET</span>
+                      <span class="font-mono truncate ml-1">
+                        <template v-if="containerStatuses[item.containerId]?.stats">
+                          ↓{{
+                            formatBytes(
+                              containerStatuses[item.containerId]?.stats?.netIO?.rx || 0,
+                              0,
+                            )
+                          }}/s
+                        </template>
+                        <template v-else>--</template>
                       </span>
                     </div>
                     <div class="flex justify-between items-center" title="Block I/O (Read/Write)">
-                      <span class="font-bold">IO</span>
-                      <span class="font-mono">
-                        R:{{
-                          formatToMB(
-                            containerStatuses[item.containerId]?.stats?.blockIO?.read || 0,
-                          )
-                        }}/s
+                      <span class="font-bold opacity-70">IO</span>
+                      <span class="font-mono truncate ml-1">
+                        <template v-if="containerStatuses[item.containerId]?.stats">
+                          R{{
+                            formatBytes(
+                              containerStatuses[item.containerId]?.stats?.blockIO?.read || 0,
+                              0,
+                            )
+                          }}/s
+                        </template>
+                        <template v-else>--</template>
                       </span>
                     </div>
-                  </div>
-                  <!-- Fallback Controls if no stats (e.g. stopped) -->
-                  <div
-                    v-else-if="item.containerId && (item.allowRestart || item.allowStop)"
-                    class="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-1.5"
-                    @click.stop
-                  >
-                    <button
-                      v-if="item.allowRestart"
-                      @click="handleDockerAction(item, 'restart')"
-                      class="p-1.5 hover:bg-blue-100 text-blue-600 rounded-lg bg-white/80 shadow-sm transition-transform active:scale-95"
-                      title="重启"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        class="w-4 h-4"
-                      >
-                        <path
-                          fill-rule="evenodd"
-                          d="M4.755 10.059a7.5 7.5 0 0112.548-3.364l1.903 1.903h-3.183a.75.75 0 100 1.5h4.992a.75.75 0 00.75-.75V4.356a.75.75 0 00-1.5 0v3.18l-1.9-1.9A9 9 0 003.306 9.67a.75.75 0 101.45.388zm15.408 3.352a.75.75 0 00-.919.53 7.5 7.5 0 01-12.548 3.364l-1.902-1.903h3.183a.75.75 0 000-1.5H2.984a.75.75 0 00-.75.75v4.992a.75.75 0 001.5 0v-3.18l1.9 1.9a9 9 0 0015.059-4.035.75.75 0 00-.53-.919z"
-                          clip-rule="evenodd"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      v-if="
-                        item.allowStop && containerStatuses[item.containerId]?.state === 'running'
-                      "
-                      @click="handleDockerAction(item, 'stop')"
-                      class="p-1.5 hover:bg-red-100 text-red-600 rounded-lg bg-white/80 shadow-sm transition-transform active:scale-95"
-                      title="停止"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        class="w-4 h-4"
-                      >
-                        <path
-                          fill-rule="evenodd"
-                          d="M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3v-9z"
-                          clip-rule="evenodd"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      v-if="
-                        item.allowStop && containerStatuses[item.containerId]?.state !== 'running'
-                      "
-                      @click="handleDockerAction(item, 'start')"
-                      class="p-1.5 hover:bg-green-100 text-green-600 rounded-lg bg-white/80 shadow-sm transition-transform active:scale-95"
-                      title="启动"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        class="w-4 h-4"
-                      >
-                        <path
-                          fill-rule="evenodd"
-                          d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
-                          clip-rule="evenodd"
-                        />
-                      </svg>
-                    </button>
                   </div>
 
                   <!-- Line 2 (Middle) -->
@@ -1994,13 +2032,15 @@ onMounted(() => {
                       (item.backgroundImage || group.backgroundImage
                         ? '#ffffff'
                         : group.cardTitleColor || store.appConfig.cardTitleColor || '#111827'),
+                    fontSize: group.cardTitleSize ? group.cardTitleSize + 'px' : undefined,
                     textShadow:
                       item.backgroundImage || group.backgroundImage
                         ? '0 2px 4px rgba(0,0,0,0.8)'
                         : 'none',
                   }"
-                  >{{ item.title }}</span
                 >
+                  {{ item.title }}
+                </span>
               </div>
             </VueDraggable>
           </div>
@@ -2119,9 +2159,9 @@ onMounted(() => {
 
     <!-- Context Menu -->
     <div
-      v-if="showContextMenu"
+      v-show="showContextMenu"
       ref="contextMenuRef"
-      class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[120px] overflow-hidden transform transition-all duration-200 origin-top-left"
+      class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[120px] overflow-hidden"
       :style="{ top: contextMenuPosition.y + 'px', left: contextMenuPosition.x + 'px' }"
       @click.stop
     >

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from "vue";
+import { useStorage } from "@vueuse/core";
 import { useMainStore } from "../stores/main";
 import type { WidgetConfig, NavGroup, NavItem } from "@/types";
 import IconUploader from "./IconUploader.vue";
@@ -15,6 +16,14 @@ const emit = defineEmits(["update:show"]);
 const store = useMainStore();
 
 const showWallpaperLibrary = ref(false);
+const musicVolume = useStorage<number>("flat-nas-music-volume", 0.7);
+const musicVolumePercent = computed({
+  get: () => Math.round((musicVolume.value ?? 0.7) * 100),
+  set: (val: number) => {
+    const v = Number.isFinite(val) ? val : 70;
+    musicVolume.value = Math.min(1, Math.max(0, v / 100));
+  },
+});
 
 const handleWallpaperSelect = (payload: { url: string; type: string } | string) => {
   const url = typeof payload === "string" ? payload : payload.url;
@@ -121,6 +130,57 @@ const confirmRemoveWidget = () => {
 };
 const fileInput = ref<HTMLInputElement | null>(null);
 const uploadStatus = ref("");
+const musicManagerOpen = ref(false);
+const isMusicListLoading = ref(false);
+const musicFiles = ref<string[]>([]);
+const musicManagerStatus = ref("");
+
+const fetchMusicFiles = async () => {
+  isMusicListLoading.value = true;
+  musicManagerStatus.value = "";
+  try {
+    const res = await fetch("/api/music-list");
+    if (!res.ok) throw new Error(String(res.status));
+    const list = (await res.json()) as unknown;
+    musicFiles.value = Array.isArray(list) ? list.map((x) => String(x)) : [];
+  } catch {
+    musicFiles.value = [];
+    musicManagerStatus.value = "获取失败";
+  } finally {
+    isMusicListLoading.value = false;
+  }
+};
+
+const toggleMusicManager = async () => {
+  musicManagerOpen.value = !musicManagerOpen.value;
+  if (musicManagerOpen.value) {
+    await fetchMusicFiles();
+  }
+};
+
+const deleteMusicFile = async (filePath: string) => {
+  if (!filePath) return;
+  if (!confirm(`确认删除该音乐文件？\n${filePath}`)) return;
+  try {
+    const token = localStorage.getItem("flat-nas-token");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch("/api/music", {
+      method: "DELETE",
+      headers,
+      body: JSON.stringify({ path: filePath }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || String(res.status));
+    }
+    await fetchMusicFiles();
+  } catch (e) {
+    console.error(e);
+    alert("删除失败");
+  }
+};
 
 const uploadMusic = async (event: Event) => {
   const files = (event.target as HTMLInputElement).files;
@@ -148,6 +208,9 @@ const uploadMusic = async (event: Event) => {
     const data = await res.json();
     if (data.success) {
       uploadStatus.value = `成功上传 ${data.count} 个文件！`;
+      if (musicManagerOpen.value) {
+        await fetchMusicFiles();
+      }
       setTimeout(() => {
         uploadStatus.value = "";
       }, 3000);
@@ -451,6 +514,7 @@ const isUnknownWidget = (type: string) => {
     "iframe",
     "countdown",
     "system-status",
+    "file-transfer",
   ];
 
   return !knownTypes.includes(type);
@@ -473,6 +537,14 @@ const restoreMissingWidgets = () => {
     { id: "w7", type: "quote", enable: true, isPublic: true },
     { id: "sidebar", type: "sidebar", enable: false, isPublic: true },
     { id: "docker", type: "docker", enable: false, isPublic: true, colSpan: 1, rowSpan: 1 },
+    {
+      id: "file-transfer",
+      type: "file-transfer",
+      enable: true,
+      colSpan: 2,
+      rowSpan: 2,
+      isPublic: true,
+    },
     {
       id: "system-status",
       type: "system-status",
@@ -748,6 +820,33 @@ const handleSaveAsDefault = async () => {
   }, "请输入密码以确认保存默认模板");
 };
 
+const normalizeFileTransferWidgets = () => {
+  const list = store.widgets;
+  const all = list.filter((w) => w.type === "file-transfer");
+  if (all.length === 0) return;
+
+  const keep = all.find((w) => w.id === "file-transfer") || all[0]!;
+  let changed = false;
+
+  for (let i = list.length - 1; i >= 0; i--) {
+    const w = list[i];
+    if (w && w.type === "file-transfer" && w.id !== keep.id) {
+      list.splice(i, 1);
+      changed = true;
+    }
+  }
+
+  if (
+    keep.id !== "file-transfer" &&
+    !list.some((w) => w.id === "file-transfer" && w.type !== "file-transfer")
+  ) {
+    keep.id = "file-transfer";
+    changed = true;
+  }
+
+  if (changed) store.saveData();
+};
+
 // 修复：移除 computed 中的副作用，改用 onMounted 初始化
 onMounted(() => {
   store.widgets.forEach((w: WidgetConfig) => {
@@ -755,6 +854,7 @@ onMounted(() => {
       w.data = { url: "" };
     }
   });
+  normalizeFileTransferWidgets();
 });
 
 const addIframeWidget = () => {
@@ -1252,7 +1352,7 @@ const onMouseUp = () => {
                     ✕
                   </button>
                   <template v-if="w.type === 'player'">
-                    <div class="flex items-center gap-3 flex-shrink-0">
+                    <div class="flex items-center gap-3 flex-shrink-0 md:items-start">
                       <div
                         class="w-10 h-10 rounded-full bg-white flex items-center justify-center text-xl shadow-sm"
                       >
@@ -1260,7 +1360,7 @@ const onMouseUp = () => {
                       </div>
                       <span class="font-bold text-gray-700 text-sm">随机音乐</span>
                     </div>
-                    <div class="flex items-center gap-2 flex-wrap">
+                    <div class="flex flex-wrap items-center gap-2">
                       <label
                         class="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs rounded-lg cursor-pointer hover:bg-blue-100 transition-colors flex items-center gap-1 whitespace-nowrap"
                       >
@@ -1273,6 +1373,15 @@ const onMouseUp = () => {
                           @change="uploadMusic"
                         />
                       </label>
+                      <button
+                        type="button"
+                        @click="toggleMusicManager"
+                        class="px-3 py-1.5 bg-gray-50 text-gray-600 text-xs rounded-lg cursor-pointer hover:bg-gray-100 transition-colors flex items-center gap-1 whitespace-nowrap"
+                      >
+                        {{ musicManagerOpen ? "📁 收起文件" : "📁 文件管理" }} ({{
+                          musicFiles.length
+                        }})
+                      </button>
                       <span
                         v-if="uploadStatus"
                         class="text-xs"
@@ -1280,57 +1389,118 @@ const onMouseUp = () => {
                         >{{ uploadStatus }}</span
                       >
                     </div>
-                    <div class="flex items-center justify-center md:justify-end gap-3 md:gap-4">
-                      <div class="flex flex-col items-center gap-0.5">
-                        <span class="text-[10px] text-gray-400 scale-90">公开</span>
-                        <label class="relative inline-flex items-center cursor-pointer" title="公开"
-                          ><input type="checkbox" v-model="w.isPublic" class="sr-only peer" />
-                          <div
-                            class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500"
-                          ></div
-                        ></label>
+                    <div class="flex flex-col items-stretch gap-2 md:items-end">
+                      <div class="flex items-center gap-2 justify-end">
+                        <span class="text-xs text-gray-400 whitespace-nowrap">🔊</span>
+                        <input
+                          v-model.number="musicVolumePercent"
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          class="w-28 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
                       </div>
-                      <div class="flex flex-col items-center gap-0.5">
-                        <span class="text-[10px] text-gray-400 scale-90">启用</span>
-                        <label class="relative inline-flex items-center cursor-pointer" title="启用"
-                          ><input type="checkbox" v-model="w.enable" class="sr-only peer" />
-                          <div
-                            class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-500"
-                          ></div
-                        ></label>
+                      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div class="flex flex-col items-center gap-0.5">
+                          <span class="text-[10px] text-gray-400 scale-90">公开</span>
+                          <label
+                            class="relative inline-flex items-center cursor-pointer"
+                            title="公开"
+                            ><input type="checkbox" v-model="w.isPublic" class="sr-only peer" />
+                            <div
+                              class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500"
+                            ></div
+                          ></label>
+                        </div>
+                        <div class="flex flex-col items-center gap-0.5">
+                          <span class="text-[10px] text-gray-400 scale-90">启用</span>
+                          <label
+                            class="relative inline-flex items-center cursor-pointer"
+                            title="启用"
+                            ><input type="checkbox" v-model="w.enable" class="sr-only peer" />
+                            <div
+                              class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-green-500"
+                            ></div
+                          ></label>
+                        </div>
+                        <div class="flex flex-col items-center gap-0.5">
+                          <span class="text-[10px] text-gray-400 scale-90">手机</span>
+                          <label
+                            class="relative inline-flex items-center cursor-pointer"
+                            title="手机"
+                            ><input
+                              type="checkbox"
+                              :checked="!w.hideOnMobile"
+                              class="sr-only peer"
+                              @change="
+                                (e) => {
+                                  w.hideOnMobile = !(e.target as HTMLInputElement).checked;
+                                  store.saveData();
+                                }
+                              " />
+                            <div
+                              class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-500"
+                            ></div
+                          ></label>
+                        </div>
+                        <div class="flex flex-col items-center gap-0.5">
+                          <span class="text-[10px] text-gray-400 scale-90">自动</span>
+                          <label
+                            class="relative inline-flex items-center cursor-pointer"
+                            title="自动播放"
+                            ><input
+                              type="checkbox"
+                              v-model="store.appConfig.autoPlayMusic"
+                              @change="store.saveData()"
+                              class="sr-only peer" />
+                            <div
+                              class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-500"
+                            ></div
+                          ></label>
+                        </div>
                       </div>
-                      <div class="flex flex-col items-center gap-0.5">
-                        <span class="text-[10px] text-gray-400 scale-90">手机</span>
-                        <label class="relative inline-flex items-center cursor-pointer" title="手机"
-                          ><input
-                            type="checkbox"
-                            :checked="!w.hideOnMobile"
-                            class="sr-only peer"
-                            @change="
-                              (e) => {
-                                w.hideOnMobile = !(e.target as HTMLInputElement).checked;
-                                store.saveData();
-                              }
-                            " />
-                          <div
-                            class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-500"
-                          ></div
-                        ></label>
+                    </div>
+                    <div v-if="musicManagerOpen" class="md:col-start-1 md:col-span-3 space-y-2">
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="button"
+                          @click="fetchMusicFiles"
+                          class="px-3 py-1.5 bg-blue-50 text-blue-600 text-xs rounded-lg cursor-pointer hover:bg-blue-100 transition-colors flex items-center gap-1 whitespace-nowrap"
+                          :disabled="isMusicListLoading"
+                        >
+                          {{ isMusicListLoading ? "刷新中..." : "🔄 刷新列表" }}
+                        </button>
+                        <span v-if="musicManagerStatus" class="text-xs text-red-500">{{
+                          musicManagerStatus
+                        }}</span>
+                        <span v-else class="text-xs text-gray-400"
+                          >共 {{ musicFiles.length }} 个文件</span
+                        >
                       </div>
-                      <div class="flex flex-col items-center gap-0.5">
-                        <span class="text-[10px] text-gray-400 scale-90">自动</span>
-                        <label
-                          class="relative inline-flex items-center cursor-pointer"
-                          title="自动播放"
-                          ><input
-                            type="checkbox"
-                            v-model="store.appConfig.autoPlayMusic"
-                            @change="store.saveData()"
-                            class="sr-only peer" />
+                      <div
+                        class="border border-gray-100 rounded-xl bg-gray-50 p-3 max-h-44 overflow-auto"
+                      >
+                        <div v-if="isMusicListLoading" class="text-xs text-gray-400">加载中...</div>
+                        <div v-else-if="musicFiles.length === 0" class="text-xs text-gray-400">
+                          暂无音乐文件
+                        </div>
+                        <div v-else class="space-y-1">
                           <div
-                            class="w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-500"
-                          ></div
-                        ></label>
+                            v-for="f in musicFiles"
+                            :key="f"
+                            class="flex items-center gap-2 text-xs"
+                          >
+                            <span class="flex-1 truncate text-gray-700" :title="f">{{ f }}</span>
+                            <button
+                              type="button"
+                              class="px-2 py-1 rounded-md bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                              @click="deleteMusicFile(f)"
+                            >
+                              删除
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </template>
@@ -1365,12 +1535,8 @@ const onMouseUp = () => {
                               <input
                                 type="color"
                                 :value="w.textColor || '#374151'"
-                                @input="
-                                  (e) => {
-                                    w.textColor = (e.target as HTMLInputElement).value;
-                                    store.saveData();
-                                  }
-                                "
+                                @input="(e) => (w.textColor = (e.target as HTMLInputElement).value)"
+                                @change="store.saveData()"
                                 class="w-5 h-5 p-0 border-0 rounded-full cursor-pointer overflow-hidden shadow-sm"
                                 title="选择颜色"
                               />
@@ -1416,23 +1582,25 @@ const onMouseUp = () => {
                                           ? "💬"
                                           : w.type === "bookmarks"
                                             ? "📑"
-                                            : w.type === "todo"
-                                              ? "✅"
-                                              : w.type === "calculator"
-                                                ? "🧮"
-                                                : w.type === "ip"
-                                                  ? "🌐"
-                                                  : w.type === "player"
-                                                    ? "🎵"
-                                                    : w.type === "hot"
-                                                      ? "🔥"
-                                                      : w.type === "rss"
-                                                        ? "📡"
-                                                        : w.type === "sidebar"
-                                                          ? "⬅️"
-                                                          : w.type === "custom-css"
-                                                            ? "🎨"
-                                                            : "🖥️"
+                                            : w.type === "file-transfer"
+                                              ? "📤"
+                                              : w.type === "todo"
+                                                ? "✅"
+                                                : w.type === "calculator"
+                                                  ? "🧮"
+                                                  : w.type === "ip"
+                                                    ? "🌐"
+                                                    : w.type === "player"
+                                                      ? "🎵"
+                                                      : w.type === "hot"
+                                                        ? "🔥"
+                                                        : w.type === "rss"
+                                                          ? "📡"
+                                                          : w.type === "sidebar"
+                                                            ? "⬅️"
+                                                            : w.type === "custom-css"
+                                                              ? "🎨"
+                                                              : "🖥️"
                           }}
                         </div>
                         <span
@@ -1457,29 +1625,31 @@ const onMouseUp = () => {
                                             ? "每日一言"
                                             : w.type === "bookmarks"
                                               ? "收藏夹"
-                                              : w.type === "todo"
-                                                ? "待办事项"
-                                                : w.type === "calculator"
-                                                  ? "计算器"
-                                                  : w.type === "ip"
-                                                    ? "IP 信息"
-                                                    : w.type === "player"
-                                                      ? "随机音乐"
-                                                      : w.type === "hot"
-                                                        ? "全网热搜"
-                                                        : w.type === "rss"
-                                                          ? "RSS 阅读器"
-                                                          : w.type === "system-status"
-                                                            ? "宿主机状态"
-                                                            : w.type === "iframe"
-                                                              ? "万能窗口"
-                                                              : w.type === "countdown"
-                                                                ? "倒计时"
-                                                                : w.type === "docker"
-                                                                  ? "Docker 管理"
-                                                                  : w.type === "custom-css"
-                                                                    ? "自定义组件"
-                                                                    : `未知组件 (${w.type})`
+                                              : w.type === "file-transfer"
+                                                ? "文件传输助手"
+                                                : w.type === "todo"
+                                                  ? "待办事项"
+                                                  : w.type === "calculator"
+                                                    ? "计算器"
+                                                    : w.type === "ip"
+                                                      ? "IP 信息"
+                                                      : w.type === "player"
+                                                        ? "随机音乐"
+                                                        : w.type === "hot"
+                                                          ? "全网热搜"
+                                                          : w.type === "rss"
+                                                            ? "RSS 阅读器"
+                                                            : w.type === "system-status"
+                                                              ? "宿主机状态"
+                                                              : w.type === "iframe"
+                                                                ? "万能窗口"
+                                                                : w.type === "countdown"
+                                                                  ? "倒计时"
+                                                                  : w.type === "docker"
+                                                                    ? "Docker 管理"
+                                                                    : w.type === "custom-css"
+                                                                      ? "自定义组件"
+                                                                      : `未知组件 (${w.type})`
                           }}
                         </span>
                       </template>

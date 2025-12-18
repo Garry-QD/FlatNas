@@ -43,6 +43,7 @@ export interface NavGroup {
     | string;
   cardBgColor?: string;
   cardTitleColor?: string;
+  cardTitleSize?: number;
   showCardBackground?: boolean;
   backgroundImage?: string;
   backgroundBlur?: number;
