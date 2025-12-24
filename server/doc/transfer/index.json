@@ -1,3 +1,32 @@
 {
-  "items": []
+  "items": [
+    {
+      "id": "473d4f99-5c32-4f45-a630-2e7151d62221",
+      "type": "text",
+      "content": "Curious how people here think about the trade-off between speed and comfort.\n很好奇这里的人们是怎么看待速度和舒适度之间的权衡。\n\nWould you rather: • Reach LeanFIRE earlier and buy back your time, even if it means living on a leaner budget, or • Work longer and push toward FatFIRE, so you have more margin and flexibility?\n你更愿意：• 更早实现 LeanFIRE，买回你的时间，即使这意味着要以更精简的预算生活，还是• 更长时间工作，朝着 FatFIRE 努力，这样你就有更多的利润空间和灵活性？\n\nDo you see LeanFIRE as a first step toward FatFIRE, or as the finish line itself?\n你认为 LeanFIRE 是迈向 FatFIRE 的第一步，还是终点线本身？",
+      "timestamp": 1766479862975,
+      "sender": "admin"
+    },
+    {
+      "id": "f03e0555-e68e-43c9-a94a-cb39c79b155f",
+      "type": "text",
+      "content": "123123123123",
+      "timestamp": 1766479850281,
+      "sender": "admin"
+    },
+    {
+      "id": "f9a69f32-e728-4fa0-911f-9f836c9531cd",
+      "type": "text",
+      "content": "123123",
+      "timestamp": 1766461773284,
+      "sender": "admin"
+    },
+    {
+      "id": "149213d1-9f68-4c9c-b32b-afa19fdc300a",
+      "type": "text",
+      "content": "http://localhost:5173/",
+      "timestamp": 1766461111648,
+      "sender": "admin"
+    }
+  ]
 }

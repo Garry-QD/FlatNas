@@ -290,6 +290,20 @@ const openUrl = (url: string) => {
 
   window.open(url, "_blank");
 };
+
+const handleScrollIsolation = (e: WheelEvent) => {
+  const el = e.currentTarget as HTMLDivElement;
+  const { scrollTop, scrollHeight, clientHeight } = el;
+  const delta = e.deltaY;
+
+  const isAtTop = scrollTop <= 0;
+  const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1;
+
+  if ((isAtTop && delta < 0) || (isAtBottom && delta > 0)) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+};
 </script>
 
 <template>
@@ -344,7 +358,7 @@ const openUrl = (url: string) => {
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide">
+    <div class="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-hide" @wheel="handleScrollIsolation">
       <div
         v-if="isAddingCategory"
         class="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-100 animate-fade-in"

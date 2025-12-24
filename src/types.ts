@@ -68,6 +68,7 @@ export interface SearchEngine {
 export interface AppConfig {
   background: string;
   mobileBackground?: string;
+  solidBackgroundColor?: string;
   enableMobileWallpaper?: boolean;
   fixedWallpaper?: boolean; // Deprecated in favor of specific rotation flags
   pcRotation?: boolean;
@@ -139,6 +140,8 @@ export interface AppConfig {
   sidebarViewMode?: "bookmarks" | "groups";
   empireMode?: boolean;
   customCss?: string;
+  customJs?: string;
+  customJsDisclaimerAgreed?: boolean;
   mouseHoverEffect?: "scale" | "lift" | "glow" | "none" | string;
 }
 

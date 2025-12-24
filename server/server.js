@@ -1,5 +1,14 @@
 import express from "express";
 import { createServer } from "http";
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 import { Server } from "socket.io";
 import fs from "fs/promises";
 import path from "path";

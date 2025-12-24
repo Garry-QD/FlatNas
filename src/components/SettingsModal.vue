@@ -24,6 +24,31 @@ const musicVolumePercent = computed({
     musicVolume.value = Math.min(1, Math.max(0, v / 100));
   },
 });
+const solidBackgroundColorProxy = computed({
+  get: () => store.appConfig.solidBackgroundColor || "#f3f4f6",
+  set: (val: string) => {
+    store.appConfig.solidBackgroundColor = val;
+    store.saveData();
+  },
+});
+
+const setSolidColorAsWallpaper = () => {
+  const color = store.appConfig.solidBackgroundColor || "#f3f4f6";
+  if (!color) return;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, 1, 1);
+    const dataUrl = canvas.toDataURL("image/png");
+    store.appConfig.background = dataUrl;
+    store.appConfig.solidBackgroundColor = "";
+    store.saveData();
+  }
+};
 
 const handleWallpaperSelect = (payload: { url: string; type: string } | string) => {
   const url = typeof payload === "string" ? payload : payload.url;
@@ -34,6 +59,7 @@ const handleWallpaperSelect = (payload: { url: string; type: string } | string) 
   } else {
     store.appConfig.background = url;
   }
+  store.saveData();
 };
 
 const activeTab = ref("style");
@@ -1076,6 +1102,7 @@ const onMouseUp = () => {
                   <div class="border border-gray-200 rounded-xl p-2 bg-white">
                     <IconUploader
                       v-model="store.appConfig.background"
+                      @update:modelValue="store.saveData()"
                       :crop="false"
                       :previewStyle="{
                         filter: `blur(${store.appConfig.backgroundBlur ?? 0}px)`,
@@ -1088,7 +1115,10 @@ const onMouseUp = () => {
                     <div class="mt-2 flex justify-between items-center">
                       <button
                         v-if="store.appConfig.background"
-                        @click="store.appConfig.background = ''"
+                        @click="
+                          store.appConfig.background = '';
+                          store.saveData();
+                        "
                         class="text-xs text-red-500 hover:underline"
                       >
                         清除背景
@@ -1100,6 +1130,40 @@ const onMouseUp = () => {
                         <span>🖼️</span> 管理壁纸库
                       </button>
                     </div>
+                  </div>
+                </div>
+                <div>
+                  <label class="text-sm font-bold text-gray-600 mb-1 block">纯色背景</label>
+                  <div class="flex items-center gap-2">
+                    <input
+                      type="color"
+                      v-model="solidBackgroundColorProxy"
+                      class="w-10 h-10 rounded cursor-pointer border-0 p-0"
+                    />
+                    <input
+                      v-model="store.appConfig.solidBackgroundColor"
+                      @change="store.saveData()"
+                      type="text"
+                      placeholder="#f3f4f6"
+                      class="flex-1 px-2 py-2 border border-gray-200 rounded-xl focus:border-blue-500 outline-none text-sm"
+                    />
+                    <button
+                      @click="
+                        store.appConfig.solidBackgroundColor = '';
+                        store.saveData();
+                      "
+                      class="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors text-sm"
+                      title="清除纯色背景"
+                    >
+                      ↺
+                    </button>
+                    <button
+                      @click="setSolidColorAsWallpaper"
+                      class="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-500 transition-colors text-sm"
+                      title="设为壁纸"
+                    >
+                      🖼️
+                    </button>
                   </div>
                 </div>
               </div>
@@ -2188,6 +2252,61 @@ const onMouseUp = () => {
               </div>
             </div>
 
+            <!-- Custom JS Section -->
+            <div class="bg-purple-50 border border-purple-100 rounded-xl p-4 mb-6">
+              <h4 class="text-lg font-bold mb-4 text-gray-800">自定义 JS</h4>
+
+              <div
+                v-if="!store.appConfig.customJsDisclaimerAgreed"
+                class="p-4 bg-white rounded-lg border border-red-200 shadow-sm"
+              >
+                <h5 class="font-bold text-red-600 mb-2 flex items-center gap-2">⚠️ 安全免责声明</h5>
+                <div class="text-sm text-gray-600 mb-3 leading-relaxed">
+                  使用自定义 JavaScript 功能允许您向页面注入任意代码。这可能导致：
+                  <ul class="list-disc list-inside ml-2 mt-1 space-y-1 text-xs">
+                    <li>XSS (跨站脚本) 攻击风险</li>
+                    <li>页面功能异常或崩溃</li>
+                    <li>敏感数据泄露</li>
+                  </ul>
+                </div>
+                <p class="text-sm text-gray-600 mb-4 font-bold">
+                  由此产生的一切后果由您自行承担。请确保您完全信任并理解您所添加的代码。
+                </p>
+                <label class="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    v-model="store.appConfig.customJsDisclaimerAgreed"
+                    class="w-4 h-4 text-purple-600 rounded border-gray-300 focus:ring-purple-500"
+                  />
+                  <span class="text-sm font-medium text-gray-700"
+                    >我已阅读并同意上述风险，确认启用此功能</span
+                  >
+                </label>
+              </div>
+
+              <div v-else>
+                <textarea
+                  v-model="store.appConfig.customJs"
+                  rows="6"
+                  placeholder="// 输入自定义 JS 代码
+console.log('Hello from Custom JS!');
+document.querySelector('.card-item').addEventListener('click', () => {
+  alert('Clicked!');
+});"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-xl focus:border-purple-500 outline-none text-sm font-mono"
+                ></textarea>
+                <div class="text-xs text-gray-500 mt-2 flex justify-between items-center">
+                  <span>提示：JS 代码将在页面加载时执行。可与自定义 CSS 配合实现高级交互。</span>
+                  <button
+                    @click="store.appConfig.customJsDisclaimerAgreed = false"
+                    class="text-xs text-red-400 hover:text-red-600 underline"
+                  >
+                    撤销免责声明并禁用
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <!-- Weather Service Settings -->
             <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-6">
               <div class="flex items-center justify-between mb-4">
@@ -2687,7 +2806,7 @@ const onMouseUp = () => {
             <div class="max-w-md w-full text-center space-y-5">
               <h4 class="text-2xl font-bold text-gray-800 mb-2">关于 FlatNas</h4>
               <div class="flex items-center justify-center gap-2">
-                <span class="text-xs text-gray-400 font-mono">v{{ store.currentVersion }}</span>
+                <span class="text-2xl text-gray-400 font-mono">v{{ store.currentVersion }}</span>
                 <span
                   v-if="store.hasUpdate && store.isLogged"
                   class="w-2 h-2 bg-red-500 rounded-full cursor-pointer"

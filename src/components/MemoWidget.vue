@@ -53,19 +53,37 @@ watch(
   },
   { immediate: true },
 );
+
+const handleScrollIsolation = (e: WheelEvent) => {
+  const el = e.currentTarget as HTMLElement;
+  const { scrollTop, scrollHeight, clientHeight } = el;
+  const delta = e.deltaY;
+
+  const isAtTop = scrollTop <= 0;
+  const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1;
+
+  if ((isAtTop && delta < 0) || (isAtBottom && delta > 0)) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+};
 </script>
 
 <template>
   <div
     class="w-full h-full p-4 rounded-2xl backdrop-blur border border-white/10 relative group"
     :class="!widget.textColor ? 'text-gray-700' : ''"
-    :style="{ backgroundColor: `rgba(254, 249, 195, ${widget.opacity ?? 0.9})`, color: widget.textColor }"
+    :style="{
+      backgroundColor: `rgba(254, 249, 195, ${widget.opacity ?? 0.9})`,
+      color: widget.textColor,
+    }"
   >
     <textarea
       :readonly="!store.isLogged"
       v-model="localData"
       @focus="isFocused = true"
       @blur="isFocused = false"
+      @wheel="handleScrollIsolation"
       class="w-full h-full bg-transparent resize-none outline-none text-sm placeholder-gray-600 font-medium"
       :placeholder="store.isLogged ? '写点什么...' : '请先登录'"
     ></textarea>

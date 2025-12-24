@@ -205,13 +205,6 @@ const isInternalNetwork = (url: string) => {
   return false;
 };
 
-const checkVisible = (obj?: WidgetConfig | NavItem) => {
-  if (!obj) return false;
-  if ("enable" in obj && !obj.enable) return false;
-  if (store.isLogged) return true;
-  return !!obj.isPublic;
-};
-
 /*
 const draggableWidgets = computed({
   get: () =>
@@ -241,6 +234,13 @@ const draggableWidgets = computed({
 const layoutData = ref<GridLayoutItem[]>([]);
 let skipNextLayoutSave = false;
 const { deviceKey, isMobile } = useDevice(toRef(store.appConfig, "deviceMode"));
+const checkVisible = (obj?: WidgetConfig | NavItem) => {
+  if (!obj) return false;
+  if ("enable" in obj && !obj.enable) return false;
+  if ("hideOnMobile" in obj && obj.hideOnMobile && isMobile.value) return false;
+  if (store.isLogged) return true;
+  return !!obj.isPublic;
+};
 const isHandheld = computed(() => deviceKey.value === "mobile" || deviceKey.value === "tablet");
 const isTabletPortrait = computed(() => deviceKey.value === "tablet" && height.value > width.value);
 const widgetColNum = computed(() => {
@@ -1576,7 +1576,12 @@ onMounted(() => {
     <div class="fixed inset-0 z-0 pointer-events-none select-none">
       <!-- Default Background (Gradient Clouds) -->
       <div
-        v-if="!store.appConfig.empireMode"
+        v-if="!store.appConfig.empireMode && store.appConfig.solidBackgroundColor"
+        class="absolute inset-0 transition-all duration-500"
+        :style="{ backgroundColor: store.appConfig.solidBackgroundColor }"
+      ></div>
+      <div
+        v-else-if="!store.appConfig.empireMode"
         class="absolute inset-0 transition-all duration-500"
         style="background-image: linear-gradient(to top, #a18cd1 0%, #fbc2eb 100%)"
       ></div>
@@ -1661,7 +1666,10 @@ onMounted(() => {
     <div
       class="flex-1 w-full p-4 md:p-8 transition-all pb-[calc(2rem+env(safe-area-inset-bottom))] md:pb-[calc(2.5rem+env(safe-area-inset-bottom))] relative z-10"
       :style="{
-        backgroundColor: store.appConfig.background ? 'transparent' : '#f3f4f6',
+        backgroundColor:
+          store.appConfig.background || store.appConfig.solidBackgroundColor
+            ? 'transparent'
+            : '#f3f4f6',
         '--group-title-color': store.appConfig.groupTitleColor || '#ffffff',
         '--card-bg-color': store.appConfig.cardBgColor || 'transparent',
         '--card-border-color': store.appConfig.cardBorderColor || 'transparent',

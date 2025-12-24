@@ -240,7 +240,7 @@ const formatNum = (num: number) => num.toString().padStart(2, "0");
       <!-- Settings Button -->
       <button
         @click.stop="openConfig"
-        class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-black/10 active:scale-95"
+        class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-full hover:bg-black/10 active:scale-95 z-20"
         title="设置"
       >
         <svg

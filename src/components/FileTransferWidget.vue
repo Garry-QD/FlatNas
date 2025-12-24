@@ -26,6 +26,8 @@ type UploadQueueItem = {
   abort?: AbortController;
 };
 
+type LinkifiedPart = { kind: "text"; text: string } | { kind: "link"; text: string; href: string };
+
 const props = defineProps<{ widget: WidgetConfig }>();
 const store = useMainStore();
 const socket = ref<Socket | null>(null);
@@ -146,7 +148,57 @@ const formatGroupTime = (ts: number) => {
   }
 };
 
+const toLinkifiedParts = (raw: string): LinkifiedPart[] => {
+  const text = String(raw ?? "");
+  if (!text) return [{ kind: "text", text: "" }];
+
+  const urlRe = /https?:\/\/[^\s<>"'`]+/g;
+  const parts: LinkifiedPart[] = [];
+  let lastIndex = 0;
+
+  for (const m of text.matchAll(urlRe)) {
+    const match = m[0] || "";
+    const index = m.index ?? -1;
+    if (!match || index < 0) continue;
+
+    if (index > lastIndex) parts.push({ kind: "text", text: text.slice(lastIndex, index) });
+
+    let url = match;
+    let trailing = "";
+    while (url && /[)\]}\.,!?;:]+$/.test(url)) {
+      trailing = url.slice(-1) + trailing;
+      url = url.slice(0, -1);
+    }
+
+    if (url && url !== "http://" && url !== "https://") {
+      parts.push({ kind: "link", text: url, href: url });
+    } else {
+      parts.push({ kind: "text", text: match });
+    }
+
+    if (trailing) parts.push({ kind: "text", text: trailing });
+    lastIndex = index + match.length;
+  }
+
+  if (lastIndex < text.length) parts.push({ kind: "text", text: text.slice(lastIndex) });
+  return parts.length ? parts : [{ kind: "text", text }];
+};
+
 const fileKeyFor = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
+
+const handleScrollIsolation = (e: WheelEvent) => {
+  const el = e.currentTarget as HTMLDivElement;
+  const { scrollTop, scrollHeight, clientHeight } = el;
+  const delta = e.deltaY;
+
+  const isAtTop = scrollTop <= 0;
+  const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1;
+
+  if ((isAtTop && delta < 0) || (isAtBottom && delta > 0)) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+};
 
 const onTransferUpdate = (event: { type: "add" | "delete"; item?: TransferItem; id?: string }) => {
   if (event.type === "add" && event.item) {
@@ -1049,6 +1101,7 @@ onBeforeUnmount(() => {
         <div
           v-else
           class="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-3 scrollbar-glass"
+          @wheel="handleScrollIsolation"
           @contextmenu.prevent.stop="onListContextMenu"
         >
           <template v-if="activeTab === 'chat'">
@@ -1071,10 +1124,9 @@ onBeforeUnmount(() => {
                 <div v-for="it in g.items" :key="it.id" class="flex">
                   <div
                     v-if="it.type === 'text'"
-                    class="max-w-[90%] rounded-xl px-3 py-2 bg-white/10 text-white text-sm border border-white/10 transition-shadow select-none"
+                    class="max-w-[90%] rounded-xl px-3 py-2 bg-white/10 text-white text-sm border border-white/10 transition-shadow select-text"
                     :class="selectedIds[it.id] ? 'shadow-[0_0_0_2px_rgba(96,165,250,0.55)]' : ''"
                     :data-transfer-id="it.id"
-                    style="-webkit-touch-callout: none"
                     @click="onChatItemClick(it)"
                     @contextmenu.prevent.stop="
                       (e) => openContextMenuAt(e.clientX, e.clientY, it.id)
@@ -1088,7 +1140,20 @@ onBeforeUnmount(() => {
                     @touchend="onChatItemTouchEnd"
                     @touchcancel="onChatItemTouchEnd"
                   >
-                    <div class="whitespace-pre-wrap break-words">{{ it.content }}</div>
+                    <div class="whitespace-pre-wrap break-words">
+                      <template v-for="(p, idx) in toLinkifiedParts(it.content)" :key="idx">
+                        <a
+                          v-if="p.kind === 'link'"
+                          :href="p.href"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="text-blue-200 underline underline-offset-2 hover:text-blue-100"
+                          @click.stop
+                          >{{ p.text }}</a
+                        >
+                        <span v-else>{{ p.text }}</span>
+                      </template>
+                    </div>
                   </div>
 
                   <button
