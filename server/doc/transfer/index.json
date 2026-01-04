@@ -1,80 +1,17 @@
 {
   "items": [
     {
-      "id": "1de17304-bbdb-482a-829a-ed747dbab2fc",
+      "id": "b02504a7-d0f2-4927-b4a7-0b9e7272d46e",
       "type": "text",
-      "content": "翻译 - 网页翻译插件 | PDF翻译 | 免费 1.24.6 【沉浸式翻译】免费",
-      "timestamp": 1767458157751,
+      "content": "多选模式需要手动退出，切记",
+      "timestamp": 1767518868993,
       "sender": "admin"
     },
     {
-      "id": "b1e10022-b25f-4c31-a2eb-53491692d5db",
+      "id": "a160b57c-de5c-4134-9c5d-b5986f846247",
       "type": "text",
-      "content": "G 优化了日历在手机端展现 加强了对苹果手机浏览器的支持 加强了对鸿蒙手机端的支持 修补了聚合搜索透明度调",
-      "timestamp": 1767458145985,
-      "sender": "admin"
-    },
-    {
-      "id": "5e9a87e5-e668-43e8-b19f-e5e7c52dc53d",
-      "type": "text",
-      "content": "语言方向",
-      "timestamp": 1767455630431,
-      "sender": "admin"
-    },
-    {
-      "id": "c212afa5-3b13-445e-a45e-3cd652b928d7",
-      "type": "text",
-      "content": "http://qdnas.icu:18080/",
-      "timestamp": 1767443948753,
-      "sender": "admin"
-    },
-    {
-      "id": "80f84544-42f1-4ac3-9211-70c8f8736d81",
-      "type": "text",
-      "content": "https://www.youtube.com/watch?v=dj5UV34E0Cs",
-      "timestamp": 1767443555759,
-      "sender": "admin"
-    },
-    {
-      "id": "eab6c201-5278-457e-a3aa-0ca66684d848",
-      "type": "text",
-      "content": "https://www.youtube.com/watch?v=dj5UV34E0Cs",
-      "timestamp": 1767443445743,
-      "sender": "admin"
-    },
-    {
-      "id": "d9806e1d-982a-414f-b2a0-1025775d37d3",
-      "type": "text",
-      "content": "http://localhost:5173/",
-      "timestamp": 1767442690499,
-      "sender": "admin"
-    },
-    {
-      "id": "1bcec04c-1098-4fa0-b676-278bd27a7419",
-      "type": "text",
-      "content": "https://fanyi.baidu.com/mtpe-individual/language-assets/term?ext_channel=Aldtype01",
-      "timestamp": 1767442659751,
-      "sender": "admin"
-    },
-    {
-      "id": "5057823d-679d-4da0-978f-5eca967066f9",
-      "type": "text",
-      "content": "https://fanyi.baidu.com/mtpe-individual/transText?query=%E6%B8%85%E7%BA%AF&lang=zh2en&ext_channel=Aldtype01",
-      "timestamp": 1767442257439,
-      "sender": "admin"
-    },
-    {
-      "id": "86325223-aab4-472e-932a-8f47760e5fe3",
-      "type": "text",
-      "content": "http://localhost:5173/",
-      "timestamp": 1767439716626,
-      "sender": "admin"
-    },
-    {
-      "id": "7b0d3c19-afbd-4a2a-89c2-92bfa4e5653e",
-      "type": "text",
-      "content": "https://hub.docker.com/r/qdnas/flatnas/tags",
-      "timestamp": 1767439078748,
+      "content": "右击项目可以多选删除。点击文件或图图片可以下载",
+      "timestamp": 1767518821773,
       "sender": "admin"
     },
     {
@@ -87,51 +24,6 @@
         "url": "/api/transfer/file/1767438569933_104933-1741661373383a.jpg"
       },
       "timestamp": 1767438569942,
-      "sender": "admin"
-    },
-    {
-      "id": "4958bdb4-9fb7-4eb5-8e30-267c99a2c79c",
-      "type": "text",
-      "content": "1",
-      "timestamp": 1767438040298,
-      "sender": "admin"
-    },
-    {
-      "id": "6d13458e-8184-4387-b5e8-aaa4c8e84119",
-      "type": "text",
-      "content": "保留排版），视频双语字幕翻译（Youtube, Netflix），EPU",
-      "timestamp": 1767438029445,
-      "sender": "admin"
-    },
-    {
-      "id": "bec8e9dc-68ba-4e76-8bb7-f2c7a52f61dc",
-      "type": "file",
-      "file": {
-        "name": "image.png",
-        "size": 1474,
-        "type": "image/png",
-        "url": "/api/transfer/file/1767438026319_image.png"
-      },
-      "timestamp": 1767438026321,
-      "sender": "admin"
-    },
-    {
-      "id": "f4e0fdc0-2d0f-4ebc-ab49-ed4bc91d484c",
-      "type": "file",
-      "file": {
-        "name": "image.png",
-        "size": 4619,
-        "type": "image/png",
-        "url": "/api/transfer/file/1767437994231_image.png"
-      },
-      "timestamp": 1767437994239,
-      "sender": "admin"
-    },
-    {
-      "id": "48813cc0-1aa4-4774-a81d-8f3599966c2e",
-      "type": "text",
-      "content": "dnas/flatnas",
-      "timestamp": 1767437983438,
       "sender": "admin"
     }
   ]

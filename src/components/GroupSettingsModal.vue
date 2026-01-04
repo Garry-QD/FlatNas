@@ -170,7 +170,11 @@ const bgAlpha = computed({
             class="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-100"
           >
             <div class="flex flex-col">
-              <span class="text-xs font-bold text-gray-700">公开此分组</span>
+              <span class="text-xs font-bold text-gray-700"
+                >公开此分组<span class="font-normal text-gray-500 ml-1"
+                  >（关闭后还有公开项目，请单独关闭公开设置）</span
+                ></span
+              >
               <span class="text-[10px] text-gray-400">允许未登录访客查看此分组内容</span>
             </div>
             <label class="relative inline-flex items-center cursor-pointer">

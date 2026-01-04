@@ -147,6 +147,47 @@ const editingBookmarkUrl = ref("");
 const editingBookmarkIcon = ref("");
 const addInputRef = ref<HTMLInputElement | null>(null);
 const editInputRef = ref<HTMLInputElement | null>(null);
+const scrollContainer = ref<HTMLElement | null>(null);
+
+const handleWheel = (e: WheelEvent) => {
+  const el = scrollContainer.value;
+  if (!el) return;
+
+  const { scrollTop, scrollHeight, clientHeight } = el;
+  const isScrollable = scrollHeight > clientHeight;
+
+  // 如果不可滚动，或者滚动到了边界，阻止默认行为（防止父级滚动）
+  if (!isScrollable) {
+    e.preventDefault();
+    return;
+  }
+
+  // 向上滚动
+  if (e.deltaY < 0) {
+    if (scrollTop <= 0) {
+      e.preventDefault();
+    }
+  }
+  // 向下滚动
+  else if (e.deltaY > 0) {
+    // 允许 2px 的误差，处理高分屏或缩放情况
+    if (scrollHeight - scrollTop - clientHeight <= 2) {
+      e.preventDefault();
+    }
+  }
+};
+
+onMounted(() => {
+  if (scrollContainer.value) {
+    scrollContainer.value.addEventListener("wheel", handleWheel, { passive: false });
+  }
+});
+
+onUnmounted(() => {
+  if (scrollContainer.value) {
+    scrollContainer.value.removeEventListener("wheel", handleWheel);
+  }
+});
 
 const openAddModal = () => {
   if (!store.isLogged) return;
@@ -333,19 +374,19 @@ const menuItems = computed(() => {
 
 <template>
   <div
-    class="flex flex-col transition-all duration-300 z-50"
+    class="flex flex-col transition-all duration-300 z-50 fixed left-4 top-4 max-h-[90vh] rounded-3xl"
     :class="[
       isMobile && collapsed
-        ? 'w-auto h-auto rounded-lg top-2 left-2'
-        : 'h-full border-r backdrop-blur-md',
+        ? 'w-auto h-auto rounded-lg top-2 left-2 bottom-auto'
+        : 'backdrop-blur-md shadow-2xl',
       collapsed ? (isMobile ? 'w-auto' : 'w-[68px]') : 'w-64',
       store.appConfig.background
         ? isMobile && collapsed
-          ? 'text-white'
-          : 'bg-black/40 border-white/10 text-white'
+          ? 'text-white bg-black/10 backdrop-blur-md border border-white/10 shadow-sm'
+          : 'bg-black/60 border border-white/10 text-white'
         : isMobile && collapsed
           ? 'text-gray-700'
-          : 'bg-white border-gray-200 text-gray-700',
+          : 'bg-white/80 border border-gray-200 text-gray-700',
     ]"
   >
     <!-- Toggle Button -->
@@ -437,7 +478,8 @@ const menuItems = computed(() => {
 
     <!-- Main Content -->
     <div
-      class="flex-1 overflow-y-auto py-4 space-y-2 px-3"
+      ref="scrollContainer"
+      class="flex-1 overflow-y-auto py-4 space-y-2 px-3 overscroll-contain"
       :class="{ 'no-scrollbar': collapsed }"
       v-show="!isMobile || !collapsed"
     >
@@ -524,8 +566,8 @@ const menuItems = computed(() => {
                       class="max-w-full max-h-full object-contain"
                       alt=""
                     />
-                    <span v-else class="text-xs font-bold opacity-70 leading-none">{{
-                      item.title.substring(0, 1).toUpperCase()
+                    <span v-else class="text-[10px] font-bold opacity-70 leading-none">{{
+                      item.title.substring(0, 2).toUpperCase()
                     }}</span>
                   </div>
 
@@ -587,15 +629,20 @@ const menuItems = computed(() => {
                   </button>
                 </div>
 
-                <!-- Tooltip for collapsed -->
                 <div
                   v-if="collapsed"
-                  class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[60] flex items-center gap-2 shadow-lg"
+                  class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg pointer-events-none whitespace-nowrap z-[60] flex items-center gap-2 shadow-lg transition-opacity duration-200"
+                  :class="
+                    store.appConfig.background
+                      ? 'bg-black/80 backdrop-blur-md border border-white/10 opacity-100'
+                      : 'bg-gray-800 opacity-0 group-hover:opacity-100'
+                  "
                 >
                   {{ item.title }}
                   <!-- Arrow -->
                   <div
-                    class="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-800"
+                    class="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent"
+                    :class="store.appConfig.background ? 'border-r-black/80' : 'border-r-gray-800'"
                   ></div>
                 </div>
               </div>
@@ -619,6 +666,30 @@ const menuItems = computed(() => {
           </svg>
           <span class="text-xs">暂无书签</span>
         </div>
+        <div v-if="store.isLogged && !collapsed" class="flex justify-center p-2 mt-auto">
+          <button
+            @click="openAddModal"
+            class="p-2 rounded-lg transition-colors group relative w-full flex items-center justify-center gap-2 border border-dashed"
+            :class="[
+              store.appConfig.background
+                ? 'hover:bg-white/10 border-white/20 text-white/70'
+                : 'hover:bg-gray-100 border-gray-300 text-gray-500',
+            ]"
+            title="快速添加书签"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              class="w-5 h-5"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            <span class="text-xs font-medium">添加书签</span>
+          </button>
+        </div>
       </template>
 
       <!-- Groups View -->
@@ -629,6 +700,7 @@ const menuItems = computed(() => {
           class="space-y-1"
           :animation="150"
           :forceFallback="true"
+          :disabled="collapsed"
           handle=".drag-handle"
           @end="store.saveData()"
         >
@@ -646,9 +718,18 @@ const menuItems = computed(() => {
           >
             <!-- Icon/Indicator -->
             <div
-              class="w-5 h-5 flex-shrink-0 flex items-center justify-center cursor-move drag-handle"
+              class="w-5 h-5 flex-shrink-0 flex items-center justify-center drag-handle"
+              :class="!collapsed ? 'cursor-move' : ''"
             >
-              <span class="text-xs font-bold opacity-70">=</span>
+              <img
+                v-if="group.icon"
+                :src="group.icon"
+                class="w-full h-full object-contain"
+                alt=""
+              />
+              <span v-else class="text-[10px] font-bold opacity-70 leading-none">{{
+                group.title.substring(0, 2)
+              }}</span>
             </div>
 
             <!-- Label -->
@@ -662,12 +743,18 @@ const menuItems = computed(() => {
             <!-- Tooltip for collapsed -->
             <div
               v-if="collapsed"
-              class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[60] flex items-center gap-2 shadow-lg"
+              class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg pointer-events-none whitespace-nowrap z-[60] flex items-center gap-2 shadow-lg transition-opacity duration-200"
+              :class="
+                store.appConfig.background
+                  ? 'bg-black/80 backdrop-blur-md border border-white/10 opacity-100'
+                  : 'bg-gray-800 opacity-0 group-hover:opacity-100'
+              "
             >
               {{ group.title }}
               <!-- Arrow -->
               <div
-                class="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-800"
+                class="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent"
+                :class="store.appConfig.background ? 'border-r-black/80' : 'border-r-gray-800'"
               ></div>
             </div>
           </button>
@@ -686,7 +773,15 @@ const menuItems = computed(() => {
             ]"
           >
             <div class="w-5 h-5 flex-shrink-0 flex items-center justify-center">
-              <span class="text-xs font-bold opacity-70">•</span>
+              <img
+                v-if="group.icon"
+                :src="group.icon"
+                class="w-full h-full object-contain"
+                alt=""
+              />
+              <span v-else class="text-[10px] font-bold opacity-70 leading-none">{{
+                group.title.substring(0, 2)
+              }}</span>
             </div>
             <span
               class="font-medium whitespace-nowrap transition-all duration-300 origin-left flex-1 truncate text-sm"
@@ -696,11 +791,17 @@ const menuItems = computed(() => {
             </span>
             <div
               v-if="collapsed"
-              class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[60] flex items-center gap-2 shadow-lg"
+              class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg pointer-events-none whitespace-nowrap z-[60] flex items-center gap-2 shadow-lg transition-opacity duration-200"
+              :class="
+                store.appConfig.background
+                  ? 'bg-black/80 backdrop-blur-md border border-white/10 opacity-100'
+                  : 'bg-gray-800 opacity-0 group-hover:opacity-100'
+              "
             >
               {{ group.title }}
               <div
-                class="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-800"
+                class="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent"
+                :class="store.appConfig.background ? 'border-r-black/80' : 'border-r-gray-800'"
               ></div>
             </div>
           </button>
@@ -713,14 +814,55 @@ const menuItems = computed(() => {
 
     <!-- Bottom Toolbar (Menu Items + Import) -->
     <div
-      v-if="!collapsed"
+      v-if="!collapsed || (collapsed && viewMode === 'bookmarks' && store.isLogged)"
       class="p-2 border-t"
       :class="store.appConfig.background ? 'border-white/10' : 'border-gray-100'"
     >
       <div class="flex flex-wrap items-center justify-center gap-1">
+        <!-- Add Bookmark Button (Collapsed) -->
+        <button
+          v-if="collapsed"
+          @click="openAddModal"
+          class="p-2 rounded-lg transition-all group relative"
+          :class="[
+            store.appConfig.background
+              ? 'hover:bg-white/10 text-white/90'
+              : 'hover:bg-gray-100 text-gray-600',
+          ]"
+          title="快速添加书签"
+        >
+          <div class="w-5 h-5 flex-shrink-0">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              class="w-5 h-5"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </div>
+          <!-- Tooltip -->
+          <div
+            class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-lg pointer-events-none whitespace-nowrap z-[60] flex items-center gap-2 shadow-lg transition-opacity duration-200"
+            :class="
+              store.appConfig.background
+                ? 'bg-black/80 backdrop-blur-md border border-white/10 opacity-0 group-hover:opacity-100'
+                : 'bg-gray-800 opacity-0 group-hover:opacity-100'
+            "
+          >
+            添加书签
+            <div
+              class="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent"
+              :class="store.appConfig.background ? 'border-r-black/80' : 'border-r-gray-800'"
+            ></div>
+          </div>
+        </button>
+
         <!-- Menu Items -->
         <button
-          v-for="item in menuItems"
+          v-for="item in !collapsed ? menuItems : []"
           :key="item.id"
           @click="item.action"
           class="p-2 rounded-lg transition-all group relative"
@@ -733,21 +875,26 @@ const menuItems = computed(() => {
         >
           <div class="w-5 h-5 flex-shrink-0" v-html="item.icon"></div>
 
-          <!-- Custom Tooltip -->
           <div
-            class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[60]"
+            class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded pointer-events-none whitespace-nowrap z-[60] transition-opacity duration-200"
+            :class="
+              store.appConfig.background
+                ? 'bg-black/80 backdrop-blur-md border border-white/10 opacity-0 group-hover:opacity-100'
+                : 'bg-gray-800 opacity-0 group-hover:opacity-100'
+            "
           >
             {{ item.label }}
             <!-- Arrow -->
             <div
-              class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"
+              class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent"
+              :class="store.appConfig.background ? 'border-t-black/80' : 'border-t-gray-800'"
             ></div>
           </div>
         </button>
 
         <!-- Import Button -->
         <button
-          v-if="store.isLogged"
+          v-if="store.isLogged && !collapsed"
           @click="handleImportClick"
           class="p-2 rounded-lg transition-all group relative"
           :class="[
@@ -774,13 +921,18 @@ const menuItems = computed(() => {
             </svg>
           </div>
 
-          <!-- Custom Tooltip -->
           <div
-            class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[60]"
+            class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded pointer-events-none whitespace-nowrap z-[60] transition-opacity duration-200"
+            :class="
+              store.appConfig.background
+                ? 'bg-black/80 backdrop-blur-md border border-white/10 opacity-0 group-hover:opacity-100'
+                : 'bg-gray-800 opacity-0 group-hover:opacity-100'
+            "
           >
             导入书签
             <div
-              class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"
+              class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent"
+              :class="store.appConfig.background ? 'border-t-black/80' : 'border-t-gray-800'"
             ></div>
           </div>
 
@@ -795,166 +947,168 @@ const menuItems = computed(() => {
       </div>
     </div>
 
-    <!-- Add Bookmark Modal -->
-    <div
-      v-if="showAddModal"
-      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      @click.self="showAddModal = false"
-    >
-      <div
-        class="rounded-xl p-4 w-80 shadow-2xl space-y-3 animate-fade-in border backdrop-blur-md transition-colors duration-300"
-        :class="
-          store.appConfig.background ? 'bg-black/60 border-white/10' : 'bg-white border-gray-100'
-        "
-      >
-        <h3
-          class="font-bold text-sm"
-          :class="store.appConfig.background ? 'text-white' : 'text-gray-800'"
-        >
-          添加书签
-        </h3>
-        <input
-          ref="addInputRef"
-          v-model="newBookmarkUrl"
-          placeholder="请输入网址 (https://...)"
-          class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors"
-          :class="
-            store.appConfig.background
-              ? 'bg-white/5 border-white/20 text-white placeholder-white/40 focus:bg-white/10 focus:border-white/30'
-              : 'bg-gray-50 border-gray-200 text-gray-900 focus:bg-white focus:border-blue-500'
-          "
-          @keyup.enter="confirmAddBookmark"
-        />
-        <div class="flex justify-end gap-2">
-          <button
-            @click="showAddModal = false"
-            class="px-3 py-1.5 text-xs rounded-lg transition-colors"
+    <Teleport to="body">
+      <!-- Add Bookmark Modal -->
+      <div v-if="showAddModal" class="fixed inset-0 z-[100] pointer-events-none">
+        <div class="absolute left-[264px] top-1/2 -translate-y-1/2 pointer-events-auto">
+          <div
+            class="rounded-xl p-4 w-[320px] shadow-2xl space-y-3 animate-fade-in border backdrop-blur-md transition-colors duration-300"
             :class="
               store.appConfig.background
-                ? 'text-white/60 hover:bg-white/10 hover:text-white'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                ? 'bg-black/60 border-white/10'
+                : 'bg-white border-gray-100'
             "
           >
-            取消
-          </button>
-          <button
-            @click="confirmAddBookmark"
-            class="px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-sm"
-          >
-            添加
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Edit Bookmark Modal -->
-    <div
-      v-if="showEditModal"
-      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      @click.self="showEditModal = false"
-    >
-      <div
-        class="rounded-xl p-4 w-80 shadow-2xl space-y-3 animate-fade-in border backdrop-blur-md transition-colors duration-300"
-        :class="
-          store.appConfig.background ? 'bg-black/60 border-white/10' : 'bg-white border-gray-100'
-        "
-      >
-        <h3
-          class="font-bold text-sm"
-          :class="store.appConfig.background ? 'text-white' : 'text-gray-800'"
-        >
-          编辑书签
-        </h3>
-
-        <div class="space-y-2">
-          <div>
-            <label
-              class="text-xs opacity-70 mb-1 block"
-              :class="store.appConfig.background ? 'text-white' : 'text-gray-600'"
-              >标题</label
+            <h3
+              class="font-bold text-sm"
+              :class="store.appConfig.background ? 'text-white' : 'text-gray-800'"
             >
+              添加书签
+            </h3>
             <input
-              ref="editInputRef"
-              v-model="editingBookmarkTitle"
+              ref="addInputRef"
+              v-model="newBookmarkUrl"
+              placeholder="请输入网址 (https://...)"
               class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors"
               :class="
                 store.appConfig.background
                   ? 'bg-white/5 border-white/20 text-white placeholder-white/40 focus:bg-white/10 focus:border-white/30'
                   : 'bg-gray-50 border-gray-200 text-gray-900 focus:bg-white focus:border-blue-500'
               "
-              @keyup.enter="confirmEditBookmark"
+              @keyup.enter="confirmAddBookmark"
             />
-          </div>
-          <div>
-            <label
-              class="text-xs opacity-70 mb-1 block"
-              :class="store.appConfig.background ? 'text-white' : 'text-gray-600'"
-              >链接</label
-            >
-            <input
-              v-model="editingBookmarkUrl"
-              class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors"
-              :class="
-                store.appConfig.background
-                  ? 'bg-white/5 border-white/20 text-white placeholder-white/40 focus:bg-white/10 focus:border-white/30'
-                  : 'bg-gray-50 border-gray-200 text-gray-900 focus:bg-white focus:border-blue-500'
-              "
-              @keyup.enter="confirmEditBookmark"
-            />
-          </div>
-          <div>
-            <label
-              class="text-xs opacity-70 mb-1 block"
-              :class="store.appConfig.background ? 'text-white' : 'text-gray-600'"
-              >图标 URL (可选)</label
-            >
-            <div class="flex gap-2">
-              <div
-                class="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 overflow-hidden border border-gray-200/50"
-              >
-                <img
-                  v-if="editingBookmarkIcon"
-                  :src="editingBookmarkIcon"
-                  class="w-5 h-5 object-contain"
-                  @error="editingBookmarkIcon = ''"
-                />
-                <span v-else class="text-[10px] text-gray-400">icon</span>
-              </div>
-              <input
-                v-model="editingBookmarkIcon"
-                class="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors"
+            <div class="flex justify-end gap-2">
+              <button
+                @click="showAddModal = false"
+                class="px-3 py-1.5 text-xs rounded-lg transition-colors"
                 :class="
                   store.appConfig.background
-                    ? 'bg-white/5 border-white/20 text-white placeholder-white/40 focus:bg-white/10 focus:border-white/30'
-                    : 'bg-gray-50 border-gray-200 text-gray-900 focus:bg-white focus:border-blue-500'
+                    ? 'text-white/60 hover:bg-white/10 hover:text-white'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
                 "
-                @keyup.enter="confirmEditBookmark"
-              />
+              >
+                取消
+              </button>
+              <button
+                @click="confirmAddBookmark"
+                class="px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-sm"
+              >
+                添加
+              </button>
             </div>
           </div>
         </div>
+      </div>
 
-        <div class="flex justify-end gap-2">
-          <button
-            @click="showEditModal = false"
-            class="px-3 py-1.5 text-xs rounded-lg transition-colors"
+      <!-- Edit Bookmark Modal -->
+      <div v-if="showEditModal" class="fixed inset-0 z-[100] pointer-events-none">
+        <div class="absolute left-[264px] top-1/2 -translate-y-1/2 pointer-events-auto">
+          <div
+            class="rounded-xl p-4 w-[320px] shadow-2xl space-y-3 animate-fade-in border backdrop-blur-md transition-colors duration-300"
             :class="
               store.appConfig.background
-                ? 'text-white/60 hover:bg-white/10 hover:text-white'
-                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                ? 'bg-black/60 border-white/10'
+                : 'bg-white border-gray-100'
             "
           >
-            取消
-          </button>
-          <button
-            @click="confirmEditBookmark"
-            class="px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-sm"
-          >
-            保存
-          </button>
+            <h3
+              class="font-bold text-sm"
+              :class="store.appConfig.background ? 'text-white' : 'text-gray-800'"
+            >
+              编辑书签
+            </h3>
+
+            <div class="space-y-2">
+              <div>
+                <label
+                  class="text-xs opacity-70 mb-1 block"
+                  :class="store.appConfig.background ? 'text-white' : 'text-gray-600'"
+                  >标题</label
+                >
+                <input
+                  ref="editInputRef"
+                  v-model="editingBookmarkTitle"
+                  class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors"
+                  :class="
+                    store.appConfig.background
+                      ? 'bg-white/5 border-white/20 text-white placeholder-white/40 focus:bg-white/10 focus:border-white/30'
+                      : 'bg-gray-50 border-gray-200 text-gray-900 focus:bg-white focus:border-blue-500'
+                  "
+                  @keyup.enter="confirmEditBookmark"
+                />
+              </div>
+              <div>
+                <label
+                  class="text-xs opacity-70 mb-1 block"
+                  :class="store.appConfig.background ? 'text-white' : 'text-gray-600'"
+                  >链接</label
+                >
+                <input
+                  v-model="editingBookmarkUrl"
+                  class="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors"
+                  :class="
+                    store.appConfig.background
+                      ? 'bg-white/5 border-white/20 text-white placeholder-white/40 focus:bg-white/10 focus:border-white/30'
+                      : 'bg-gray-50 border-gray-200 text-gray-900 focus:bg-white focus:border-blue-500'
+                  "
+                  @keyup.enter="confirmEditBookmark"
+                />
+              </div>
+              <div>
+                <label
+                  class="text-xs opacity-70 mb-1 block"
+                  :class="store.appConfig.background ? 'text-white' : 'text-gray-600'"
+                  >图标 URL (可选)</label
+                >
+                <div class="flex gap-2">
+                  <div
+                    class="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center shrink-0 overflow-hidden border border-gray-200/50"
+                  >
+                    <img
+                      v-if="editingBookmarkIcon"
+                      :src="editingBookmarkIcon"
+                      class="w-5 h-5 object-contain"
+                      @error="editingBookmarkIcon = ''"
+                    />
+                    <span v-else class="text-[10px] text-gray-400">icon</span>
+                  </div>
+                  <input
+                    v-model="editingBookmarkIcon"
+                    class="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none transition-colors"
+                    :class="
+                      store.appConfig.background
+                        ? 'bg-white/5 border-white/20 text-white placeholder-white/40 focus:bg-white/10 focus:border-white/30'
+                        : 'bg-gray-50 border-gray-200 text-gray-900 focus:bg-white focus:border-blue-500'
+                    "
+                    @keyup.enter="confirmEditBookmark"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-2">
+              <button
+                @click="showEditModal = false"
+                class="px-3 py-1.5 text-xs rounded-lg transition-colors"
+                :class="
+                  store.appConfig.background
+                    ? 'text-white/60 hover:bg-white/10 hover:text-white'
+                    : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                "
+              >
+                取消
+              </button>
+              <button
+                @click="confirmEditBookmark"
+                class="px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors shadow-sm"
+              >
+                保存
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 

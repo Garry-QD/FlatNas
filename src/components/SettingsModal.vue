@@ -11,7 +11,7 @@ import SystemStatusWidget from "./SystemStatusWidget.vue";
 import RssSettings from "./RssSettings.vue";
 import SearchSettings from "./SearchSettings.vue";
 
-defineProps<{ show: boolean }>();
+const props = defineProps<{ show: boolean }>();
 const emit = defineEmits(["update:show"]);
 const store = useMainStore();
 
@@ -434,15 +434,6 @@ const checkDockerConnection = async () => {
   }
 };
 
-const piClickCount = ref(0);
-const handlePiClick = () => {
-  piClickCount.value++;
-  if (piClickCount.value === 3) {
-    store.isExpandedMode = !store.isExpandedMode;
-    piClickCount.value = 0;
-  }
-};
-
 // Password Confirm Logic
 const showPasswordConfirm = ref(false);
 const showMultiUserWarning = ref(false);
@@ -494,6 +485,15 @@ const onMobileDockerDisplayChange = (e: Event) => {
   if (w) {
     w.hideOnMobile = !checked;
     store.saveData();
+  }
+};
+
+const handleUltrawideChange = (e: Event) => {
+  const checked = (e.target as HTMLInputElement).checked;
+  if (checked) {
+    alert(
+      "温馨提示：\n1. 分辨率比例判定依据是显示器的物理分辨率，而非浏览器窗口大小。\n2. 开启此功能后，在分屏显示（如左右并排）时，布局效果可能会变差。\n3. 此模式最适合多屏用户，或将 FlatNas 作为主力办公面板使用的用户。",
+    );
   }
 };
 
@@ -643,7 +643,6 @@ const restoreVersion = async (id: string) => {
 
 const deleteVersion = async (id: string) => {
   try {
-    if (!confirm("确认删除该版本？此操作不可撤销")) return;
     const token = localStorage.getItem("flat-nas-token");
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -1152,6 +1151,26 @@ const onMouseUp = () => {
   window.removeEventListener("mousemove", onMouseMove);
   window.removeEventListener("mouseup", onMouseUp);
 };
+
+watch(
+  () => props.show,
+  (val) => {
+    if (
+      val &&
+      activeTab.value === "account" &&
+      store.username === "admin" &&
+      store.systemConfig.authMode === "single"
+    ) {
+      fetchVersions();
+    }
+  },
+);
+
+watch(activeTab, (val) => {
+  if (val === "account" && store.username === "admin" && store.systemConfig.authMode === "single") {
+    fetchVersions();
+  }
+});
 </script>
 
 <template>
@@ -1455,14 +1474,30 @@ const onMouseUp = () => {
                   </select>
                 </div>
 
-                <div class="flex items-end justify-end">
-                  <button
-                    @click="handlePiClick"
-                    class="text-[8px] text-gray-300 hover:text-gray-600 transition-colors opacity-50 hover:opacity-100 p-1"
-                    title="菩提祖师授长生"
-                  >
-                    π
-                  </button>
+                <div class="flex items-center justify-between mt-4 border-t pt-4 border-gray-100">
+                  <div>
+                    <div class="text-sm font-bold text-gray-700 flex items-center gap-1">
+                      自动适配带鱼屏
+                      <span
+                        class="text-[10px] px-1 py-0.5 bg-purple-100 text-purple-600 rounded leading-none font-normal"
+                        >内测中</span
+                      >
+                    </div>
+                    <div class="text-xs text-gray-400">
+                      检测到 21:9 或 32:9 分辨率时自动开启宽屏模式
+                    </div>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      v-model="store.appConfig.autoUltrawide"
+                      class="sr-only peer"
+                      @change="handleUltrawideChange"
+                    />
+                    <div
+                      class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"
+                    ></div>
+                  </label>
                 </div>
               </div>
             </div>

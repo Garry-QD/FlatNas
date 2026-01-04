@@ -6,9 +6,30 @@ import { useWindowScroll, useWindowSize } from "@vueuse/core";
 
 const store = useMainStore();
 const { y } = useWindowScroll();
-const { height } = useWindowSize();
+const { width: windowWidth, height: windowHeight } = useWindowSize();
 
-const showBackToTop = computed(() => y.value > height.value);
+const showBackToTop = computed(() => y.value > windowHeight.value);
+
+// Auto-detect ultrawide screen
+const checkUltrawide = () => {
+  if (!store.appConfig.autoUltrawide) return;
+  
+  const ratio = windowWidth.value / windowHeight.value;
+  // 21:9 ≈ 2.33, 32:9 ≈ 3.55
+  // Consider ultrawide if ratio > 2.3
+  if (ratio > 2.3) {
+    store.isExpandedMode = true;
+  }
+};
+
+// Check on resize and config change
+watch(
+  [windowWidth, windowHeight, () => store.appConfig.autoUltrawide],
+  () => {
+    checkUltrawide();
+  },
+  { immediate: true }
+);
 
 const scrollToTop = () => {
   window.scrollTo({ top: 0, behavior: "smooth" });

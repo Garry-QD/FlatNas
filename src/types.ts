@@ -24,6 +24,7 @@ export interface NavItem {
 export interface NavGroup {
   id: string;
   title: string;
+  icon?: string;
   items: NavItem[];
   isPublic?: boolean;
   titleColor?: string;
@@ -143,6 +144,7 @@ export interface AppConfig {
   customJs?: string;
   customJsDisclaimerAgreed?: boolean;
   mouseHoverEffect?: "scale" | "lift" | "glow" | "none" | string;
+  autoUltrawide?: boolean;
 }
 
 export interface WidgetConfig {

@@ -1397,80 +1397,82 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div
-      v-if="previewOpen && previewItem"
-      class="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-      @click="closePreview"
-    >
+    <Teleport to="body">
       <div
-        class="w-full max-w-3xl rounded-2xl bg-black/50 backdrop-blur border border-white/10 shadow-xl overflow-hidden text-white"
-        @click.stop
+        v-if="previewOpen && previewItem"
+        class="fixed inset-0 z-[9999] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+        @click="closePreview"
       >
-        <div class="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-          <div class="min-w-0">
-            <div class="text-sm font-bold text-white truncate">
-              {{ previewItem.type === "file" ? previewItem.file.name : "预览" }}
+        <div
+          class="w-full max-w-3xl rounded-2xl bg-black/50 backdrop-blur border border-white/10 shadow-xl overflow-hidden text-white"
+          @click.stop
+        >
+          <div class="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+            <div class="min-w-0">
+              <div class="text-sm font-bold text-white truncate">
+                {{ previewItem.type === "file" ? previewItem.file.name : "预览" }}
+              </div>
+              <div v-if="previewItem.type === 'file'" class="text-[11px] text-white/60">
+                {{ formatBytes(previewItem.file.size) }} · {{ previewItem.file.type || "unknown" }}
+              </div>
             </div>
-            <div v-if="previewItem.type === 'file'" class="text-[11px] text-white/60">
-              {{ formatBytes(previewItem.file.size) }} · {{ previewItem.file.type || "unknown" }}
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <button
-              v-if="previewItem.type === 'file'"
-              class="px-3 py-1.5 text-xs font-bold rounded-lg bg-white/10 text-white hover:bg-white/15"
-              @click="
-                async () => {
-                  try {
-                    await downloadItem(previewItem);
-                  } catch (e) {
-                    error = (e as Error).message || '下载失败';
+            <div class="flex items-center gap-2">
+              <button
+                v-if="previewItem.type === 'file'"
+                class="px-3 py-1.5 text-xs font-bold rounded-lg bg-white/10 text-white hover:bg-white/15"
+                @click="
+                  async () => {
+                    try {
+                      await downloadItem(previewItem);
+                    } catch (e) {
+                      error = (e as Error).message || '下载失败';
+                    }
                   }
-                }
-              "
-            >
-              下载
-            </button>
-            <button
-              class="px-3 py-1.5 text-xs font-bold rounded-lg bg-red-500/20 text-red-100 hover:bg-red-500/30"
-              @click="
-                async () => {
-                  await deleteItem(previewItem!.id);
-                }
-              "
-            >
-              删除
-            </button>
-            <button
-              class="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-500 text-white hover:bg-blue-600"
-              @click="closePreview"
-            >
-              关闭
-            </button>
+                "
+              >
+                下载
+              </button>
+              <button
+                class="px-3 py-1.5 text-xs font-bold rounded-lg bg-red-500/20 text-red-100 hover:bg-red-500/30"
+                @click="
+                  async () => {
+                    await deleteItem(previewItem!.id);
+                  }
+                "
+              >
+                删除
+              </button>
+              <button
+                class="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-500 text-white hover:bg-blue-600"
+                @click="closePreview"
+              >
+                关闭
+              </button>
+            </div>
           </div>
-        </div>
 
-        <div class="p-4">
-          <div v-if="previewItem.type === 'file'">
-            <img
-              v-if="
-                String(previewItem.file.type || '').startsWith('image/') &&
-                blobUrlById[previewItem.id]
-              "
-              :src="blobUrlById[previewItem.id]"
-              class="max-h-[70vh] w-full object-contain rounded-xl bg-white/5 border border-white/10"
-              :alt="previewItem.file.name"
-            />
-            <div
-              v-else
-              class="rounded-xl bg-white/5 border border-white/10 p-4 text-sm text-white/80"
-            >
-              该文件类型暂不支持直接预览，请使用“下载”。
+          <div class="p-4">
+            <div v-if="previewItem.type === 'file'">
+              <img
+                v-if="
+                  String(previewItem.file.type || '').startsWith('image/') &&
+                  blobUrlById[previewItem.id]
+                "
+                :src="blobUrlById[previewItem.id]"
+                class="max-h-[70vh] w-full object-contain rounded-xl bg-white/5 border border-white/10"
+                :alt="previewItem.file.name"
+              />
+              <div
+                v-else
+                class="rounded-xl bg-white/5 border border-white/10 p-4 text-sm text-white/80"
+              >
+                该文件类型暂不支持直接预览，请使用“下载”。
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 

@@ -950,6 +950,19 @@ onUnmounted(() => {
   document.removeEventListener("visibilitychange", handleContainerVisibilityChange);
 });
 
+// 监听 store.groups 变化，一旦出现容器组件，立即启动轮询
+// 这是为了解决页面初始化时 store 数据尚未加载完成，导致 fetchContainerStatuses 提前退出且不再调度的问题
+watch(
+  () => store.groups,
+  () => {
+    const hasAny = store.groups.some((g) => g.items.some((item) => !!item.containerId));
+    if (hasAny && !containerPollTimer && isMounted.value && document.visibilityState !== "hidden") {
+      fetchContainerStatuses();
+    }
+  },
+  { deep: true },
+);
+
 const handleAuthAction = () => {
   if (store.isLogged) {
     store.logout();

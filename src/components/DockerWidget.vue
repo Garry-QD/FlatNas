@@ -52,87 +52,103 @@ const unhealthyCount = computed(
 );
 
 const MOCK_CONTAINERS: DockerContainer[] = [
-  {
-    Id: "mock-1",
-    Names: ["/nginx-proxy"],
-    Image: "nginx:latest",
-    State: "running",
-    Status: "Up 2 hours",
-    Ports: [{ PublicPort: 80, PrivatePort: 80 }],
+  ...[
+    {
+      Id: "mock-1",
+      Names: ["/nginx-proxy"],
+      Image: "nginx:latest",
+      State: "running",
+      Status: "Up 2 hours",
+      Ports: [{ PublicPort: 80, PrivatePort: 80 }],
+      stats: {
+        cpuPercent: 0.5,
+        memUsage: 50 * 1024 * 1024,
+        memLimit: 1024 * 1024 * 1024,
+        memPercent: 4.8,
+      },
+    },
+    {
+      Id: "mock-2",
+      Names: ["/redis-cache"],
+      Image: "redis:alpine",
+      State: "running",
+      Status: "Up 5 days",
+      Ports: [{ PublicPort: 6379, PrivatePort: 6379 }],
+      stats: {
+        cpuPercent: 0.1,
+        memUsage: 20 * 1024 * 1024,
+        memLimit: 1024 * 1024 * 1024,
+        memPercent: 1.9,
+      },
+    },
+    {
+      Id: "mock-3",
+      Names: ["/postgres-db"],
+      Image: "postgres:15",
+      State: "running",
+      Status: "Up 12 hours",
+      Ports: [{ PublicPort: 5432, PrivatePort: 5432 }],
+      stats: {
+        cpuPercent: 1.2,
+        memUsage: 120 * 1024 * 1024,
+        memLimit: 2048 * 1024 * 1024,
+        memPercent: 5.8,
+      },
+    },
+    {
+      Id: "mock-4",
+      Names: ["/stopped-service"],
+      Image: "busybox:latest",
+      State: "exited",
+      Status: "Exited (0) 3 hours ago",
+      Ports: [],
+    },
+    {
+      Id: "mock-5",
+      Names: ["/internal-worker"],
+      Image: "python:3.9-slim",
+      State: "running",
+      Status: "Up 45 mins",
+      Ports: [], // No public ports
+      stats: {
+        cpuPercent: 45.5,
+        memUsage: 300 * 1024 * 1024,
+        memLimit: 1024 * 1024 * 1024,
+        memPercent: 29.3,
+      },
+    },
+    {
+      Id: "mock-6",
+      Names: ["/very-long-container-name-for-testing-ui-layout-truncation"],
+      Image: "node:18-alpine",
+      State: "running",
+      Status: "Up 1 day",
+      Ports: [
+        { PublicPort: 3000, PrivatePort: 3000 },
+        { PublicPort: 8080, PrivatePort: 8080 },
+      ],
+      stats: {
+        cpuPercent: 2.5,
+        memUsage: 150 * 1024 * 1024,
+        memLimit: 1024 * 1024 * 1024,
+        memPercent: 14.6,
+      },
+    },
+  ],
+  ...Array.from({ length: 44 }, (_, i) => ({
+    Id: `mock-extra-${i + 7}`,
+    Names: [`/extra-container-${i + 7}`],
+    Image: "alpine:latest",
+    State: Math.random() > 0.2 ? "running" : "exited",
+    Status: "Up 1 hour",
+    Ports: [{ PublicPort: 9000 + i, PrivatePort: 80 }],
     stats: {
-      cpuPercent: 0.5,
-      memUsage: 50 * 1024 * 1024,
+      cpuPercent: +(Math.random() * 5).toFixed(1),
+      memUsage: Math.round((20 + Math.random() * 100) * 1024 * 1024),
       memLimit: 1024 * 1024 * 1024,
-      memPercent: 4.8,
+      memPercent: 5.0,
     },
-  },
-  {
-    Id: "mock-2",
-    Names: ["/redis-cache"],
-    Image: "redis:alpine",
-    State: "running",
-    Status: "Up 5 days",
-    Ports: [{ PublicPort: 6379, PrivatePort: 6379 }],
-    stats: {
-      cpuPercent: 0.1,
-      memUsage: 20 * 1024 * 1024,
-      memLimit: 1024 * 1024 * 1024,
-      memPercent: 1.9,
-    },
-  },
-  {
-    Id: "mock-3",
-    Names: ["/postgres-db"],
-    Image: "postgres:15",
-    State: "running",
-    Status: "Up 12 hours",
-    Ports: [{ PublicPort: 5432, PrivatePort: 5432 }],
-    stats: {
-      cpuPercent: 1.2,
-      memUsage: 120 * 1024 * 1024,
-      memLimit: 2048 * 1024 * 1024,
-      memPercent: 5.8,
-    },
-  },
-  {
-    Id: "mock-4",
-    Names: ["/stopped-service"],
-    Image: "busybox:latest",
-    State: "exited",
-    Status: "Exited (0) 3 hours ago",
-    Ports: [],
-  },
-  {
-    Id: "mock-5",
-    Names: ["/internal-worker"],
-    Image: "python:3.9-slim",
-    State: "running",
-    Status: "Up 45 mins",
-    Ports: [], // No public ports
-    stats: {
-      cpuPercent: 45.5,
-      memUsage: 300 * 1024 * 1024,
-      memLimit: 1024 * 1024 * 1024,
-      memPercent: 29.3,
-    },
-  },
-  {
-    Id: "mock-6",
-    Names: ["/very-long-container-name-for-testing-ui-layout-truncation"],
-    Image: "node:18-alpine",
-    State: "running",
-    Status: "Up 1 day",
-    Ports: [
-      { PublicPort: 3000, PrivatePort: 3000 },
-      { PublicPort: 8080, PrivatePort: 8080 },
-    ],
-    stats: {
-      cpuPercent: 2.5,
-      memUsage: 150 * 1024 * 1024,
-      memLimit: 1024 * 1024 * 1024,
-      memPercent: 14.6,
-    },
-  },
+  })),
 ];
 
 const useMock = computed(() => Boolean(props.widget?.data?.useMock));
@@ -183,6 +199,8 @@ const performMockAction = (id: string, action: string) => {
 
 const errorCount = ref(0);
 
+const isLoading = ref(false);
+
 const fetchContainers = async () => {
   if (useMock.value) {
     if (!containers.value.length) {
@@ -190,6 +208,8 @@ const fetchContainers = async () => {
       containers.value.forEach((c) => {
         if (c.State === "running") c.mockStartAt = Date.now();
       });
+      // 模拟模式下也要触发 prefetch，确保逻辑一致性（虽然 mock 不发请求，但可能涉及状态处理）
+      prefetchInspectForContainers(containers.value);
     } else {
       containers.value = containers.value.map((c) => {
         if (c.State === "running") {
@@ -215,16 +235,14 @@ const fetchContainers = async () => {
     return;
   }
   try {
+    isLoading.value = true;
     const headers = store.getHeaders();
     const res = await fetch("/api/docker/containers", { headers });
 
     if (!res.ok) {
-      errorCount.value++;
-      if (errorCount.value >= 3) {
-        if (pollTimer) clearInterval(pollTimer);
-        pollTimer = null;
-        error.value = "Docker polling stopped due to connection errors.";
-      }
+      // 网络请求失败，不停止轮询，只是记录错误
+      // 也不清空现有数据，保持显示旧数据
+      error.value = "连接异常，正在重试...";
       return;
     }
 
@@ -235,26 +253,30 @@ const fetchContainers = async () => {
       errorCount.value = 0;
       error.value = "";
     } else {
-      containers.value = [];
-      error.value = data.error || "Docker 不可用";
+      // 只有明确收到后端说 Docker 不可用时，才清空数据
       if (data.error && data.error.includes("Docker not available")) {
+        // 如果我们之前有数据，尽量保留，除非用户手动刷新或者真的长时间连不上
+        // 这里稍微宽容一点：如果之前有数据，不轻易清空，只是标记错误
+        // containers.value = []; // 移除这行，尽量保留数据
+        error.value = data.error || "Docker 不可用";
         errorCount.value++;
-        if (errorCount.value >= 3) {
-          if (pollTimer) clearInterval(pollTimer);
-          pollTimer = null;
-          error.value = "Docker polling stopped: Docker not available.";
-        }
+
+        // 即便 Docker 服务挂了，也只是提示，不停止轮询（除非用户关掉页面）
+        // 这样如果服务恢复了，马上就能看到
+        // if (errorCount.value >= 10) ... // 移除自动停止逻辑
+      } else {
+        // 其他业务错误，保留数据，显示错误
+        error.value = data.error || "获取数据失败";
       }
     }
   } catch (e: unknown) {
-    containers.value = [];
+    // 网络层错误（如断网、超时），保留数据，不停止轮询
+    // containers.value = []; // 保持旧数据
     const msg = e instanceof Error ? e.message : String(e);
-    error.value = "网络错误: " + msg;
-    errorCount.value++;
-    if (errorCount.value >= 3) {
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = null;
-    }
+    error.value = "网络连接不稳定: " + msg;
+    // 不停止轮询，内网穿透环境下允许失败
+  } finally {
+    isLoading.value = false;
   }
 };
 
@@ -282,7 +304,13 @@ const fetchDockerInfo = async (silent = true) => {
   }
 };
 
-const checkConnection = () => fetchDockerInfo(false);
+const checkConnection = () => {
+  error.value = "";
+  errorCount.value = 0;
+  fetchContainers();
+  fetchDockerInfo(false);
+  startPolling();
+};
 
 const handleAction = async (id: string, action: string) => {
   if (useMock.value) {
@@ -302,16 +330,46 @@ const handleAction = async (id: string, action: string) => {
 };
 
 const startPolling = () => {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(() => {
+  if (pollTimer) clearTimeout(pollTimer);
+
+  const poll = async () => {
     if (document.visibilityState === "hidden") return;
-    fetchContainers();
+
+    // 如果之前被标记停止，这里可以根据需求决定是否继续
+    // 但根据最新需求，我们尽量不停止，而是降频
+
+    await fetchContainers();
     cleanupCache();
-  }, 10000);
+
+    // 动态频率算法：
+    // 1. 错误状态：30秒 (降频避险)
+    // 2. 正常状态：每 5 个容器为一个请求单位，每增加一个单位增加 5 秒间隔
+    //    1-5个 -> 5s
+    //    6-10个 -> 10s
+    //    11-15个 -> 15s
+    let interval = 5000;
+
+    if (errorCount.value > 0) {
+      interval = 30000;
+    } else {
+      const count = containers.value.length;
+      // 向上市取整，至少 1 个单位
+      const units = Math.ceil(Math.max(count, 1) / 5);
+      interval = units * 5000;
+    }
+
+    // 重新调度下一次轮询
+    // 注意：这里必须重新赋值 pollTimer，否则 stopPolling 无法清除新的定时器
+    pollTimer = setTimeout(poll, interval);
+  };
+
+  // 首次启动给一个 0~2秒 的随机延迟，避免多个组件同时请求
+  const initialDelay = Math.random() * 2000;
+  pollTimer = setTimeout(poll, initialDelay);
 };
 
 const stopPolling = () => {
-  if (pollTimer) clearInterval(pollTimer);
+  if (pollTimer) clearTimeout(pollTimer);
   pollTimer = null;
 };
 
@@ -321,9 +379,8 @@ const handleVisibilityChange = () => {
 };
 
 onMounted(() => {
-  fetchContainers();
-  fetchDockerInfo(true);
-  startPolling();
+  // 恢复自动加载，确保添加到桌面后能自动显示内容
+  checkConnection();
   document.addEventListener("visibilitychange", handleVisibilityChange);
 });
 
@@ -416,11 +473,28 @@ const prefetchInspectForContainers = (list: DockerContainer[]) => {
     inspectCache.value = newCache;
   }
 
-  list
-    .filter((c) => c && c.Id && getPublishedPorts(c).length === 0)
-    .forEach((c) => {
-      void fetchInspectLite(c.Id);
-    });
+  // 找出需要 Inspect 的容器（没有 PublicPort 的容器）
+  const targets = list.filter((c) => c && c.Id && getPublishedPorts(c).length === 0);
+
+  // 批量处理策略：每 5 个一组，每组之间增加随机延迟
+  // 避免一次性发起几十个请求导致浏览器或后端拥堵
+  const CHUNK_SIZE = 5;
+
+  for (let i = 0; i < targets.length; i += CHUNK_SIZE) {
+    const chunk = targets.slice(i, i + CHUNK_SIZE);
+
+    // 计算延迟：
+    // 基础延迟：每组间隔 1000ms
+    // 随机抖动：0~500ms
+    // 第一组延迟很短，后续组逐渐推后
+    const delay = i * 200 + Math.random() * 500;
+
+    setTimeout(() => {
+      chunk.forEach((c) => {
+        void fetchInspectLite(c.Id);
+      });
+    }, delay);
+  }
 };
 
 const getContainerLanUrl = (c: DockerContainer): string => {
@@ -536,7 +610,7 @@ const addToHome = (c: DockerContainer) => {
       url: publicUrl,
       lanUrl: lanUrl,
       icon: "", // We can try to fetch icon later or let user set it
-      isPublic: true,
+      isPublic: false,
       openInNewTab: true,
       containerId: c.Id,
       containerName: title,
@@ -605,9 +679,15 @@ const getStatusColor = (state: string) => {
         <button
           @click="checkConnection"
           class="text-[10px] bg-blue-50 text-blue-500 px-2 py-1 rounded hover:bg-blue-100 transition-colors"
-          title="测试连接"
+          title="点击获取 Docker 信息"
         >
-          测试
+          <span
+            v-if="isLoading"
+            class="animate-spin inline-block w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full mr-1"
+          ></span>
+          {{
+            isLoading ? "加载中" : error && error.includes("Docker not available") ? "连接" : "刷新"
+          }}
         </button>
         <div class="text-xs text-gray-500" v-if="containers.length">
           {{ containers.filter((c) => c.State === "running").length }} / {{ containers.length }}
@@ -615,8 +695,9 @@ const getStatusColor = (state: string) => {
       </div>
     </div>
 
+    <!-- 错误提示（如果有数据则只显示在顶部，没数据才全屏显示） -->
     <div
-      v-if="error"
+      v-if="error && !containers.length"
       class="flex-1 flex flex-col items-center justify-center text-red-500 text-xs text-center p-2 gap-2"
     >
       <span>{{ error }}</span>
@@ -624,13 +705,33 @@ const getStatusColor = (state: string) => {
         @click="checkConnection"
         class="px-3 py-1 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-xs"
       >
-        测试连接
+        重试连接
       </button>
     </div>
 
-    <div v-else class="flex flex-col h-full overflow-hidden">
+    <div
+      v-else-if="!containers.length && !error"
+      class="flex-1 flex flex-col items-center justify-start pt-10 text-gray-400 text-xs text-center p-2 gap-2"
+    >
+      <span>点击刷新获取容器列表</span>
+      <button
+        @click="checkConnection"
+        class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-xs"
+      >
+        获取列表
+      </button>
+    </div>
+
+    <div v-else class="flex flex-col h-full overflow-hidden relative">
+      <!-- 弱网提示 -->
+      <div
+        v-if="error"
+        class="absolute top-0 left-0 right-0 z-10 bg-yellow-50/90 text-yellow-600 text-[10px] px-2 py-0.5 text-center backdrop-blur-sm border-b border-yellow-100"
+      >
+        {{ error }}
+      </div>
       <!-- 容器列表 (滚动区域) -->
-      <div class="flex-1 overflow-y-auto space-y-1 pr-1 custom-scrollbar min-h-0">
+      <div class="flex-1 overflow-y-auto space-y-1 pr-1 custom-scrollbar min-h-0 pt-1">
         <div
           class="flex items-center justify-between border-b border-gray-100 dark:border-gray-700 pb-1 mb-1"
         >
