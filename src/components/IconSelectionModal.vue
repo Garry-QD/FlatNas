@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from "vue";
+import { ref, watch, onUnmounted, computed } from "vue";
 
 const props = defineProps<{
   show: boolean;
@@ -67,6 +67,23 @@ const getIconName = (url: string) => {
     return url;
   }
 };
+
+const PAGE_SIZE = 100;
+const visibleCount = ref(PAGE_SIZE);
+const visibleCandidates = computed(() => props.candidates.slice(0, visibleCount.value));
+const hasMore = computed(() => visibleCount.value < props.candidates.length);
+
+const loadMore = () => {
+  visibleCount.value += PAGE_SIZE;
+};
+
+// Reset visible count when candidates change or show changes
+watch(
+  () => [props.candidates, props.show],
+  () => {
+    visibleCount.value = PAGE_SIZE;
+  },
+);
 </script>
 
 <template>
@@ -95,7 +112,7 @@ const getIconName = (url: string) => {
       <div class="flex-1 overflow-y-auto p-2 min-h-[200px]">
         <div class="grid grid-cols-4 sm:grid-cols-6 gap-4">
           <button
-            v-for="icon in candidates"
+            v-for="icon in visibleCandidates"
             :key="icon"
             @click="selectIcon(icon)"
             class="group flex flex-col items-center gap-3 p-3 rounded-xl hover:bg-blue-50 transition-all border border-gray-100 hover:border-blue-200 hover:shadow-md"
@@ -111,6 +128,14 @@ const getIconName = (url: string) => {
             >
               {{ getIconName(icon) }}
             </span>
+          </button>
+        </div>
+        <div v-if="hasMore" class="mt-4 flex justify-center">
+          <button
+            @click="loadMore"
+            class="px-4 py-2 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
+          >
+            加载更多 ({{ candidates.length - visibleCount }} 个)
           </button>
         </div>
       </div>

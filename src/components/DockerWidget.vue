@@ -306,6 +306,7 @@ const startPolling = () => {
   pollTimer = setInterval(() => {
     if (document.visibilityState === "hidden") return;
     fetchContainers();
+    cleanupCache();
   }, 10000);
 };
 
@@ -334,6 +335,16 @@ onUnmounted(() => {
 const inspectCache = ref<Record<string, { ts: number; data: InspectLite }>>({});
 const INSPECT_TTL = 60_000;
 const inflightInspect = new Set<string>();
+
+const cleanupCache = () => {
+  const now = Date.now();
+  for (const key in inspectCache.value) {
+    const entry = inspectCache.value[key];
+    if (entry && now - entry.ts > INSPECT_TTL) {
+      delete inspectCache.value[key];
+    }
+  }
+};
 
 const normalizeContainerName = (s: string) =>
   String(s || "")
@@ -390,6 +401,21 @@ const getPreferredPort = (c: DockerContainer): number | null => {
 
 const prefetchInspectForContainers = (list: DockerContainer[]) => {
   if (useMock.value) return;
+
+  // Cleanup cache: remove entries for containers that no longer exist
+  const currentIds = new Set(list.map((c) => c.Id));
+  const newCache = { ...inspectCache.value };
+  let changed = false;
+  for (const id in newCache) {
+    if (!currentIds.has(id)) {
+      delete newCache[id];
+      changed = true;
+    }
+  }
+  if (changed) {
+    inspectCache.value = newCache;
+  }
+
   list
     .filter((c) => c && c.Id && getPublishedPorts(c).length === 0)
     .forEach((c) => {

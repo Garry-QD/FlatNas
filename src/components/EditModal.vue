@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from "vue";
+import { ref, watch, computed, shallowRef } from "vue";
 import type { NavItem, SimpleIcon, AliIcon } from "@/types";
 import { useMainStore } from "../stores/main";
 import IconUploader from "./IconUploader.vue";
@@ -31,11 +31,11 @@ const isFetching = ref(false);
 
 // 搜索相关状态
 const showIconSelection = ref(false);
-const iconCandidates = ref<string[]>([]);
+const iconCandidates = shallowRef<string[]>([]);
 const searchSource = ref<"local" | "api">("local");
-const localIcons = ref<string[]>([]);
-const simpleIconsData = ref<SimpleIcon[] | null>(null);
-const aliIconsData = ref<AliIcon[] | null>(null);
+const localIcons = shallowRef<string[]>([]);
+const simpleIconsData = shallowRef<SimpleIcon[] | null>(null);
+const aliIconsData = shallowRef<AliIcon[] | null>(null);
 
 // 表单数据 (合并管理，比以前分散的 ref 更整洁)
 const form = ref<Omit<NavItem, "id">>({

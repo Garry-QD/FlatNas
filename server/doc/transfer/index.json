@@ -1,18 +1,6 @@
 {
   "items": [
     {
-      "id": "65ce2690-f22a-4855-a320-ea0f7d61e043",
-      "type": "file",
-      "file": {
-        "name": "image.svg+xml",
-        "size": 31327,
-        "type": "image/svg+xml",
-        "url": "/api/transfer/file/1767458166698_image.svg+xml"
-      },
-      "timestamp": 1767458166708,
-      "sender": "admin"
-    },
-    {
       "id": "1de17304-bbdb-482a-829a-ed747dbab2fc",
       "type": "text",
       "content": "翻译 - 网页翻译插件 | PDF翻译 | 免费 1.24.6 【沉浸式翻译】免费",

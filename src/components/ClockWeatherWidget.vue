@@ -1,19 +1,32 @@
 <script setup lang="ts">
-/* eslint-disable vue/no-mutating-props */
-import { ref, onMounted, onUnmounted, computed } from "vue";
+import { ref, onMounted, onUnmounted, computed, watch } from "vue";
 import { useMainStore } from "../stores/main";
 import type { WidgetConfig } from "@/types";
-import { cityData } from "@/utils/cityData";
 
-const props = defineProps<{
-  widget?: WidgetConfig;
-}>();
-
+const props = defineProps<{ widget: WidgetConfig }>();
 const store = useMainStore();
+
+const cityData = ref<Record<string, string[]> | null>(null);
+
+const loadCityData = async () => {
+  if (cityData.value) return;
+  try {
+    const mod = await import("@/utils/cityData");
+    cityData.value = mod.cityData;
+  } catch (e) {
+    console.error("Failed to load city data", e);
+  }
+};
 
 const showCityInput = ref(false);
 const customCityInput = ref("");
 const selectedProvince = ref("");
+
+watch(showCityInput, (val) => {
+  if (val) {
+    loadCityData();
+  }
+});
 
 const time = ref("");
 const date = ref("");
@@ -66,9 +79,9 @@ if (props.widget?.data?.city) {
 const saveCity = () => {
   try {
     if (props.widget) {
-      if (!props.widget.data) props.widget.data = {};
       const newCity = customCityInput.value.trim();
-      props.widget.data.city = newCity;
+      const newData = { ...(props.widget.data || {}), city: newCity };
+      store.saveWidget(props.widget.id, newData);
       fetchWeather();
     }
   } catch (e) {
@@ -510,15 +523,17 @@ onUnmounted(() => {
                   </div>
 
                   <!-- 省份列表 -->
-                  <div
-                    v-if="!selectedProvince"
-                    class="grid grid-cols-5 gap-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar"
-                  >
+                  <div v-if="!selectedProvince" class="grid grid-cols-4 gap-2 mb-4">
                     <button
-                      v-for="(cities, province) in cityData"
+                      v-for="province in cityData ? Object.keys(cityData) : []"
                       :key="province"
                       @click="selectedProvince = province"
-                      class="px-1 py-1.5 bg-white/5 hover:bg-white/20 text-white/70 hover:text-white rounded text-xs transition-colors truncate border border-white/5 hover:border-white/20"
+                      class="px-2 py-1.5 text-xs rounded transition-colors text-center truncate border"
+                      :class="
+                        selectedProvince === province
+                          ? 'bg-blue-500 border-blue-500 text-white shadow-md'
+                          : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10 hover:border-white/20'
+                      "
                     >
                       {{ province }}
                     </button>
@@ -526,7 +541,7 @@ onUnmounted(() => {
 
                   <!-- 城市列表 -->
                   <div
-                    v-else
+                    v-else-if="cityData && cityData[selectedProvince]"
                     class="grid grid-cols-4 gap-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar"
                   >
                     <button
@@ -540,6 +555,12 @@ onUnmounted(() => {
                     >
                       {{ city }}
                     </button>
+                  </div>
+                  <div
+                    v-else
+                    class="h-[200px] flex items-center justify-center text-white/40 text-xs"
+                  >
+                    加载中...
                   </div>
                 </div>
 

@@ -430,18 +430,26 @@ app.get("/api/docker/containers", authenticateToken, async (req, res) => {
 
     // Fetch stats for running containers
     const runningContainers = containers.filter((c) => c.State === "running");
-    const statsPromises = runningContainers.map(async (c) => {
-      try {
-        const container = docker.getContainer(c.Id);
-        // stream: false returns a single snapshot
-        const stats = await container.stats({ stream: false });
-        return { id: c.Id, stats };
-      } catch (e) {
-        return { id: c.Id, error: e.message };
+    // Limit concurrency to 5 to prevent memory spikes
+    const statsResults = [];
+    const queue = [...runningContainers];
+    const worker = async () => {
+      while (queue.length > 0) {
+        const c = queue.shift();
+        if (!c) break;
+        try {
+          const container = docker.getContainer(c.Id);
+          // stream: false returns a single snapshot
+          const stats = await container.stats({ stream: false });
+          statsResults.push({ id: c.Id, stats });
+        } catch (e) {
+          statsResults.push({ id: c.Id, error: e.message });
+        }
       }
-    });
+    };
 
-    const statsResults = await Promise.all(statsPromises);
+    const concurrency = 5;
+    await Promise.all(Array.from({ length: concurrency }).map(() => worker()));
     const statsMap = {};
     statsResults.forEach((r) => {
       if (r.stats) statsMap[r.id] = r.stats;

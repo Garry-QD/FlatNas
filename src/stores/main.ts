@@ -11,6 +11,18 @@ import type {
   LuckyStunData,
 } from "@/types";
 
+interface BackupData {
+  username?: string;
+  items?: NavItem[];
+  groups?: NavGroup[];
+  widgets?: WidgetConfig[];
+  appConfig?: AppConfig;
+  rssFeeds?: RssFeed[];
+  rssCategories?: RssCategory[];
+  systemConfig?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export const useMainStore = defineStore("main", () => {
   const socket = io();
   const isConnected = ref(false);
@@ -31,6 +43,7 @@ export const useMainStore = defineStore("main", () => {
   });
 
   const fetchLuckyStunData = async () => {
+    // Lazy load stun data only when needed or after app is idle
     try {
       const res = await fetch("/api/lucky/stun");
       if (res.ok) {
@@ -73,7 +86,7 @@ export const useMainStore = defineStore("main", () => {
     }));
 
   // Version Check
-  const currentVersion = "1.0.44";
+  const currentVersion = "1.0.45";
   const latestVersion = ref("");
   const dockerUpdateAvailable = ref(false);
 
@@ -260,7 +273,7 @@ export const useMainStore = defineStore("main", () => {
     }
   };
 
-  const handleDataUpdate = (data: any) => {
+  const handleDataUpdate = (data: BackupData) => {
     // If we got username back, ensure it matches
     if (data.username && data.username !== username.value) {
       username.value = data.username;
@@ -453,39 +466,63 @@ export const useMainStore = defineStore("main", () => {
   };
 
   const init = async () => {
+    if (isInitializing) return;
     isInitializing = true;
-    const loaded = loadFromCache();
-    // Yield to main thread to allow rendering cached content
-    if (loaded) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    await fetchSystemConfig();
-
-    await fetchAndProcessData();
-
-    if (!socketListenersBound) {
-      socket.on("memo:updated", ({ widgetId, content }) => {
-        const w = widgets.value.find((x) => x.id === widgetId);
-        if (w) w.data = content;
-      });
-      socket.on("todo:updated", ({ widgetId, content }) => {
-        const w = widgets.value.find((x) => x.id === widgetId);
-        if (w) w.data = content;
-      });
-      socket.on("data-updated", async ({ username: updatedUser }) => {
-        if (
-          updatedUser === username.value ||
-          (username.value === "admin" && updatedUser === "admin")
-        ) {
-          await fetchAndProcessData();
+    try {
+      const res = await fetch("/api/data", { headers: getHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        // Handle auth mode from system config
+        if (data.systemConfig) {
+          systemConfig.value = data.systemConfig;
         }
-      });
-      socketListenersBound = true;
+
+        if (data.username) {
+          username.value = data.username;
+          localStorage.setItem("flat-nas-username", data.username);
+        }
+
+        // If in multi-user mode and not logged in, don't load user data yet
+        // But we might need public data?
+        // Assuming /api/data returns public data if not logged in.
+
+        handleDataUpdate(data);
+        saveToCache(data);
+
+        // Defer non-critical data fetching
+        setTimeout(() => {
+          checkUpdate();
+          fetchLuckyStunData();
+        }, 2000);
+      }
+    } catch (e) {
+      console.error("Init failed", e);
+      loadFromCache();
+    } finally {
+      isInitializing = false;
+      if (!socketListenersBound) {
+        socket.on("memo:updated", ({ widgetId, content }) => {
+          const w = widgets.value.find((x) => x.id === widgetId);
+          if (w) w.data = content;
+        });
+        socket.on("todo:updated", ({ widgetId, content }) => {
+          const w = widgets.value.find((x) => x.id === widgetId);
+          if (w) w.data = content;
+        });
+        socket.on("data-updated", async ({ username: updatedUser }) => {
+          if (
+            updatedUser === username.value ||
+            (username.value === "admin" && updatedUser === "admin")
+          ) {
+            await fetchAndProcessData();
+          }
+        });
+        socketListenersBound = true;
+      }
+      if (token.value) {
+        socket.emit("auth", { token: token.value });
+      }
     }
-    if (token.value) {
-      socket.emit("auth", { token: token.value });
-    }
-    isInitializing = false;
   };
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
