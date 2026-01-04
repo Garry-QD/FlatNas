@@ -13,6 +13,8 @@ type DockerStats = {
   memUsage: number;
   memLimit: number;
   memPercent: number;
+  netIO?: { rx: number; tx: number };
+  blockIO?: { read: number; write: number };
 };
 
 type InspectLite = {
@@ -167,6 +169,14 @@ const formatDuration = (ms: number) => {
   return `${s}s`;
 };
 
+const formatBytes = (bytes: number) => {
+  if (!bytes) return "0B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + sizes[i];
+};
+
 const performMockAction = (id: string, action: string) => {
   const idx = containers.value.findIndex((c) => c.Id === id);
   if (idx < 0) return;
@@ -225,7 +235,17 @@ const fetchContainers = async () => {
             Math.min(100, +(cpuBase * (1 + (Math.random() - 0.5) * 0.2)).toFixed(1)),
           );
           const memPercent = +((memUsage / memLimit) * 100).toFixed(1);
-          c.stats = { cpuPercent, memUsage, memLimit, memPercent };
+          const netIO = c.stats?.netIO || { rx: 0, tx: 0 };
+          const blockIO = c.stats?.blockIO || { read: 0, write: 0 };
+          // Randomly increase mock stats
+          if (Math.random() > 0.5) {
+            netIO.rx += Math.floor(Math.random() * 1024 * 10);
+            netIO.tx += Math.floor(Math.random() * 1024 * 10);
+            blockIO.read += Math.floor(Math.random() * 1024 * 10);
+            blockIO.write += Math.floor(Math.random() * 1024 * 10);
+          }
+
+          c.stats = { cpuPercent, memUsage, memLimit, memPercent, netIO, blockIO };
           if (c.mockStartAt) c.Status = `Up ${formatDuration(Date.now() - c.mockStartAt)}`;
         }
         return c;
@@ -280,6 +300,18 @@ const fetchContainers = async () => {
   }
 };
 
+const toastMessage = ref("");
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+const showToast = (msg: string, duration = 2000) => {
+  toastMessage.value = msg;
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toastMessage.value = "";
+    toastTimer = null;
+  }, duration);
+};
+
 const fetchDockerInfo = async (silent = true) => {
   if (useMock.value) return;
   try {
@@ -289,26 +321,24 @@ const fetchDockerInfo = async (silent = true) => {
     if (data.success) {
       dockerInfo.value = data.info;
       if (!silent) {
-        alert(
-          `✅ 连接成功!\n\nSocket: ${data.socketPath}\n版本: ${data.version.Version}\n系统: ${data.info.OSType} / ${data.info.Architecture}\n容器: ${data.info.Containers}\n名称: ${data.info.Name}`,
-        );
+        showToast("✅ Docker 连接成功");
       }
     } else {
-      if (!silent) alert(`❌ 连接失败: ${data.error}\nSocket: ${data.socketPath}`);
+      if (!silent) showToast(`❌ 连接失败: ${data.error}`);
     }
   } catch (e: unknown) {
     if (!silent) {
       const msg = e instanceof Error ? e.message : String(e);
-      alert("❌ 网络错误: " + msg);
+      showToast("❌ 网络错误: " + msg);
     }
   }
 };
 
-const checkConnection = () => {
+const checkConnection = (silent = false) => {
   error.value = "";
   errorCount.value = 0;
   fetchContainers();
-  fetchDockerInfo(false);
+  fetchDockerInfo(silent);
   startPolling();
 };
 
@@ -445,15 +475,80 @@ const getDetectedPorts = (c: DockerContainer): number[] => {
   const cached = inspectCache.value[c.Id]?.data;
   if (!cached) return [];
   if (cached.networkMode !== "host") return [];
-  return (cached.ports || [])
-    .filter((p) => typeof p === "number" && Number.isFinite(p) && p > 0 && p <= 65535)
-    .slice(0, 1);
+  return (cached.ports || []).filter(
+    (p) => typeof p === "number" && Number.isFinite(p) && p > 0 && p <= 65535,
+  );
 };
 
+// 常见 Web 端口优先级列表
+const PREFERRED_PRIVATE_PORTS = [
+  80, 443, 8080, 8000, 8096, 3000, 5000, 5001, 5244, 5678, 9000, 9091,
+];
+
 const getPreferredPort = (c: DockerContainer): number | null => {
-  const ports = getDetectedPorts(c);
-  const p = ports.length ? ports[0] : undefined;
-  return typeof p === "number" ? p : null;
+  // 1. 尝试从 Ports 映射中找到 PrivatePort 匹配的
+  if (c.Ports && c.Ports.length > 0) {
+    // 优先找 PrivatePort 在列表中的
+    // 排序：优先列表中的 index 小的优先
+    const sorted = [...c.Ports].sort((a, b) => {
+      const idxA = a.PrivatePort ? PREFERRED_PRIVATE_PORTS.indexOf(a.PrivatePort) : -1;
+      const idxB = b.PrivatePort ? PREFERRED_PRIVATE_PORTS.indexOf(b.PrivatePort) : -1;
+      // 如果都在列表中，按列表顺序
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      // 如果有一个在列表中，它优先
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      // 都不在列表中，保持原样 (或者按 PublicPort 排序?)
+      return 0;
+    });
+
+    const best = sorted.find(
+      (p) => typeof p.PublicPort === "number" && p.PublicPort > 0 && p.PublicPort <= 65535,
+    );
+    if (best) return best.PublicPort!;
+  }
+
+  // 2. 如果没有 Ports (Host模式)，尝试从 inspectCache 获取
+  const cached = inspectCache.value[c.Id]?.data;
+  if (cached && cached.ports && cached.ports.length > 0) {
+    const validPorts = cached.ports.filter(
+      (p) => typeof p === "number" && Number.isFinite(p) && p > 0 && p <= 65535,
+    );
+    if (validPorts.length > 0) {
+      // 同样尝试匹配优先级
+      const sorted = validPorts.sort((a, b) => {
+        const idxA = PREFERRED_PRIVATE_PORTS.indexOf(a);
+        const idxB = PREFERRED_PRIVATE_PORTS.indexOf(b);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return 0;
+      });
+      return sorted[0] ?? null;
+    }
+  }
+
+  // 3. 最后尝试使用 PrivatePort
+  // 有些容器只有 PrivatePort 没有 PublicPort (如 bridge 模式未映射)，
+  // 但用户可能通过内网路由访问
+  if (c.Ports && c.Ports.length > 0) {
+    const sorted = [...c.Ports]
+      .filter((p) => p.PrivatePort)
+      .sort((a, b) => {
+        const idxA = a.PrivatePort ? PREFERRED_PRIVATE_PORTS.indexOf(a.PrivatePort) : -1;
+        const idxB = b.PrivatePort ? PREFERRED_PRIVATE_PORTS.indexOf(b.PrivatePort) : -1;
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return 0;
+      });
+
+    if (sorted.length > 0 && sorted[0].PrivatePort) {
+      return sorted[0].PrivatePort;
+    }
+  }
+
+  return null;
 };
 
 const prefetchInspectForContainers = (list: DockerContainer[]) => {
@@ -497,6 +592,13 @@ const prefetchInspectForContainers = (list: DockerContainer[]) => {
   }
 };
 
+const cleanHost = (host: string) => {
+  return host
+    .replace(/^https?:\/\//i, "") // 移除协议头
+    .replace(/\/+$/, "") // 移除尾部斜杠
+    .trim();
+};
+
 const getContainerLanUrl = (c: DockerContainer): string => {
   const port = getPreferredPort(c);
   if (!port) return "";
@@ -504,7 +606,8 @@ const getContainerLanUrl = (c: DockerContainer): string => {
     (props.widget?.data && typeof props.widget.data.lanHost === "string"
       ? props.widget.data.lanHost.trim()
       : "") || "";
-  const host = lanHost || window.location.hostname;
+
+  const host = cleanHost(lanHost) || window.location.hostname;
   const scheme = port === 443 ? "https" : "http";
   return `${scheme}://${host}:${port}`;
 };
@@ -523,14 +626,23 @@ const getContainerPublicUrl = (c: DockerContainer): string => {
     (props.widget?.data && typeof props.widget.data.publicHost === "string"
       ? props.widget.data.publicHost.trim()
       : "") || "";
-  const external = mapped || globalPublic;
 
-  if (external) {
-    const hasProtocol = /^https?:\/\//i.test(external);
+  // 1. 如果有单独映射的地址
+  if (mapped) {
+    // 如果 mapped 看起来像完整的 URL (包含协议或端口)，直接使用
+    if (/^https?:\/\//i.test(mapped)) return mapped;
+    // 否则假设是 hostname，拼接协议和端口
     const scheme = port === 443 ? "https" : "http";
-    return hasProtocol ? external : `${scheme}://${external}`;
+    return `${scheme}://${cleanHost(mapped)}:${port}`;
   }
 
+  // 2. 如果有全局公网 Host
+  if (globalPublic) {
+    const scheme = port === 443 ? "https" : "http";
+    return `${scheme}://${cleanHost(globalPublic)}:${port}`;
+  }
+
+  // 3. 默认回退到当前 Host
   const host = window.location.hostname;
   const scheme = port === 443 ? "https" : "http";
   return `${scheme}://${host}:${port}`;
@@ -600,7 +712,7 @@ const addToHome = (c: DockerContainer) => {
       return false;
     });
     if (exists) {
-      alert(`容器 "${title}" 已存在于 Docker 分组中`);
+      showToast(`容器 "${title}" 已存在`);
       return;
     }
 
@@ -620,7 +732,7 @@ const addToHome = (c: DockerContainer) => {
     };
 
     store.addItem(newItem, dockerGroup.id);
-    alert(`已将 "${title}" 添加到 Docker 分组`);
+    showToast(`已添加 "${title}"`);
   };
 
   void addImpl();
@@ -677,7 +789,7 @@ const getStatusColor = (state: string) => {
       </div>
       <div class="flex items-center gap-2">
         <button
-          @click="checkConnection"
+          @click="() => checkConnection(false)"
           class="text-[10px] bg-blue-50 text-blue-500 px-2 py-1 rounded hover:bg-blue-100 transition-colors"
           title="点击获取 Docker 信息"
         >
@@ -702,7 +814,7 @@ const getStatusColor = (state: string) => {
     >
       <span>{{ error }}</span>
       <button
-        @click="checkConnection"
+        @click="() => checkConnection(false)"
         class="px-3 py-1 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-xs"
       >
         重试连接
@@ -715,7 +827,7 @@ const getStatusColor = (state: string) => {
     >
       <span>点击刷新获取容器列表</span>
       <button
-        @click="checkConnection"
+        @click="() => checkConnection(false)"
         class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-xs"
       >
         获取列表
@@ -842,6 +954,15 @@ const getStatusColor = (state: string) => {
                   :style="{ width: c.stats ? Math.min(c.stats.cpuPercent, 100) + '%' : '0%' }"
                 ></div>
               </div>
+              <div
+                class="flex justify-between text-[9px] text-gray-400 mt-0.5 font-mono items-center"
+              >
+                <span>NET</span>
+                <span v-if="c.stats && c.stats.netIO" class="tracking-tighter">
+                  ↓{{ formatBytes(c.stats.netIO.rx) }} ↑{{ formatBytes(c.stats.netIO.tx) }}
+                </span>
+                <span v-else class="text-gray-300">--</span>
+              </div>
             </div>
             <div class="flex flex-col gap-1">
               <div class="flex justify-between text-[10px] text-gray-500 items-end">
@@ -856,6 +977,15 @@ const getStatusColor = (state: string) => {
                   class="h-full bg-purple-500 rounded-full transition-all duration-500"
                   :style="{ width: c.stats ? Math.min(c.stats.memPercent, 100) + '%' : '0%' }"
                 ></div>
+              </div>
+              <div
+                class="flex justify-between text-[9px] text-gray-400 mt-0.5 font-mono items-center"
+              >
+                <span>I/O</span>
+                <span v-if="c.stats && c.stats.blockIO" class="tracking-tighter">
+                  R{{ formatBytes(c.stats.blockIO.read) }} W{{ formatBytes(c.stats.blockIO.write) }}
+                </span>
+                <span v-else class="text-gray-300">--</span>
               </div>
             </div>
           </div>

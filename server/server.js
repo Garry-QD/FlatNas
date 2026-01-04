@@ -27,6 +27,148 @@ const socketPath =
   (process.platform === "win32" ? "//./pipe/docker_engine" : "/var/run/docker.sock");
 const docker = new Docker({ socketPath });
 
+// --- Docker Stats Collector & Cache ---
+const containerStatsCache = new Map(); // id -> { cpuPercent, memUsage, memLimit, memPercent, netIO, blockIO, timestamp }
+let isStatsCollectorRunning = false;
+
+const calculateStats = (s) => {
+  let cpuPercent = 0;
+  let memUsage = 0;
+  let memLimit = 0;
+  let memPercent = 0;
+  let netRx = 0;
+  let netTx = 0;
+  let blockRead = 0;
+  let blockWrite = 0;
+
+  try {
+    const cpuStats = s.cpu_stats;
+    const precpuStats = s.precpu_stats;
+
+    if (cpuStats && precpuStats) {
+      const cpuDelta = cpuStats.cpu_usage.total_usage - precpuStats.cpu_usage.total_usage;
+      const systemDelta = cpuStats.system_cpu_usage - precpuStats.system_cpu_usage;
+      const onlineCpus =
+        cpuStats.online_cpus ||
+        (cpuStats.cpu_usage.percpu_usage ? cpuStats.cpu_usage.percpu_usage.length : 0);
+
+      if (systemDelta > 0 && onlineCpus > 0) {
+        cpuPercent = (cpuDelta / systemDelta) * onlineCpus * 100.0;
+      }
+    }
+
+    // Memory
+    if (s.memory_stats) {
+      memUsage = s.memory_stats.usage;
+      if (s.memory_stats.stats && s.memory_stats.stats.cache) {
+        memUsage -= s.memory_stats.stats.cache;
+      } else if (s.memory_stats.stats && s.memory_stats.stats.inactive_file) {
+        memUsage -= s.memory_stats.stats.inactive_file;
+      }
+
+      memLimit = s.memory_stats.limit;
+      if (memLimit > 0) {
+        memPercent = (memUsage / memLimit) * 100.0;
+      }
+    }
+
+    // Network IO
+    if (s.networks) {
+      Object.values(s.networks).forEach((n) => {
+        netRx += n.rx_bytes || 0;
+        netTx += n.tx_bytes || 0;
+      });
+    }
+
+    // Block IO
+    if (s.blkio_stats && s.blkio_stats.io_service_bytes_recursive) {
+      s.blkio_stats.io_service_bytes_recursive.forEach((io) => {
+        if (io.op === "Read") blockRead += io.value;
+        if (io.op === "Write") blockWrite += io.value;
+      });
+    }
+  } catch {
+    // Ignore calculation errors
+  }
+
+  return {
+    cpuPercent,
+    memUsage,
+    memLimit,
+    memPercent,
+    netIO: { rx: netRx, tx: netTx },
+    blockIO: { read: blockRead, write: blockWrite },
+  };
+};
+
+const startStatsCollector = () => {
+  if (isStatsCollectorRunning) return;
+  isStatsCollectorRunning = true;
+
+  const collect = async () => {
+    try {
+      // 1. Get running containers
+      // listContainers returns basic info.
+      const containers = await docker.listContainers({ all: false }).catch(() => []);
+      const running = containers.filter((c) => c.State === "running");
+
+      // 2. Concurrency control for stats fetching
+      const concurrency = 5;
+      const queue = [...running];
+
+      const worker = async () => {
+        while (queue.length > 0) {
+          const c = queue.shift();
+          if (!c) break;
+
+          try {
+            const container = docker.getContainer(c.Id);
+
+            // Promise.race for timeout
+            const statsPromise = container.stats({ stream: false });
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("Stats timeout")), 5000),
+            );
+
+            const rawStats = await Promise.race([statsPromise, timeoutPromise]);
+            const processed = calculateStats(rawStats);
+
+            containerStatsCache.set(c.Id, {
+              ...processed,
+              timestamp: Date.now(),
+            });
+          } catch {
+            // Failed to fetch stats, maybe container died or busy
+            // We keep old stats if they are recent (< 10s), otherwise mark as error or just stale
+            // For now, we just don't update the cache, so old data remains until cleanup
+            // console.warn(`Failed to fetch stats for ${c.Id}: ${e.message}`);
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: concurrency }).map(() => worker()));
+
+      // 3. Cleanup cache for non-running containers
+      const runningIds = new Set(running.map((c) => c.Id));
+      for (const id of containerStatsCache.keys()) {
+        if (!runningIds.has(id)) {
+          containerStatsCache.delete(id);
+        }
+      }
+    } catch (e) {
+      console.error("Stats collector error:", e);
+    } finally {
+      // Schedule next run
+      setTimeout(collect, 2000);
+    }
+  };
+
+  collect();
+};
+
+// Start collector
+startStatsCollector();
+
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
@@ -428,114 +570,19 @@ app.get("/api/docker/containers", authenticateToken, async (req, res) => {
   try {
     const containers = await docker.listContainers({ all: true });
 
-    // Fetch stats for running containers
-    const runningContainers = containers.filter((c) => c.State === "running");
-    // Limit concurrency to 5 to prevent memory spikes
-    const statsResults = [];
-    const queue = [...runningContainers];
-    const worker = async () => {
-      while (queue.length > 0) {
-        const c = queue.shift();
-        if (!c) break;
-        try {
-          const container = docker.getContainer(c.Id);
-          // stream: false returns a single snapshot
-          const stats = await container.stats({ stream: false });
-          statsResults.push({ id: c.Id, stats });
-        } catch (e) {
-          statsResults.push({ id: c.Id, error: e.message });
-        }
-      }
-    };
-
-    const concurrency = 5;
-    await Promise.all(Array.from({ length: concurrency }).map(() => worker()));
-    const statsMap = {};
-    statsResults.forEach((r) => {
-      if (r.stats) statsMap[r.id] = r.stats;
-    });
-
-    // Enrich containers with stats
+    // Enrich containers with stats from cache
     const enriched = containers.map((c) => {
-      if (c.State === "running" && statsMap[c.Id]) {
-        const s = statsMap[c.Id];
-        // Calculate CPU %
-        // cpu_delta = cpu_stats.cpu_usage.total_usage - precpu_stats.cpu_usage.total_usage
-        // system_cpu_delta = cpu_stats.system_cpu_usage - precpu_stats.system_cpu_usage
-        // number_cpus = length(cpu_stats.cpu_usage.percpu_usage) or cpu_stats.online_cpus
-        // CPU % = (cpu_delta / system_cpu_delta) * number_cpus * 100.0
-
-        let cpuPercent = 0;
-        let memUsage = 0;
-        let memLimit = 0;
-        let memPercent = 0;
-        let netRx = 0;
-        let netTx = 0;
-        let blockRead = 0;
-        let blockWrite = 0;
-
-        try {
-          const cpuStats = s.cpu_stats;
-          const precpuStats = s.precpu_stats;
-
-          if (cpuStats && precpuStats) {
-            const cpuDelta = cpuStats.cpu_usage.total_usage - precpuStats.cpu_usage.total_usage;
-            const systemDelta = cpuStats.system_cpu_usage - precpuStats.system_cpu_usage;
-            const onlineCpus =
-              cpuStats.online_cpus ||
-              (cpuStats.cpu_usage.percpu_usage ? cpuStats.cpu_usage.percpu_usage.length : 0);
-
-            if (systemDelta > 0 && onlineCpus > 0) {
-              cpuPercent = (cpuDelta / systemDelta) * onlineCpus * 100.0;
-            }
-          }
-
-          // Memory
-          if (s.memory_stats) {
-            memUsage = s.memory_stats.usage;
-            // Subtract cache from usage for cgroup v1, different for v2
-            // Simple approximation: usage - stats.cache (if exists)
-            if (s.memory_stats.stats && s.memory_stats.stats.cache) {
-              memUsage -= s.memory_stats.stats.cache;
-            } else if (s.memory_stats.stats && s.memory_stats.stats.inactive_file) {
-              // cgroup v2 approximation
-              memUsage -= s.memory_stats.stats.inactive_file;
-            }
-
-            memLimit = s.memory_stats.limit;
-            if (memLimit > 0) {
-              memPercent = (memUsage / memLimit) * 100.0;
-            }
-          }
-
-          // Network IO (Accumulate all interfaces)
-          if (s.networks) {
-            Object.values(s.networks).forEach((n) => {
-              netRx += n.rx_bytes || 0;
-              netTx += n.tx_bytes || 0;
-            });
-          }
-
-          // Block IO
-          if (s.blkio_stats && s.blkio_stats.io_service_bytes_recursive) {
-            s.blkio_stats.io_service_bytes_recursive.forEach((io) => {
-              if (io.op === "Read") blockRead += io.value;
-              if (io.op === "Write") blockWrite += io.value;
-            });
-          }
-        } catch {
-          // Ignore calculation errors
-        }
-
+      if (c.State === "running" && containerStatsCache.has(c.Id)) {
+        const s = containerStatsCache.get(c.Id);
         return {
           ...c,
           stats: {
-            cpuPercent,
-            memUsage,
-            memLimit,
-            memPercent,
-            netIO: { rx: netRx, tx: netTx },
-            blockIO: { read: blockRead, write: blockWrite },
+            cpuPercent: s.cpuPercent,
+            memUsage: s.memUsage,
+            memLimit: s.memLimit,
+            memPercent: s.memPercent,
+            netIO: s.netIO,
+            blockIO: s.blockIO,
           },
         };
       }
