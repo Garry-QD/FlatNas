@@ -35,6 +35,7 @@ const DOCKER_STATS_TIMEOUT = DOCKER_STATS_POLL_INTERVAL * 2.5;
 // --- Docker Stats Collector & Cache ---
 const containerStatsCache = new Map(); // id -> { cpuPercent, memUsage, memLimit, memPercent, netIO, blockIO, timestamp }
 let isStatsCollectorRunning = false;
+let lastDockerRequestTime = 0;
 
 const calculateStats = (s) => {
   let cpuPercent = 0;
@@ -163,8 +164,12 @@ const startStatsCollector = () => {
     } catch (e) {
       console.error("Stats collector error:", e);
     } finally {
-      // Schedule next run
-      setTimeout(collect, 5000);
+      // Schedule next run if active (30s idle timeout)
+      if (Date.now() - lastDockerRequestTime < 30000) {
+        setTimeout(collect, 5000);
+      } else {
+        isStatsCollectorRunning = false;
+      }
     }
   };
 
@@ -605,7 +610,11 @@ app.get("/api/docker/containers", authenticateToken, async (req, res) => {
 
     res.json({ success: true, data: enriched });
   } catch (error) {
-    console.error("Docker List Error:", error);
+    if (error.code === "ENOENT") {
+      console.warn("Docker not found (ENOENT). Is Docker Desktop running?");
+    } else {
+      console.error("Docker List Error:", error);
+    }
     // Return empty list instead of 500 if docker is not available, so frontend doesn't break
     res.json({ success: false, error: "Docker not available: " + error.message, data: [] });
   }
