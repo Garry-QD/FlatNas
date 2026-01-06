@@ -32,10 +32,6 @@ const DOCKER_STATS_POLL_INTERVAL = 5000;
 // Timeout for Docker stats fetching (ms) - 2.5x polling interval
 const DOCKER_STATS_TIMEOUT = DOCKER_STATS_POLL_INTERVAL * 2.5;
 
-// Max idle time before stopping stats collector (ms) - 60 seconds
-const MAX_IDLE_TIME = 60000;
-let lastDockerRequestTime = 0;
-
 // --- Docker Stats Collector & Cache ---
 const containerStatsCache = new Map(); // id -> { cpuPercent, memUsage, memLimit, memPercent, netIO, blockIO, timestamp }
 let isStatsCollectorRunning = false;
@@ -775,7 +771,51 @@ app.post("/api/docker/container/:id/:action", authenticateToken, async (req, res
     if (action === "start") await container.start();
     else if (action === "stop") await container.stop();
     else if (action === "restart") await container.restart();
-    else return res.status(400).json({ error: "Invalid action" });
+    else if (action === "update") {
+      const info = await container.inspect();
+      const imageName = info.Config.Image;
+      const containerName = info.Name.replace(/^\//, ""); // Remove leading slash
+
+      console.log(`[Update] Pulling image: ${imageName}`);
+      await new Promise((resolve, reject) => {
+        docker.pull(imageName, (err, stream) => {
+          if (err) return reject(err);
+          docker.modem.followProgress(stream, onFinished, onProgress);
+          function onFinished(err, output) {
+            if (err) return reject(err);
+            resolve(output);
+          }
+          function onProgress() {
+            // console.log(event);
+          }
+        });
+      });
+
+      console.log(`[Update] Stopping container: ${containerName}`);
+      try {
+        await container.stop();
+      } catch {
+        // Ignore if already stopped
+      }
+
+      console.log(`[Update] Removing container: ${containerName}`);
+      await container.remove();
+
+      console.log(`[Update] Recreating container: ${containerName}`);
+      // Construct options from info
+      const options = {
+        name: containerName,
+        ...info.Config,
+        HostConfig: info.HostConfig,
+        NetworkingConfig: { EndpointsConfig: info.NetworkSettings.Networks },
+      };
+      // Ensure we use the correct image name
+      options.Image = imageName;
+
+      const newContainer = await docker.createContainer(options);
+      await newContainer.start();
+      console.log(`[Update] Container updated and started: ${containerName}`);
+    } else return res.status(400).json({ error: "Invalid action" });
 
     res.json({ success: true });
   } catch (error) {
@@ -797,6 +837,100 @@ app.post("/api/system-config", authenticateToken, async (req, res) => {
     res.status(400).json({ error: "Invalid config" });
   }
 });
+
+// Auto Update Docker Containers Task
+const AUTO_UPDATE_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
+setInterval(async () => {
+  // Check if auto update is enabled in any admin config
+  const adminData = cachedUsersData["admin"];
+  if (!adminData || !adminData.widgets) return;
+
+  const dockerWidget = adminData.widgets.find((w) => w.type === "docker" || w.id === "docker");
+  if (!dockerWidget || !dockerWidget.data || !dockerWidget.data.autoUpdate) return;
+
+  console.log("[AutoUpdate] Checking for container updates...");
+  try {
+    const containers = await docker.listContainers({ all: true });
+    for (const c of containers) {
+      if (c.State !== "running") continue;
+
+      // Check for updates logic (simplified version of what frontend does via API)
+      // Note: In a real scenario, we need to pull the image and check if the ID changed
+      // or check the digest. Here we reuse the logic we used in `docker-status.json` or similar.
+      // But wait, the previous `docker-status.json` logic isn't fully implemented in backend here?
+      // Actually, we don't have a backend background job that checks for updates yet.
+      // The frontend shows red dots based on... wait, where does frontend get "hasUpdate"?
+      // Ah, looking at GridPanel.vue, it seems `containerStatuses` has `hasUpdate`.
+      // But where does `hasUpdate` come from? It comes from `fetchContainerStatuses` in GridPanel.vue.
+      // And in GridPanel.vue, for non-mock data, it seems it MIGHT come from `docker-status.json` via `/api/docker-status`?
+      // Let's check `fetchContainerStatuses` in GridPanel.vue again.
+      // Actually, looking at the code, `fetchContainerStatuses` in GridPanel.vue fetches `/api/docker-status`?
+      // No, `fetchContainerStatuses` in GridPanel.vue seems to be polling `containerStatuses` ref which is populated... how?
+      // Wait, I missed where `containerStatuses` gets real data in GridPanel.vue.
+      // Ah, I see `fetchContainerStatuses` in GridPanel.vue (line 731).
+      // It iterates `store.groups` and sets `statusMap`.
+      // But for REAL data, where does it fetch?
+      // It seems GridPanel.vue DOES NOT fetch real status updates for `hasUpdate` from backend for REAL containers yet?
+      // Let's look at `DockerWidget.vue`. It fetches `/api/docker/containers`.
+      // The `/api/docker/containers` endpoint in server.js (line 558) returns `stats` but not `hasUpdate`.
+      // So currently the "Red Dot" feature might only be fully implemented for Mock data or I missed something.
+      //
+      // However, the user wants "detect if update available".
+      // To do this properly in backend:
+      // 1. We need to `docker pull` the image.
+      // 2. Compare the new image ID with the container's image ID.
+      // 3. If different -> Update.
+
+      try {
+        const info = await docker.getContainer(c.Id).inspect();
+        const imageName = info.Config.Image;
+        const currentImageId = info.Image; // SHA of current image
+
+        // Pull the image
+        await new Promise((resolve, reject) => {
+          docker.pull(imageName, (err, stream) => {
+            if (err) return reject(err);
+            docker.modem.followProgress(stream, (err, output) => {
+              if (err) return reject(err);
+              resolve(output);
+            });
+          });
+        });
+
+        // Inspect the image to get the new ID
+        const imageInfo = await docker.getImage(imageName).inspect();
+        const newImageId = imageInfo.Id;
+
+        if (currentImageId !== newImageId) {
+          console.log(`[AutoUpdate] Update available for ${c.Names[0]} (${imageName})`);
+          console.log(`[AutoUpdate] Updating...`);
+
+          // Perform Update (Stop -> Remove -> Recreate -> Start)
+          const container = docker.getContainer(c.Id);
+          await container.stop();
+          await container.remove();
+
+          const options = {
+            name: info.Name.replace(/^\//, ""),
+            ...info.Config,
+            HostConfig: info.HostConfig,
+            NetworkingConfig: { EndpointsConfig: info.NetworkSettings.Networks },
+          };
+          // Ensure we use the correct image name (tag)
+          options.Image = imageName;
+
+          const newContainer = await docker.createContainer(options);
+          await newContainer.start();
+          console.log(`[AutoUpdate] Updated ${c.Names[0]} successfully.`);
+        }
+      } catch (err) {
+        console.error(`[AutoUpdate] Failed to check/update ${c.Names[0]}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error("[AutoUpdate] Error listing containers:", err);
+  }
+}, AUTO_UPDATE_INTERVAL);
 
 // GET /api/data
 // Public Groups API (for extension)

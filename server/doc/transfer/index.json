@@ -1,6 +1,13 @@
 {
   "items": [
     {
+      "id": "3abc6484-c06d-46f4-b948-629dd9d94e78",
+      "type": "text",
+      "content": "123",
+      "timestamp": 1767678178233,
+      "sender": "admin"
+    },
+    {
       "id": "b02504a7-d0f2-4927-b4a7-0b9e7272d46e",
       "type": "text",
       "content": "多选模式需要手动退出，切记",

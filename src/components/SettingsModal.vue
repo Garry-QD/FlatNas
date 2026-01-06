@@ -2205,6 +2205,28 @@ watch(activeTab, (val) => {
                   <span class="text-[10px] text-gray-500">使用模拟数据</span>
                 </div>
                 <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-400">自动升级镜像(每2小时)</span>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="!!dockerWidget.data?.autoUpdate"
+                      @change="
+                        (e) => {
+                          if (dockerWidget) {
+                            if (!dockerWidget.data) dockerWidget.data = {};
+                            dockerWidget.data.autoUpdate = (e.target as HTMLInputElement).checked;
+                            store.saveData();
+                          }
+                        }
+                      "
+                      class="sr-only peer"
+                    />
+                    <div
+                      class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500"
+                    ></div>
+                  </label>
+                </div>
+                <div class="flex items-center gap-2">
                   <span class="text-xs text-gray-700 font-medium">内网主机</span>
                   <input
                     :value="dockerWidget?.data?.lanHost"

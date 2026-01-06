@@ -2347,7 +2347,7 @@ watch(syncPlayerState, (enabled) => {
           <!-- Controls moved here to center in lyrics area -->
           <div class="absolute left-1/2 -translate-x-1/2 bottom-3 z-20 max-w-[calc(100vw-2rem)]">
             <div
-              class="bg-black/40 backdrop-blur-md rounded-xl px-4 py-2 shadow-lg flex items-center gap-6 w-fit min-w-[280px] max-w-[calc(100vw-2rem)] transition-all"
+              class="bg-black/40 backdrop-blur-md rounded-xl px-4 py-2 shadow-lg flex items-center gap-6 w-fit min-w-[280px] max-w-[calc(100vw-2rem)] transition-all opacity-0 group-hover:opacity-100 duration-300"
             >
               <div class="flex items-center justify-center gap-4 shrink-0">
                 <button

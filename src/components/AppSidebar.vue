@@ -379,7 +379,7 @@ const menuItems = computed(() => {
 
 <template>
   <div
-    class="flex flex-col transition-all duration-300 z-50 fixed left-4 max-h-[90vh] rounded-3xl backdrop-blur-[12px] shadow-[0_4px_15px_rgba(0,0,0,0.1)] bg-white/20 border border-white/20 text-black"
+    class="flex flex-col transition-all duration-200 z-50 fixed left-4 max-h-[90vh] rounded-xl backdrop-blur-[12px] shadow-[0_4px_15px_rgba(0,0,0,0.1)] bg-white/20 border border-white/20 text-black md:before:absolute md:before:-inset-10 md:before:content-[''] md:before:bg-transparent md:before:z-[-1]"
     :class="[
       isMobile && isCollapsed ? 'w-auto h-auto rounded-lg top-2 left-2 bottom-auto' : 'top-4',
       isCollapsed && !isMobile
@@ -691,6 +691,7 @@ const menuItems = computed(() => {
           class="space-y-1"
           :animation="150"
           :forceFallback="true"
+          :fallback-on-body="true"
           :disabled="isCollapsed"
           handle=".drag-handle"
           @end="store.saveData()"

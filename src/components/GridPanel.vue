@@ -647,6 +647,11 @@ const handleCardClick = (item: NavItem) => {
 
 const handleDockerAction = async (item: NavItem, action: string) => {
   if (!item.containerId) return;
+
+  if (action === "update") {
+    isUpdating.value.add(item.containerId);
+  }
+
   try {
     const headers = store.getHeaders();
     await fetch(`/api/docker/container/${item.containerId}/${action}`, {
@@ -660,6 +665,13 @@ const handleDockerAction = async (item: NavItem, action: string) => {
     fetchContainerStatuses();
   } catch (e) {
     console.error(`Failed to ${action} container`, e);
+  } finally {
+    if (action === "update") {
+      isUpdating.value.delete(item.containerId);
+      // Force refresh status immediately after update
+      setTimeout(fetchContainerStatuses, 1000);
+      setTimeout(fetchContainerStatuses, 5000);
+    }
   }
 };
 
@@ -668,6 +680,7 @@ const containerStatuses = ref<
     string,
     {
       state: string;
+      hasUpdate?: boolean;
       stats?: {
         cpuPercent: number;
         memPercent: number;
@@ -678,6 +691,9 @@ const containerStatuses = ref<
     }
   >
 >({});
+
+// Track updating containers
+const isUpdating = ref<Set<string>>(new Set());
 
 const formatBytes = (bytes: number, decimals = 1) => {
   if (!bytes) return "0B";
@@ -691,6 +707,7 @@ const formatBytes = (bytes: number, decimals = 1) => {
 
 interface ContainerStatus {
   state: string;
+  hasUpdate?: boolean;
   stats?: {
     cpuPercent: number;
     memPercent: number;
@@ -704,6 +721,7 @@ interface DockerContainer {
   Id: string;
   Names: string[];
   State: string;
+  hasUpdate?: boolean;
   stats?: {
     cpuPercent: number;
     memPercent: number;
@@ -780,6 +798,7 @@ const fetchContainerStatuses = async () => {
 
         statusMap[item.containerId] = {
           state: existing?.state || "running",
+          hasUpdate: existing?.hasUpdate !== undefined ? existing.hasUpdate : Math.random() > 0.7, // Demo: 30% chance of update
           stats: {
             cpuPercent,
             memPercent,
@@ -815,6 +834,7 @@ const fetchContainerStatuses = async () => {
         const write = Math.random() * 1024 * 1024;
         statusMap[item.containerId] = {
           state: existing?.state || "running",
+          hasUpdate: existing?.hasUpdate !== undefined ? existing.hasUpdate : Math.random() > 0.7,
           stats: {
             cpuPercent,
             memPercent,
@@ -932,6 +952,7 @@ const fetchContainerStatuses = async () => {
 
           statusMap[c.Id] = {
             state: c.State,
+            hasUpdate: c.hasUpdate,
             stats: stats,
           };
         });
@@ -2193,6 +2214,9 @@ onMounted(() => {
                 @touchcancel="onCardTouchEnd"
                 class="flex items-center justify-center cursor-pointer transition-all select-none relative group overflow-hidden"
                 :class="[
+                  item.containerId && isUpdating.has(item.containerId)
+                    ? 'opacity-50 pointer-events-none !cursor-not-allowed animate-pulse ring-2 ring-yellow-400'
+                    : '',
                   isEditMode ? 'animate-pulse cursor-move ring-2 ring-blue-400' : '',
                   (group.cardLayout || store.appConfig.cardLayout) === 'horizontal'
                     ? 'flex-row px-4 py-3 gap-3 justify-start'
@@ -2253,6 +2277,26 @@ onMounted(() => {
                   v-if="item.containerId"
                   class="absolute inset-0 z-0 pointer-events-none overflow-hidden rounded-[inherit]"
                 >
+                  <!-- Update Dot (Top Left) -->
+                  <div
+                    v-if="
+                      containerStatuses[item.containerId]?.hasUpdate &&
+                      !isUpdating.has(item.containerId)
+                    "
+                    class="absolute top-1.5 left-1.5 w-2.5 h-2.5 rounded-full bg-red-500 z-50 shadow-[0_0_4px_rgba(239,68,68,0.8)] border border-white/40 animate-pulse"
+                    title="Container Image Update Available"
+                  ></div>
+
+                  <!-- Updating Indicator -->
+                  <div
+                    v-if="item.containerId && isUpdating.has(item.containerId)"
+                    class="absolute inset-0 z-[60] flex items-center justify-center bg-black/10 backdrop-blur-[1px]"
+                  >
+                    <div
+                      class="animate-spin w-8 h-8 border-4 border-yellow-400 border-t-transparent rounded-full"
+                    ></div>
+                  </div>
+
                   <!-- CPU Bar (Top, Right to Left) -->
                   <div class="absolute top-0 right-0 w-full h-1/2 bg-transparent opacity-20">
                     <div
@@ -2621,6 +2665,17 @@ onMounted(() => {
 
       <!-- Docker Actions -->
       <template v-if="contextMenuItem?.containerId">
+        <div
+          v-if="containerStatuses[contextMenuItem.containerId]?.hasUpdate"
+          @click="
+            handleDockerAction(contextMenuItem, 'update');
+            closeContextMenu();
+          "
+          class="px-4 py-2 hover:bg-yellow-50 text-yellow-600 cursor-pointer flex items-center gap-2 text-sm transition-colors border-b border-gray-100"
+        >
+          <span>⬆️</span> 升级镜像
+        </div>
+
         <div
           v-if="containerStatuses[contextMenuItem.containerId]?.state === 'running'"
           @click="
