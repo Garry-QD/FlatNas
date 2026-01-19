@@ -551,7 +551,7 @@ const toggle = () => {
       isMobile && isCollapsed
         ? 'w-auto h-auto rounded-lg bottom-6 left-6 top-auto'
         : 'top-4 left-4 backdrop-blur-[12px] shadow-[0_4px_15px_rgba(0,0,0,0.1)] bg-white/20 border border-white/20',
-      isCollapsed && !isMobile ? 'w-[48px] !top-1/2 !-translate-y-1/2 max-h-[85vh]' : '',
+      isCollapsed && !isMobile ? 'w-[48px] !top-1/2 !-translate-y-1/2 !max-h-[60vh]' : '',
       isCollapsed ? (isMobile ? 'w-auto' : 'w-[48px]') : 'w-64',
     ]"
     @mouseenter="isHovered = true"

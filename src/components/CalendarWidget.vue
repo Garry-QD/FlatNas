@@ -50,7 +50,9 @@ const dayNum = computed(() => now.value.getDate());
 const weekDay = computed(
   () => ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][now.value.getDay()],
 );
-const yearMonth = computed(() => `${now.value.getFullYear()}.${now.value.getMonth() + 1}`);
+const yearMonth = computed(
+  () => `${now.value.getFullYear()}.${now.value.getMonth() + 1}.${now.value.getDate()}`,
+);
 
 const lunarDate = computed(() => {
   const d = Lunar.fromDate(now.value);
@@ -252,13 +254,23 @@ const isHovered = ref(false);
         {{ dayNum }}
       </div>
       <div
-        class="w-1/3 h-full flex items-center justify-center border-r border-white/10 bg-black/5 flex-shrink-0"
+        class="w-1/3 h-full flex flex-col items-start justify-center border-r border-white/10 bg-black/5 flex-shrink-0 pl-4"
       >
+        <div class="text-sm md:text-base font-bold shadow-text opacity-90 mb-1">
+          {{ now.getMonth() + 1 }}月
+        </div>
         <div class="text-4xl md:text-5xl font-bold shadow-text leading-none">
           {{ dayNum }}
         </div>
       </div>
-      <div class="flex-1 h-full flex flex-col justify-center px-3 z-10 min-w-0">
+      <div
+        class="flex-1 h-full flex flex-col justify-center px-3 z-10 min-w-0 relative overflow-hidden"
+      >
+        <div
+          class="absolute left-0 top-0 text-7xl md:text-9xl font-bold opacity-5 pointer-events-none select-none leading-none -mt-4 -ml-4"
+        >
+          {{ now.getMonth() + 1 }}
+        </div>
         <div class="text-[10px] md:text-xs opacity-60 tracking-widest uppercase mb-0.5">
           {{ yearMonth }}
         </div>

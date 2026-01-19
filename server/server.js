@@ -610,6 +610,49 @@ app.use(cors());
 app.use(express.json({ limit: "120mb" }));
 app.use(express.urlencoded({ extended: true, limit: "120mb" }));
 
+// Custom Scripts API
+app.get("/api/custom-scripts", authenticateToken, async (req, res) => {
+  const username = req.user.username;
+  try {
+    let allScripts = {};
+    try {
+      const content = await fs.readFile(CUSTOM_SCRIPTS_FILE, "utf-8");
+      allScripts = JSON.parse(content);
+    } catch {
+      // File doesn't exist or invalid
+    }
+
+    const userScripts = allScripts[username] || { css: [], js: [] };
+    res.json(userScripts);
+  } catch (err) {
+    console.error("Failed to read custom scripts:", err);
+    res.status(500).json({ error: "Failed to read custom scripts" });
+  }
+});
+
+app.post("/api/custom-scripts", authenticateToken, async (req, res) => {
+  const username = req.user.username;
+  const { css, js } = req.body;
+
+  try {
+    let allScripts = {};
+    try {
+      const content = await fs.readFile(CUSTOM_SCRIPTS_FILE, "utf-8");
+      allScripts = JSON.parse(content);
+    } catch {
+      // File doesn't exist, start fresh
+    }
+
+    allScripts[username] = { css: css || [], js: js || [] };
+
+    await atomicWrite(CUSTOM_SCRIPTS_FILE, JSON.stringify(allScripts, null, 2));
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Failed to save custom scripts:", err);
+    res.status(500).json({ error: "Failed to save custom scripts" });
+  }
+});
+
 // Helper to update container ID in all user configs (Global Sync)
 async function updateContainerIdGlobally(oldId, newId, containerName) {
   console.log(`[ContainerSync] Syncing ID change ${oldId} -> ${newId} (${containerName})`);
@@ -3096,6 +3139,60 @@ app.get("/api/music-list", async (req, res) => {
     console.error("Failed to read music dir", err);
     res.json([]);
   }
+});
+
+app.delete("/api/music", authenticateToken, async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+  const rawPath = req.body?.path;
+  const rel = typeof rawPath === "string" ? rawPath.trim() : "";
+  if (!rel) return res.status(400).json({ error: "Invalid path" });
+
+  if (path.isAbsolute(rel)) return res.status(400).json({ error: "Invalid path" });
+  if (rel.includes("\0")) return res.status(400).json({ error: "Invalid path" });
+
+  const normalizedRel = rel.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (
+    normalizedRel === "" ||
+    normalizedRel === "." ||
+    normalizedRel === ".." ||
+    normalizedRel.split("/").some((p) => p === ".." || p === "")
+  ) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+
+  const ext = path.extname(normalizedRel).toLowerCase();
+  if (![".mp3", ".wav", ".ogg", ".m4a", ".flac"].includes(ext)) {
+    return res.status(400).json({ error: "Unsupported file type" });
+  }
+
+  const baseDir = path.resolve(MUSIC_DIR);
+  const targetPath = path.resolve(baseDir, normalizedRel);
+  const baseLower = baseDir.toLowerCase();
+  const targetLower = targetPath.toLowerCase();
+  if (!(targetLower === baseLower || targetLower.startsWith(baseLower + path.sep.toLowerCase()))) {
+    return res.status(400).json({ error: "Invalid path" });
+  }
+
+  try {
+    await fs.unlink(targetPath);
+  } catch (e) {
+    if (e && e.code === "ENOENT") return res.json({ success: true });
+    return res.status(500).json({ error: "Delete failed" });
+  }
+
+  let dir = path.dirname(targetPath);
+  while (dir.toLowerCase().startsWith(baseLower) && dir.toLowerCase() !== baseLower) {
+    try {
+      const entries = await fs.readdir(dir);
+      if (entries.length > 0) break;
+      await fs.rmdir(dir);
+      dir = path.dirname(dir);
+    } catch {
+      break;
+    }
+  }
+
+  res.json({ success: true });
 });
 
 // Upload Music

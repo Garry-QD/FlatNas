@@ -1,4 +1,4 @@
-﻿﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ref, onMounted, computed, watch } from "vue";
 import { useStorage } from "@vueuse/core";
 import { useMainStore } from "../stores/main";
@@ -100,6 +100,21 @@ onMounted(() => {
 
 const testWeatherResult = ref<{ success: boolean; message: string } | null>(null);
 const isTestingWeather = ref(false);
+
+const tempInputs = ref<Record<string, string>>({});
+
+const updateTempInput = (key: string, value: string) => {
+  tempInputs.value[key] = value;
+};
+
+const confirmTempInput = (w: any, field: string, key: string) => {
+  if (tempInputs.value[key] !== undefined) {
+    w.data[field] = tempInputs.value[key];
+    store.saveData();
+    // Clear temp input so it falls back to the saved value
+    delete tempInputs.value[key];
+  }
+};
 
 const testMusicAuthResult = ref<{ success: boolean; message: string } | null>(null);
 const isTestingMusicAuth = ref(false);
@@ -371,7 +386,7 @@ const toggleMusicManager = async () => {
 
 const deleteMusicFile = async (filePath: string) => {
   if (!filePath) return;
-  if (!confirm(`确认删除该音乐文件？\n${filePath}`)) return;
+  // Removed native confirm as per user request for cleaner UI
   try {
     const token = localStorage.getItem("flat-nas-token");
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -387,9 +402,10 @@ const deleteMusicFile = async (filePath: string) => {
       throw new Error(data.error || String(res.status));
     }
     await fetchMusicFiles();
-  } catch (e) {
+  } catch (e: unknown) {
     console.error(e);
-    alert("删除失败");
+    const msg = e instanceof Error ? e.message : String(e);
+    alert("删除失败: " + msg);
   }
 };
 
@@ -510,7 +526,7 @@ const handleUltrawideChange = (e: Event) => {
   const checked = (e.target as HTMLInputElement).checked;
   if (checked) {
     alert(
-      "温馨提示：\n1. 分辨率比例判定依据是显示器的物理分辨率，而非浏览器窗口大小。\n2. 开启此功能后，在分屏显示（如左右并排）时，布局效果可能会变差。\n3. 此模式最适合多屏用户，或将 FlatNas 作为主力办公面板使用的用户。",
+      "温馨提示：\n1. 分辨率比例判定依据是显示器的物理分辨率或浏览器窗口大小。\n2. 开启此功能后，在分屏显示（如左右并排）时，布局效果可能会变差。\n3. 此模式最适合多屏用户，或将 FlatNas 作为主力办公面板使用的用户。",
     );
   }
 };
@@ -1222,6 +1238,7 @@ watch(activeTab, (val) => {
     <div
       class="bg-white/90 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col md:flex-row h-[600px] md:h-[480px] relative"
       :style="{ transform: `translate(${modalPosition.x}px, ${modalPosition.y}px)` }"
+      @wheel.stop
     >
       <button
         @click="close"
@@ -1246,12 +1263,12 @@ watch(activeTab, (val) => {
         <h3 class="text-xl font-bold text-gray-900 mb-4 md:mb-6 px-2">设置</h3>
         <nav
           ref="navRef"
-          class="flex flex-row md:flex-col gap-2 md:gap-0 md:space-y-1 overflow-x-auto md:overflow-visible pb-2 md:pb-0 no-drag cursor-grab active:cursor-grabbing"
+          class="flex flex-row md:flex-col gap-2 md:gap-0 md:space-y-1 overflow-x-auto md:overflow-visible pb-2 md:pb-0 no-drag cursor-grab active:cursor-grabbing overscroll-contain"
           @mousedown="onNavMouseDown"
           @mousemove="onNavMouseMove"
           @mouseup="onNavMouseUp"
           @mouseleave="onNavMouseUp"
-          @wheel.passive="handleNavWheel"
+          @wheel.stop.passive="handleNavWheel"
         >
           <button
             @click="activeTab = 'style'"
@@ -1347,7 +1364,7 @@ watch(activeTab, (val) => {
       </div>
 
       <div class="flex-1 flex flex-col bg-transparent overflow-hidden">
-        <div class="flex-1 p-4 overflow-y-auto">
+        <div class="flex-1 p-4 overflow-y-auto overscroll-contain" @wheel.stop>
           <div v-if="activeTab === 'style'" class="space-y-4">
             <div class="bg-white/60 border border-gray-100 rounded-xl p-4">
               <h4 class="text-base font-bold mb-4 text-gray-900">基础信息</h4>
@@ -1829,7 +1846,7 @@ watch(activeTab, (val) => {
                             <span class="flex-1 truncate text-gray-700" :title="f">{{ f }}</span>
                             <button
                               type="button"
-                              class="px-2 py-1 rounded-md bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                              class="px-2 py-1 rounded-md bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
                               @click="deleteMusicFile(f)"
                             >
                               删除
@@ -2412,12 +2429,25 @@ watch(activeTab, (val) => {
                     <label class="block text-xs font-bold text-gray-600 mb-1"
                       >外网/默认地址 (URL)</label
                     >
-                    <input
-                      v-model="w.data.url"
-                      type="url"
-                      placeholder="例如：https://example.com"
-                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-gray-900 outline-none"
-                    />
+                    <div class="flex gap-2">
+                      <input
+                        :value="tempInputs[`${w.id}-url`] ?? w.data.url"
+                        @input="
+                          (e: Event) =>
+                            updateTempInput(`${w.id}-url`, (e.target as HTMLInputElement).value)
+                        "
+                        type="url"
+                        placeholder="例如：https://example.com"
+                        class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-gray-900 outline-none"
+                        @keydown.enter="confirmTempInput(w, 'url', `${w.id}-url`)"
+                      />
+                      <button
+                        @click="confirmTempInput(w, 'url', `${w.id}-url`)"
+                        class="px-3 py-2 bg-yellow-500 text-white rounded-lg text-xs font-bold hover:bg-yellow-600 transition-colors whitespace-nowrap"
+                      >
+                        确定
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label
@@ -2428,12 +2458,25 @@ watch(activeTab, (val) => {
                         >内网优先</span
                       >
                     </label>
-                    <input
-                      v-model="w.data.lanUrl"
-                      type="url"
-                      placeholder="例如：http://192.168.x.x"
-                      class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-gray-900 outline-none"
-                    />
+                    <div class="flex gap-2">
+                      <input
+                        :value="tempInputs[`${w.id}-lanUrl`] ?? w.data.lanUrl"
+                        @input="
+                          (e: Event) =>
+                            updateTempInput(`${w.id}-lanUrl`, (e.target as HTMLInputElement).value)
+                        "
+                        type="url"
+                        placeholder="例如：http://192.168.x.x"
+                        class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-gray-900 outline-none"
+                        @keydown.enter="confirmTempInput(w, 'lanUrl', `${w.id}-lanUrl`)"
+                      />
+                      <button
+                        @click="confirmTempInput(w, 'lanUrl', `${w.id}-lanUrl`)"
+                        class="px-3 py-2 bg-yellow-500 text-white rounded-lg text-xs font-bold hover:bg-yellow-600 transition-colors whitespace-nowrap"
+                      >
+                        确定
+                      </button>
+                    </div>
                   </div>
                   <p class="text-[10px] text-gray-500 mt-1">
                     点击<a
@@ -3187,7 +3230,7 @@ document.querySelector('.card-item').addEventListener('click', () => {
                   </button>
                   <button
                     @click="handleReset"
-                    class="bg-gray-100 text-gray-600 border border-gray-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-200 transition-colors"
+                    class="bg-white text-gray-600 border border-gray-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
                   >
                     🧹 恢复初始化
                   </button>

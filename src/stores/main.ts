@@ -97,7 +97,7 @@ export const useMainStore = defineStore("main", () => {
     }));
 
   // Version Check
-  const currentVersion = "1.0.67";
+  const currentVersion = "1.0.68";
   const latestVersion = ref("");
   const dockerUpdateAvailable = ref(false);
 
@@ -531,6 +531,8 @@ export const useMainStore = defineStore("main", () => {
 
         handleDataUpdate(data);
         saveToCache(data);
+        // Fetch custom scripts separately
+        await fetchCustomScripts();
 
         // Defer non-critical data fetching
         setTimeout(() => {
@@ -930,7 +932,45 @@ export const useMainStore = defineStore("main", () => {
         .map((item) => `// ${item.name}\n${item.content}`)
         .join("\n\n");
     }
+
+    // Save to separate JSON file
+    fetch("/api/custom-scripts", {
+      method: "POST",
+      headers: getHeaders(),
+      body: JSON.stringify({
+        css: appConfig.value.customCssList,
+        js: appConfig.value.customJsList,
+      }),
+    }).catch((e) => console.error("Failed to save custom scripts independently", e));
+
     saveData();
+  };
+
+  const fetchCustomScripts = async () => {
+    try {
+      const res = await fetch("/api/custom-scripts", { headers: getHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.css) appConfig.value.customCssList = data.css;
+        if (data.js) appConfig.value.customJsList = data.js;
+
+        // Regenerate compiled strings
+        if (appConfig.value.customCssList) {
+          appConfig.value.customCss = appConfig.value.customCssList
+            .filter((item) => item.enable)
+            .map((item) => `/* ${item.name} */\n${item.content}`)
+            .join("\n\n");
+        }
+        if (appConfig.value.customJsList) {
+          appConfig.value.customJs = appConfig.value.customJsList
+            .filter((item) => item.enable)
+            .map((item) => `// ${item.name}\n${item.content}`)
+            .join("\n\n");
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch custom scripts", e);
+    }
   };
 
   return {
@@ -978,5 +1018,6 @@ export const useMainStore = defineStore("main", () => {
     luckyStunData,
     fetchLuckyStunData,
     updateCustomScripts,
+    fetchCustomScripts,
   };
 });

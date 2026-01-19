@@ -14,10 +14,11 @@ const showBackToTop = computed(() => y.value > windowHeight.value);
 const checkUltrawide = () => {
   if (!store.appConfig.autoUltrawide) return;
 
-  const ratio = windowWidth.value / windowHeight.value;
+  const windowRatio = windowWidth.value / windowHeight.value;
+  const screenRatio = window.screen.width / window.screen.height;
   // 21:9 ≈ 2.33, 32:9 ≈ 3.55
-  // Consider ultrawide if ratio > 2.3
-  if (ratio > 2.3) {
+  // Consider ultrawide if either ratio > 2.3
+  if (windowRatio > 2.3 || screenRatio > 2.3) {
     store.isExpandedMode = true;
   }
 };
