@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, watch } from "vue";
 import { useStorage } from "@vueuse/core";
 import { useMainStore } from "../stores/main";
+import { VueDraggable } from "vue-draggable-plus";
 import type { WidgetConfig, NavGroup, NavItem } from "@/types";
 import IconUploader from "./IconUploader.vue";
 import WallpaperLibrary from "./WallpaperLibrary.vue";
@@ -1304,6 +1305,17 @@ watch(activeTab, (val) => {
             外观布局
           </button>
           <button
+            @click="activeTab = 'groups-manage'"
+            :class="
+              activeTab === 'groups-manage'
+                ? 'border border-black text-gray-900 font-bold bg-transparent'
+                : 'border border-transparent text-gray-600 hover:bg-gray-50'
+            "
+            class="whitespace-nowrap md:whitespace-normal w-auto md:w-full shrink-0 text-left px-4 py-2 rounded-lg text-sm transition-colors mb-0 md:mb-1"
+          >
+            分组管理
+          </button>
+          <button
             @click="activeTab = 'widgets'"
             :class="
               activeTab === 'widgets'
@@ -1387,6 +1399,58 @@ watch(activeTab, (val) => {
 
       <div class="flex-1 flex flex-col bg-transparent overflow-hidden">
         <div class="flex-1 p-4 overflow-y-auto overscroll-contain" @wheel.stop>
+          <div v-if="activeTab === 'groups-manage'" class="p-4 space-y-4">
+            <h4 class="text-base font-bold text-gray-900 border-l-4 border-gray-900 pl-3 mb-4">
+              分组列表
+            </h4>
+            
+            <div class="bg-gray-100 rounded-xl p-2">
+              <VueDraggable
+                v-model="store.groups"
+                handle=".group-drag-handle"
+                :animation="200"
+                @end="() => store.saveData()"
+                class="flex flex-col gap-2"
+              >
+                <div
+                  v-for="group in store.groups"
+                  :key="group.id"
+                  class="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:border-gray-400 transition-all select-none"
+                >
+                  <div class="group-drag-handle cursor-move text-gray-400 hover:text-gray-900 p-1 text-xl">
+                    ⋮⋮
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="font-bold text-gray-900 truncate">{{ group.title }}</div>
+                    <div class="text-[10px] text-gray-500">{{ group.items.length }} 个应用</div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button 
+                      @click="store.deleteGroup(group.id)"
+                      class="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="删除分组"
+                      v-if="!group.preset"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </VueDraggable>
+            </div>
+            
+            <button
+              @click="store.addGroup()"
+              class="w-full py-3 border-2 border-dashed border-gray-300 rounded-xl text-gray-500 hover:border-gray-900 hover:text-gray-900 transition-all flex items-center justify-center gap-2 font-medium"
+            >
+              <span>+</span> 新建分组
+            </button>
+            <p class="text-[10px] text-gray-500 mt-2">
+              * 您也可以在主页开启“编辑模式”后直接点击“新建分组”。
+            </p>
+          </div>
+
           <div v-if="activeTab === 'style'" class="space-y-4">
             <div class="bg-white/60 border border-gray-100 rounded-xl p-4">
               <h4 class="text-base font-bold mb-4 text-gray-900">基础信息</h4>
@@ -2725,7 +2789,7 @@ watch(activeTab, (val) => {
                 <textarea
                   v-model="store.appConfig.internalDomains"
                   @change="store.saveData()"
-                  rows="4"
+                  rows="3"
                   class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-gray-900 outline-none font-mono"
                   placeholder="每行一个，支持域名后缀或 IP 段。例如：
 .frp.yourdomain.com
@@ -2735,6 +2799,22 @@ watch(activeTab, (val) => {
                 <p class="text-[10px] text-gray-500">
                   * 系统默认已包含 localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x 等标准私有地址。
                 </p>
+                <div class="mt-4 pt-4 border-t border-gray-100">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">
+                    内网探测 URL
+                  </label>
+                  <input
+                    v-model="store.appConfig.internalProbeUrl"
+                    @change="store.saveData()"
+                    type="url"
+                    class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-gray-900 outline-none font-mono"
+                    placeholder="例如：http://192.168.1.5:3000/api/rtt"
+                  />
+                  <p class="text-[10px] text-gray-400 mt-2">
+                    * 选填。指定一个仅能通过局域网连接的 URL（例如路由器或者NAS内网地址）。
+                    如果系统能成功访问该 URL，将自动切换为内网模式。
+                  </p>
+                </div>
               </div>
             </div>
 

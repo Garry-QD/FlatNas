@@ -167,6 +167,7 @@ export interface AppConfig {
   customJsDisclaimerAgreed?: boolean;
   mouseHoverEffect?: "scale" | "lift" | "glow" | "none" | string;
   autoUltrawide?: boolean;
+  internalProbeUrl?: string;
 }
 
 export interface WidgetConfig {

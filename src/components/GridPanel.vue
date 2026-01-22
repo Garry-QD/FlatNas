@@ -621,6 +621,23 @@ const handleNetworkClick = async () => {
   }
 };
 
+const checkInternalProbe = async () => {
+  if (!store.appConfig.internalProbeUrl) return false;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
+    await fetch(store.appConfig.internalProbeUrl, {
+      method: "HEAD",
+      mode: "no-cors",
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return true; // Successfully reached the probe URL
+  } catch {
+    return false;
+  }
+};
+
 const checkLatency = async () => {
   isChecking.value = true;
   const start = performance.now();
@@ -1652,7 +1669,9 @@ const fetchIp = async (force = false) => {
           const canTrustClientIp = data?.clientIpSource === "header";
           const clientIsLan =
             canTrustClientIp && !!data?.clientIp && isInternalNetwork(String(data.clientIp));
-          isLanMode.value = hostnameIsLan || clientIsLan;
+          
+          const probeIsLan = await checkInternalProbe();
+          isLanMode.value = hostnameIsLan || clientIsLan || probeIsLan;
           return;
         }
       }
@@ -1705,7 +1724,8 @@ const fetchIp = async (force = false) => {
         canTrustClientIp &&
         !!ipInfo.value.clientIp &&
         isInternalNetwork(String(ipInfo.value.clientIp));
-      isLanMode.value = hostnameIsLan || clientIsLan;
+      
+      isLanMode.value = hostnameIsLan || clientIsLan || (await checkInternalProbe());
     } else {
       ipInfo.value.displayIp = data.ip || "获取失败";
       ipInfo.value.location = "未知位置";
@@ -1718,7 +1738,8 @@ const fetchIp = async (force = false) => {
         canTrustClientIp &&
         !!ipInfo.value.clientIp &&
         isInternalNetwork(String(ipInfo.value.clientIp));
-      isLanMode.value = hostnameIsLan || clientIsLan;
+      
+      isLanMode.value = hostnameIsLan || clientIsLan || (await checkInternalProbe());
     }
     updateCache();
   } catch (e) {
@@ -2276,7 +2297,7 @@ onMounted(() => {
           >
             <div
               class="flex items-center gap-3 mb-2 group-header relative transition-opacity duration-200"
-              :class="{ 'opacity-0 hover:opacity-100': group.autoHideTitle }"
+              :class="{ 'opacity-0 hover:opacity-100': group.autoHideTitle && !isEditMode }"
             >
               <div
                 v-if="isEditMode"
