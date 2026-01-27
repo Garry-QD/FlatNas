@@ -254,6 +254,7 @@ export const useMainStore = defineStore("main", () => {
     customJs: "",
     customJsDisclaimerAgreed: false,
     mouseHoverEffect: "scale",
+    internalProbeUrl: "",
   });
 
   const CACHE_KEY = "flat-nas-data-cache";

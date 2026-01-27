@@ -21,6 +21,7 @@ import os from "os";
 import multer from "multer";
 import Docker from "dockerode";
 import si from "systeminformation";
+import expressStaticGzip from "express-static-gzip";
 
 // --- Security Utils ---
 const isPrivateIp = (ip) => {
@@ -64,8 +65,8 @@ const getUserLock = (username) => {
     let p = Promise.resolve();
     userLocks[username] = {
       run: (fn) => {
-        const res = p.then(() => fn()).finally(() => {});
-        p = res.catch(() => {});
+        const res = p.then(() => fn()).finally(() => { });
+        p = res.catch(() => { });
         return res;
       },
     };
@@ -264,6 +265,21 @@ const checkContainerUpdates = async (force = false) => {
   console.log("[UpdateChecker] Starting update check...");
 
   try {
+    // Check if auto update is enabled globally (Admin config)
+    let autoUpdateEnabled = false;
+    try {
+      const adminData = cachedUsersData["admin"];
+      if (adminData && adminData.widgets) {
+        const dockerWidget = adminData.widgets.find((w) => w.type === "docker" || w.id === "docker");
+        if (dockerWidget && dockerWidget.data && dockerWidget.data.autoUpdate) {
+          autoUpdateEnabled = true;
+          console.log("[UpdateChecker] Auto-update is ENABLED globally.");
+        }
+      }
+    } catch (e) {
+      console.warn("[UpdateChecker] Failed to read auto-update config", e);
+    }
+
     const containers = await docker.listContainers({ all: false }); // Only check running containers
 
     // Filter valid containers first
@@ -280,6 +296,15 @@ const checkContainerUpdates = async (force = false) => {
       const containerName = (
         container.Names && container.Names[0] ? container.Names[0] : "unknown"
       ).replace(/^\//, "");
+
+      // Skip FlatNas itself to prevent suicide during update
+      if (
+        container.Image.includes("flatnas") ||
+        containerName.toLowerCase().includes("flatnas")
+      ) {
+        continue;
+      }
+
       try {
         const imageName = container.Image;
 
@@ -350,6 +375,48 @@ const checkContainerUpdates = async (force = false) => {
           console.log(
             `[UpdateChecker] Update available for ${containerName}: ${container.ImageID} -> ${imageInfo.Id}`,
           );
+
+          // Perform Auto Update if enabled
+          if (autoUpdateEnabled) {
+            console.log(`[UpdateChecker] Auto-updating ${containerName}...`);
+            try {
+              // Get full container info for recreation
+              const currentInfo = await docker.getContainer(container.Id).inspect();
+              const containerInstance = docker.getContainer(container.Id);
+
+              await containerInstance.stop();
+              await containerInstance.remove();
+
+              const options = {
+                name: containerName,
+                ...currentInfo.Config,
+                HostConfig: currentInfo.HostConfig,
+                NetworkingConfig: { EndpointsConfig: currentInfo.NetworkSettings.Networks },
+              };
+              options.Image = imageName; // Ensure we use the latest image tag reference
+
+              const newContainer = await docker.createContainer(options);
+              await newContainer.start();
+              console.log(`[UpdateChecker] Auto-updated ${containerName} successfully.`);
+
+              // Update container ID in all user configs
+              if (typeof updateContainerIdGlobally === "function") {
+                await updateContainerIdGlobally(
+                  container.Id,
+                  newContainer.id,
+                  containerName,
+                );
+              }
+
+              // Clear update flag since we just updated
+              containerUpdateCache.set(newContainer.id, false);
+            } catch (updateErr) {
+              console.error(
+                `[UpdateChecker] Auto-update failed for ${containerName}:`,
+                updateErr,
+              );
+            }
+          }
         } else {
           containerUpdateCache.set(container.Id, false);
         }
@@ -378,7 +445,7 @@ const checkContainerUpdates = async (force = false) => {
 };
 
 // Run update check on startup (delayed) and periodically
-setTimeout(checkContainerUpdates, 60 * 1000); // Start 1 min after boot
+setTimeout(checkContainerUpdates, 5 * 60 * 1000); // Start 5 min after boot
 setInterval(checkContainerUpdates, 6 * 60 * 60 * 1000); // Check every 6 hours
 
 import bcrypt from "bcryptjs";
@@ -828,7 +895,7 @@ async function updateContainerIdGlobally(oldId, newId, containerName) {
   try {
     await fs.access(OLD_DATA_FILE);
     filesToCheck.add(OLD_DATA_FILE);
-  } catch {}
+  } catch { }
 
   // Check all users in USERS_DIR
   try {
@@ -1131,54 +1198,115 @@ app.get("/api/stats/amap", async (req, res) => {
 });
 
 // System Stats API
+// System Stats Cache
+const SI_CACHE = {
+  static: {
+    data: null,
+    ts: 0,
+    ttl: 5 * 60 * 1000, // 5 minutes for OS, Disk, CPU Brand
+  },
+  dynamic: {
+    data: null,
+    ts: 0,
+    ttl: 2000, // 2 seconds for Load, Mem, Net
+  },
+};
+
+// System Stats API
 app.get("/api/system/stats", authenticateToken, async (req, res) => {
   try {
-    const [cpuLoad, cpuInfo, mem, fsSize, networkStats, temp, time, osInfo] = await Promise.all([
-      si.currentLoad(),
-      si.cpu(),
-      si.mem(),
-      si.fsSize(),
-      si.networkStats(),
-      si.cpuTemperature(),
-      si.time(),
-      si.osInfo(),
-    ]);
+    const now = Date.now();
 
-    // Optimize Memory: mem.active is often better for "Used" on Linux as it excludes buffers/cache
-    // But systeminformation 'used' is total - free - buffers - cached.
-    // Let's pass both and decide in frontend or just pass the object.
+    // 1. Fetch Static Data (if stale)
+    if (!SI_CACHE.static.data || now - SI_CACHE.static.ts > SI_CACHE.static.ttl) {
+      try {
+        console.log("[SystemStats] Refreshing static info...");
+        const [cpuInfo, fsSize, osInfo] = await Promise.all([
+          si.cpu(),
+          si.fsSize(),
+          si.osInfo(),
+        ]);
+        SI_CACHE.static.data = {
+          cpu: {
+            manufacturer: cpuInfo.manufacturer,
+            brand: cpuInfo.brand,
+            speed: cpuInfo.speed,
+            cores: cpuInfo.cores,
+          },
+          os: {
+            distro: osInfo.distro,
+            release: osInfo.release,
+            codename: osInfo.codename,
+            kernel: osInfo.kernel,
+            arch: osInfo.arch,
+            hostname: osInfo.hostname,
+          },
+          disk: fsSize,
+        };
+        SI_CACHE.static.ts = now;
+      } catch (e) {
+        console.error("[SystemStats] Static info fetch failed:", e);
+        // Keep old data if available
+      }
+    }
+
+    // 2. Fetch Dynamic Data (if stale)
+    if (!SI_CACHE.dynamic.data || now - SI_CACHE.dynamic.ts > SI_CACHE.dynamic.ttl) {
+      try {
+        const [cpuLoad, mem, networkStats, temp, time] = await Promise.all([
+          si.currentLoad(),
+          si.mem(),
+          si.networkStats(),
+          si.cpuTemperature(),
+          si.time(),
+        ]);
+        SI_CACHE.dynamic.data = {
+          cpu: {
+            currentLoad: cpuLoad.currentLoad,
+            currentLoadUser: cpuLoad.currentLoadUser,
+            currentLoadSystem: cpuLoad.currentLoadSystem,
+          },
+          mem: {
+            total: mem.total,
+            used: mem.used,
+            active: mem.active,
+            available: mem.available,
+          },
+          network: networkStats,
+          temp: temp,
+          uptime: time.uptime,
+        };
+        SI_CACHE.dynamic.ts = now;
+      } catch (e) {
+        console.error("[SystemStats] Dynamic info fetch failed:", e);
+      }
+    }
+
+    // 3. Merge and Respond
+    if (!SI_CACHE.static.data || !SI_CACHE.dynamic.data) {
+      // Ideally shouldn't happen after first run, but handle gracefully
+      // If totally failed, return error or partial
+      if (!SI_CACHE.static.data && !SI_CACHE.dynamic.data) {
+        throw new Error("Failed to collect system stats");
+      }
+    }
+
+    const merged = {
+      cpu: {
+        ...(SI_CACHE.static.data?.cpu || {}),
+        ...(SI_CACHE.dynamic.data?.cpu || {}),
+      },
+      mem: SI_CACHE.dynamic.data?.mem || {},
+      disk: SI_CACHE.static.data?.disk || [],
+      network: SI_CACHE.dynamic.data?.network || [],
+      temp: SI_CACHE.dynamic.data?.temp || {},
+      uptime: SI_CACHE.dynamic.data?.uptime || 0,
+      os: SI_CACHE.static.data?.os || {},
+    };
 
     res.json({
       success: true,
-      data: {
-        cpu: {
-          currentLoad: cpuLoad.currentLoad,
-          currentLoadUser: cpuLoad.currentLoadUser,
-          currentLoadSystem: cpuLoad.currentLoadSystem,
-          manufacturer: cpuInfo.manufacturer,
-          brand: cpuInfo.brand,
-          speed: cpuInfo.speed,
-          cores: cpuInfo.cores,
-        },
-        mem: {
-          total: mem.total,
-          used: mem.used,
-          active: mem.active,
-          available: mem.available,
-        },
-        disk: fsSize,
-        network: networkStats,
-        temp: temp,
-        uptime: time.uptime,
-        os: {
-          distro: osInfo.distro,
-          release: osInfo.release,
-          codename: osInfo.codename,
-          kernel: osInfo.kernel,
-          arch: osInfo.arch,
-          hostname: osInfo.hostname,
-        },
-      },
+      data: merged,
     });
   } catch (error) {
     console.error("System Stats Error:", error);
@@ -1549,107 +1677,8 @@ app.post("/api/system-config", authenticateToken, async (req, res) => {
   }
 });
 
-// Auto Update Docker Containers Task
-const AUTO_UPDATE_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
-setInterval(async () => {
-  // Check if auto update is enabled in any admin config
-  const adminData = cachedUsersData["admin"];
-  if (!adminData || !adminData.widgets) return;
+// Auto Update Logic has been merged into checkContainerUpdates
 
-  const dockerWidget = adminData.widgets.find((w) => w.type === "docker" || w.id === "docker");
-  if (!dockerWidget || !dockerWidget.data || !dockerWidget.data.autoUpdate) return;
-
-  console.log("[AutoUpdate] Checking for container updates...");
-  try {
-    const containers = await docker.listContainers({ all: true });
-    for (const c of containers) {
-      if (c.State !== "running") continue;
-
-      // Skip FlatNas itself to prevent suicide during update
-      if (c.Image.includes("flatnas") || c.Names.some((n) => n.toLowerCase().includes("flatnas"))) {
-        continue;
-      }
-
-      // Check for updates logic (simplified version of what frontend does via API)
-      // Note: In a real scenario, we need to pull the image and check if the ID changed
-      // or check the digest. Here we reuse the logic we used in `docker-status.json` or similar.
-      // But wait, the previous `docker-status.json` logic isn't fully implemented in backend here?
-      // Actually, we don't have a backend background job that checks for updates yet.
-      // The frontend shows red dots based on... wait, where does frontend get "hasUpdate"?
-      // Ah, looking at GridPanel.vue, it seems `containerStatuses` has `hasUpdate`.
-      // But where does `hasUpdate` come from? It comes from `fetchContainerStatuses` in GridPanel.vue.
-      // And in GridPanel.vue, for non-mock data, it seems it MIGHT come from `docker-status.json` via `/api/docker-status`?
-      // Let's check `fetchContainerStatuses` in GridPanel.vue again.
-      // Actually, looking at the code, `fetchContainerStatuses` in GridPanel.vue fetches `/api/docker-status`?
-      // No, `fetchContainerStatuses` in GridPanel.vue seems to be polling `containerStatuses` ref which is populated... how?
-      // Wait, I missed where `containerStatuses` gets real data in GridPanel.vue.
-      // Ah, I see `fetchContainerStatuses` in GridPanel.vue (line 731).
-      // It iterates `store.groups` and sets `statusMap`.
-      // But for REAL data, where does it fetch?
-      // It seems GridPanel.vue DOES NOT fetch real status updates for `hasUpdate` from backend for REAL containers yet?
-      // Let's look at `DockerWidget.vue`. It fetches `/api/docker/containers`.
-      // The `/api/docker/containers` endpoint in server.js (line 558) returns `stats` but not `hasUpdate`.
-      // So currently the "Red Dot" feature might only be fully implemented for Mock data or I missed something.
-      //
-      // However, the user wants "detect if update available".
-      // To do this properly in backend:
-      // 1. We need to `docker pull` the image.
-      // 2. Compare the new image ID with the container's image ID.
-      // 3. If different -> Update.
-
-      try {
-        const info = await docker.getContainer(c.Id).inspect();
-        const imageName = info.Config.Image;
-        const currentImageId = info.Image; // SHA of current image
-
-        // Pull the image
-        await new Promise((resolve, reject) => {
-          docker.pull(imageName, (err, stream) => {
-            if (err) return reject(err);
-            docker.modem.followProgress(stream, (err, output) => {
-              if (err) return reject(err);
-              resolve(output);
-            });
-          });
-        });
-
-        // Inspect the image to get the new ID
-        const imageInfo = await docker.getImage(imageName).inspect();
-        const newImageId = imageInfo.Id;
-
-        if (currentImageId !== newImageId) {
-          console.log(`[AutoUpdate] Update available for ${c.Names[0]} (${imageName})`);
-          console.log(`[AutoUpdate] Updating...`);
-
-          // Perform Update (Stop -> Remove -> Recreate -> Start)
-          const container = docker.getContainer(c.Id);
-          await container.stop();
-          await container.remove();
-
-          const options = {
-            name: info.Name.replace(/^\//, ""),
-            ...info.Config,
-            HostConfig: info.HostConfig,
-            NetworkingConfig: { EndpointsConfig: info.NetworkSettings.Networks },
-          };
-          // Ensure we use the correct image name (tag)
-          options.Image = imageName;
-
-          const newContainer = await docker.createContainer(options);
-          await newContainer.start();
-          console.log(`[AutoUpdate] Updated ${c.Names[0]} successfully.`);
-
-          // Update container ID in all user configs
-          await updateContainerIdGlobally(c.Id, newContainer.id, info.Name);
-        }
-      } catch (err) {
-        console.error(`[AutoUpdate] Failed to check/update ${c.Names[0]}:`, err.message);
-      }
-    }
-  } catch (err) {
-    console.error("[AutoUpdate] Error listing containers:", err);
-  }
-}, AUTO_UPDATE_INTERVAL);
 
 // GET /api/data
 // Public Groups API (for extension)
@@ -1960,7 +1989,7 @@ app.delete("/api/config-versions/:id", authenticateToken, async (req, res) => {
     const id = req.params.id;
     if (!id || typeof id !== "string") return res.status(400).json({ error: "Missing id" });
     const filePath = path.join(CONFIG_VERSIONS_DIR, path.basename(id));
-    await fs.unlink(filePath).catch(() => {});
+    await fs.unlink(filePath).catch(() => { });
     res.json({ success: true });
   } catch (err) {
     console.error("[ConfigVersions][Delete]", err);
@@ -3002,10 +3031,10 @@ async function fetchWeatherFromWttr(city) {
       feelsLike: current.FeelsLikeC,
       today: data.weather?.[0]
         ? {
-            min: data.weather[0].mintempC,
-            max: data.weather[0].maxtempC,
-            uv: data.weather[0].uvIndex,
-          }
+          min: data.weather[0].mintempC,
+          max: data.weather[0].maxtempC,
+          uv: data.weather[0].uvIndex,
+        }
         : null,
       forecast: data.weather || [],
     };
@@ -3098,10 +3127,10 @@ async function fetchWeatherFromAMap(city, key) {
     feelsLike: current.temperature, // AMap doesn't provide feelsLike in base API
     today: today
       ? {
-          min: today.nighttemp,
-          max: today.daytemp,
-          uv: "0", // AMap doesn't provide UV in basic free API
-        }
+        min: today.nighttemp,
+        max: today.daytemp,
+        uv: "0", // AMap doesn't provide UV in basic free API
+      }
       : null,
     forecast: forecast.casts.map((c) => ({
       date: c.date,
@@ -4268,13 +4297,18 @@ const INDEX_HTML = path.join(DIST_DIR, "index.html");
 
 try {
   await fs.access(INDEX_HTML);
+
+  // 使用 express-static-gzip 自动返回 .gz / .br 压缩文件
   app.use(
-    express.static(DIST_DIR, {
-      setHeaders: (res, path) => {
-        if (path.endsWith("index.html")) {
+    expressStaticGzip(DIST_DIR, {
+      enableBrotli: true, // 优先 Brotli
+      orderPreference: ["br", "gz"], // 优先级: br > gz > 原文件
+      setHeaders: (res, filePath) => {
+        const fileName = path.basename(filePath);
+        if (fileName === "index.html" || fileName === "index.html.gz" || fileName === "index.html.br") {
           res.setHeader("Cache-Control", "no-cache");
         } else {
-          res.setHeader("Cache-Control", "public, max-age=31536000");
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
         }
       },
     }),
@@ -4621,6 +4655,6 @@ io.on("connection", (socket) => {
   });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running at http://0.0.0.0:${PORT}`);
 });

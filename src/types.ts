@@ -6,6 +6,7 @@ export interface NavItem {
   backupUrls?: string[];
   backupLanUrls?: string[];
   icon: string;
+  iconColor?: string; // 新增
   // Horizontal mode custom text lines
   description1?: string;
   description2?: string;
@@ -167,6 +168,7 @@ export interface AppConfig {
   customJsDisclaimerAgreed?: boolean;
   mouseHoverEffect?: "scale" | "lift" | "glow" | "none" | string;
   autoUltrawide?: boolean;
+  internalProbeUrl?: string;
 }
 
 export interface WidgetConfig {
