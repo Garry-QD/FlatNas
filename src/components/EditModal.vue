@@ -71,6 +71,7 @@ const form = ref<Omit<NavItem, "id">>({
   backupUrls: [],
   backupLanUrls: [],
   icon: "",
+  iconColor: "", // 新增
   description1: "",
   description2: "",
   description3: "",
@@ -1152,6 +1153,32 @@ const submit = async () => {
             </div>
 
             <IconUploader v-model="form.icon" />
+
+            <!-- 新增：图标颜色选择器 -->
+            <div class="flex items-center gap-3 bg-gray-50 px-3 py-2 rounded-lg border border-gray-100">
+              <label class="text-xs font-medium text-gray-500 whitespace-nowrap">图标颜色</label>
+              <div class="flex-1 flex items-center gap-2">
+                <input
+                  v-model="form.iconColor"
+                  type="color"
+                  class="w-8 h-8 rounded cursor-pointer border-none p-0 bg-transparent"
+                  title="选择图标颜色 (仅对文本/部分SVG生效)"
+                />
+                <input
+                  v-model="form.iconColor"
+                  type="text"
+                  placeholder="#颜色代码"
+                  class="flex-1 bg-transparent border-none text-xs outline-none font-mono"
+                />
+                <button
+                  v-if="form.iconColor"
+                  @click="form.iconColor = ''"
+                  class="text-[10px] text-gray-400 hover:text-red-500"
+                >
+                  重置
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 

@@ -13,10 +13,13 @@ const props = defineProps<{
   bgClass?: string;
   icon?: string;
   imgScale?: number;
+  iconColor?: string; // 新增：图标颜色
+  showShadow?: boolean; // 新增：是否显示阴影
 }>();
 
 const sizePx = computed(() => props.size ?? 48);
 const scaleVal = computed(() => (props.imgScale ?? 100) / 100);
+const hasShadow = computed(() => props.showShadow ?? true); // 默认开启阴影
 
 const imgGeometry = computed(() => {
   const s = scaleVal.value;
@@ -27,7 +30,6 @@ const imgGeometry = computed(() => {
 
 const isImg = computed(() => {
   const s = props.icon || "";
-  // 支持 http, data:image, blob: 以及包含 / 或 . 的本地路径，排除 SVG 代码
   return (
     !!s &&
     (s.startsWith("http") ||
@@ -50,6 +52,26 @@ const finalIcon = computed(() => {
 const isSvg = computed(() => {
   const s = props.icon || "";
   return !!s && s.trim().startsWith("<svg");
+});
+
+// 处理 SVG 图标的颜色
+const processedSvgIcon = computed(() => {
+  if (!isSvg.value) return "";
+  let svg = props.icon || "";
+  if (props.iconColor) {
+    // 强制替换或注入 fill 属性
+    if (svg.includes("fill=\"none\"")) {
+      // 如果是描边类型的图标，可能需要处理 stroke
+      svg = svg.replace(/stroke="[^"]*"/g, `stroke="${props.iconColor}"`);
+    } else {
+      svg = svg.replace(/fill="[^"]*"/g, `fill="${props.iconColor}"`);
+      // 如果没有 fill 属性，尝试注入
+      if (!svg.includes("fill=")) {
+        svg = svg.replace("<svg", `<svg fill="${props.iconColor}"`);
+      }
+    }
+  }
+  return svg;
 });
 
 const textScale = computed(() => ((props.size ?? 48) >= 48 ? 0.52 : 0.56) * scaleVal.value);
@@ -96,7 +118,8 @@ const pathD = computed(() => {
 <template>
   <div
     v-if="shape !== 'hidden'"
-    class="relative flex items-center justify-center overflow-hidden flex-shrink-0"
+    class="relative flex items-center justify-center overflow-hidden flex-shrink-0 transition-all duration-300"
+    :class="{ 'hover:scale-105 active:scale-95': true, 'icon-shadow': hasShadow }"
     :style="{ width: sizePx + 'px', height: sizePx + 'px' }"
   >
     <svg
@@ -111,10 +134,21 @@ const pathD = computed(() => {
           <rect x="0" y="0" width="100" height="100" fill="black" />
           <path :d="pathD" fill="white" />
         </mask>
+        <!-- 添加一个内阴影效果定义 -->
+        <filter :id="`filter-shadow-${uid}`" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur" />
+          <feOffset in="blur" dx="0" dy="1" result="offsetBlur" />
+          <feFlood flood-color="black" flood-opacity="0.2" result="offsetColor" />
+          <feComposite in="offsetColor" in2="offsetBlur" operator="in" result="offsetBlur" />
+          <feMerge>
+            <feMergeNode />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
       </defs>
 
-      <g :mask="shape === 'none' ? undefined : `url(#${maskId})`">
-        <!-- 背景层：放入裁剪区域内，解决边缘溢出白边问题 -->
+      <g :mask="shape === 'none' ? undefined : `url(#${maskId})`" :filter="hasShadow ? `url(#filter-shadow-${uid})` : undefined">
+        <!-- 背景层 -->
         <rect
           v-if="shape !== 'none'"
           x="0"
@@ -137,8 +171,8 @@ const pathD = computed(() => {
         />
         <foreignObject v-else-if="isSvg" x="0" y="0" width="100" height="100">
           <div
-            v-html="finalIcon"
-            class="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full"
+            v-html="processedSvgIcon"
+            class="w-full h-full flex items-center justify-center [&>svg]:w-full [&>svg]:h-full p-[15%]"
             :style="{ transform: `scale(${scaleVal})` }"
           ></div>
         </foreignObject>
@@ -150,7 +184,8 @@ const pathD = computed(() => {
           dominant-baseline="middle"
           :font-size="sizePx * textScale"
           font-family="system-ui"
-          fill="#111"
+          :fill="iconColor || '#333'"
+          class="font-bold uppercase"
         >
           {{ finalIcon }}
         </text>
@@ -165,5 +200,8 @@ const pathD = computed(() => {
 }
 .fill-white {
   fill: #ffffff;
+}
+.icon-shadow {
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1)) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.08));
 }
 </style>

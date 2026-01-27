@@ -2599,6 +2599,7 @@ onMounted(() => {
                       :shape="group.iconShape || store.appConfig.iconShape"
                       :size="getLayoutConfig(group).iconSize"
                       :imgScale="item.iconSize"
+                      :iconColor="item.iconColor"
                       :bgClass="
                         item.color &&
                         !item.color.includes('sky') &&
