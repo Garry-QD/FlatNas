@@ -194,7 +194,8 @@ const saveToServer = (immediate = false) => {
 // Socket.IO 监听远程更新
 const applyRemotePayload = (payload: WidgetConfig["data"]) => {
   const parsed = parsePayload(payload);
-  if (!parsed.content) return;
+  // 修复：允许空字符串（清空内容）通过，只拦截 undefined/null
+  if (parsed.content === undefined || parsed.content === null) return;
 
   // 如果正在保存，忽略远程更新
   if (isSaving.value) return;

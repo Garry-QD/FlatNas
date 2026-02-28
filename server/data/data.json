@@ -543,7 +543,7 @@
   "rssCategories": [],
   "rssFeeds": [],
   "username": "",
-  "version": 236,
+  "version": 237,
   "widgets": [
     {
       "colSpan": 1,
@@ -680,14 +680,14 @@
           "h": 2,
           "w": 1,
           "x": 1,
-          "y": 0
+          "y": 1
         }
       },
       "rowSpan": 2,
       "type": "todo",
       "w": 1,
       "x": 1,
-      "y": 0
+      "y": 1
     },
     {
       "colSpan": 1,
@@ -783,15 +783,15 @@
         "desktop": {
           "h": 2,
           "w": 1,
-          "x": 3,
-          "y": 0
+          "x": 0.5,
+          "y": 3
         }
       },
       "rowSpan": 2,
       "type": "calendar",
       "w": 1,
-      "x": 3,
-      "y": 0
+      "x": 0.5,
+      "y": 3
     },
     {
       "colSpan": 1,
@@ -849,14 +849,14 @@
         "desktop": {
           "h": 1,
           "w": 1,
-          "x": 0,
+          "x": 0.5,
           "y": 0
         }
       },
       "rowSpan": 1,
       "type": "countdown",
       "w": 1,
-      "x": 0,
+      "x": 0.5,
       "y": 0
     },
     {

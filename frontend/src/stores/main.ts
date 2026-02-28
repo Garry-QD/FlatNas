@@ -1,4 +1,4 @@
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, nextTick } from "vue";
 import { defineStore } from "pinia";
 import { useStorage } from "@vueuse/core";
 import io from "socket.io-client";
@@ -868,10 +868,14 @@ export const useMainStore = defineStore("main", () => {
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
+          isApplyingServerData = true;
           if (Array.isArray(data.css)) appConfig.value.customCssList = data.css;
           if (Array.isArray(data.js)) appConfig.value.customJsList = data.js;
-          // Apply immediately
-          updateCustomScripts(false); // false = don't save back to server yet
+          // Apply immediately（拼合 customCss/customJs 字段，但不触发保存）
+          updateCustomScripts(false);
+          nextTick(() => {
+            isApplyingServerData = false;
+          });
         }
       }
     } catch (e) {
@@ -881,6 +885,9 @@ export const useMainStore = defineStore("main", () => {
 
   const fetchAndProcessData = async () => {
     try {
+      // 记录开始获取时的版本号
+      const versionBeforeFetch = dataVersion.value;
+
       const headers: Record<string, string> = {};
       if (token.value) headers["Authorization"] = `Bearer ${token.value}`;
 
@@ -893,7 +900,25 @@ export const useMainStore = defineStore("main", () => {
         return;
       }
 
+      // 版本冲突处理中时，不拉取服务器数据覆盖本地修改
+      // 等待冲突重试保存完成后，is409RetryPending 会自动被清除
+      if (is409RetryPending) {
+        return;
+      }
+
+      // 版本保护：只有当获取的数据版本更新时，才应用
+      // 如果本地版本已经更新（用户在获取期间修改了数据），则不覆盖
+      const fetchedVersion = typeof data.version !== "undefined" ? normalizeVersion(data.version) : 0;
+      if (fetchedVersion > 0 && dataVersion.value > versionBeforeFetch) {
+        // 本地版本在获取期间已更新（用户修改了数据），不覆盖
+        console.log(`Skip fetched data: local version updated during fetch (${versionBeforeFetch} -> ${dataVersion.value})`);
+        return;
+      }
+      isApplyingServerData = true;
       handleDataUpdate(data);
+      nextTick(() => {
+        isApplyingServerData = false;
+      });
       if (!hasServerSnapshot.value) {
         saveToCache(data);
         markServerSnapshotReady();
@@ -1032,10 +1057,25 @@ export const useMainStore = defineStore("main", () => {
               updatedUser === username.value ||
               (username.value === "admin" && updatedUser === "admin")
             ) {
+              // 版本控制：只有当服务器版本更新时，才从服务器拉取数据
+              // 如果本地版本 >= 服务器版本，说明本地有更新的修改（正在等待保存），不覆盖
               if (typeof version !== "undefined") {
-                dataVersion.value = normalizeVersion(version);
+                const serverVersion = normalizeVersion(version);
+                const localVersion = dataVersion.value;
+
+                // 只有服务器版本更新时才拉取
+                if (serverVersion > localVersion) {
+                  dataVersion.value = serverVersion;
+                  await fetchAndProcessData();
+                }
+                // 如果 serverVersion <= localVersion，说明：
+                // 1. 本地已经有最新数据，或
+                // 2. 本地有更新的修改（还在防抖等待保存）
+                // 这两种情况都不应该从服务器拉取数据
+              } else {
+                // 如果没有版本号（旧版本兼容），仍然拉取数据
+                await fetchAndProcessData();
               }
-              await fetchAndProcessData();
             }
           },
         );
@@ -1070,6 +1110,10 @@ export const useMainStore = defineStore("main", () => {
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   const isSaving = ref(false);
   let lastSavedJson = "";
+  // 409 重试期间置为 true，阻止 fetchAndProcessData 覆盖本地修改
+  let is409RetryPending = false;
+  // 服务端数据回填期间置为 true，阻止深度监听触发保存（防止死循环）
+  let isApplyingServerData = false;
 
   const conflictState = ref({
     show: false,
@@ -1085,6 +1129,7 @@ export const useMainStore = defineStore("main", () => {
 
     const doSave = async () => {
       const shouldSyncAfterConflict = false;
+      let shouldRetryAfter409 = false;
       if (isPageUnloading.value) {
         return;
       }
@@ -1092,6 +1137,12 @@ export const useMainStore = defineStore("main", () => {
         deferredSaveRequested.value = true;
         return;
       }
+
+      // 乐观锁：在开始保存时立即增加本地版本号，防止在保存期间被远程数据覆盖
+      const versionToSend = dataVersion.value;
+      const optimisticVersion = versionToSend + 1;
+      dataVersion.value = optimisticVersion;
+
       isSaving.value = true;
       try {
         if (!isLogged.value) {
@@ -1109,7 +1160,7 @@ export const useMainStore = defineStore("main", () => {
           appConfig: appConfig.value,
           rssFeeds: rssFeeds.value,
           rssCategories: rssCategories.value,
-          version: dataVersion.value,
+          version: versionToSend, // 发送保存前的版本号给后端验证
         };
         if (typeof password.value === "string" && password.value.length > 0) {
           body.password = password.value;
@@ -1148,12 +1199,16 @@ export const useMainStore = defineStore("main", () => {
             conflictState.value = {
               show: true,
               serverVersion: v,
-              clientVersion: dataVersion.value,
+              clientVersion: versionToSend,
             };
-            // Optional: update local version to match server if we want to auto-sync next time?
-            // But for ConflictModal, we want to keep them separate.
+            // 同步本地版本号为服务器版本，防止版本号漂移
+            dataVersion.value = v;
           }
-          // Do NOT set shouldSyncAfterConflict = true here, let the UI handle it via ConflictModal
+          // 版本冲突时：采用服务器版本号，设置重试标记
+          // 仅在非重试请求（!immediate）时才允许重试，避免死循环
+          if (!immediate) {
+            shouldRetryAfter409 = true;
+          }
           return;
         }
 
@@ -1172,10 +1227,23 @@ export const useMainStore = defineStore("main", () => {
           return;
         }
         console.error("保存失败", e);
+        // 保存失败，回滚版本号
+        dataVersion.value = versionToSend;
       } finally {
         isSaving.value = false;
         if (shouldSyncAfterConflict) {
           await fetchAndProcessData();
+        }
+        if (shouldRetryAfter409) {
+          // 版本冲突后，用已更新的服务器版本号立即重试一次保存
+          // 此时 dataVersion 已同步为服务器版本，重试应能成功
+          // immediate=true 传入，下次 409 时不再重试（防止死循环）
+          is409RetryPending = true;
+          try {
+            await saveData(true);
+          } finally {
+            is409RetryPending = false;
+          }
         }
       }
     };
@@ -1220,7 +1288,7 @@ export const useMainStore = defineStore("main", () => {
       const index = groups.value.length + 1;
       const title = `新建分组 ${index}`;
       groups.value.push({ id, title, items: [] });
-      saveData();
+      // saveData() 已由 watch 自动触发，无需手动调用
     } catch (e) {
       console.error(e);
     }
@@ -1229,14 +1297,14 @@ export const useMainStore = defineStore("main", () => {
   const deleteGroup = (groupId: string, skipConfirm = false) => {
     if (!skipConfirm && !confirm("确定删除？")) return;
     groups.value = groups.value.filter((g) => g.id !== groupId);
-    saveData();
+    // saveData() 已由 watch 自动触发
   };
 
   const updateGroupTitle = (groupId: string, newTitle: string) => {
     const group = groups.value.find((g) => g.id === groupId);
     if (group) {
       group.title = newTitle;
-      saveData();
+      // saveData() 已由 watch 自动触发
     }
   };
 
@@ -1244,7 +1312,7 @@ export const useMainStore = defineStore("main", () => {
     const group = groups.value.find((g) => g.id === groupId);
     if (group) {
       Object.assign(group, updates);
-      saveData();
+      // saveData() 已由 watch 自动触发
     }
   };
 
@@ -1252,7 +1320,7 @@ export const useMainStore = defineStore("main", () => {
     const group = groups.value.find((g) => g.id === groupId);
     if (group) {
       group.items.push({ ...item, isPublic: item.isPublic ?? true });
-      saveData();
+      // saveData() 已由 watch 自动触发
     }
   };
 
@@ -1261,7 +1329,7 @@ export const useMainStore = defineStore("main", () => {
       const idx = group.items.findIndex((i) => i.id === updatedItem.id);
       if (idx !== -1) {
         group.items[idx] = updatedItem;
-        saveData();
+        // saveData() 已由 watch 自动触发
         return;
       }
     }
@@ -1272,7 +1340,7 @@ export const useMainStore = defineStore("main", () => {
       const idx = group.items.findIndex((i) => i.id === id);
       if (idx !== -1) {
         group.items.splice(idx, 1);
-        saveData();
+        // saveData() 已由 watch 自动触发
         return;
       }
     }
@@ -1460,40 +1528,17 @@ export const useMainStore = defineStore("main", () => {
     },
   );
 
+  // 统一的数据变更监听：合并所有 deep watch 到一个，避免竞态
   watch(
-    appConfig,
+    () => ({
+      groups: groups.value,
+      appConfig: appConfig.value,
+      widgets: widgets.value,
+      rssFeeds: rssFeeds.value,
+      rssCategories: rssCategories.value,
+    }),
     () => {
-      if (!isInitializing && !isApplyingNetworkMode) {
-        saveData();
-      }
-    },
-    { deep: true },
-  );
-
-  watch(
-    widgets,
-    () => {
-      if (!isInitializing) {
-        saveData();
-      }
-    },
-    { deep: true },
-  );
-
-  watch(
-    rssFeeds,
-    () => {
-      if (!isInitializing) {
-        saveData();
-      }
-    },
-    { deep: true },
-  );
-
-  watch(
-    rssCategories,
-    () => {
-      if (!isInitializing) {
+      if (!isInitializing && !isApplyingNetworkMode && !isApplyingServerData) {
         saveData();
       }
     },
@@ -1533,7 +1578,7 @@ export const useMainStore = defineStore("main", () => {
         .join("\n\n");
     }
     if (doSave) {
-      saveData();
+      // saveData() 已由 watch 自动触发，但仍需调用 saveCustomScripts() 保存到独立文件
       saveCustomScripts();
     }
   };

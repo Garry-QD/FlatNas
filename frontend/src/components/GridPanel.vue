@@ -1039,8 +1039,8 @@ const handleScaledLayoutUpdated = (newLayout: GridLayoutItem[]) => {
   // This ensures the layout is consistent with what will be loaded after refresh
   const compacted = compactVertical(unscaled);
 
-  // Check if layout actually changed to avoid recursive updates
-  const isChanged =
+  // 仅当压实后位置与当前 layoutData 不同时才更新（防止递归触发）
+  const isLayoutChanged =
     layoutData.value.length !== compacted.length ||
     layoutData.value.some((item) => {
       const match = compacted.find((c) => c.i === item.i);
@@ -1053,11 +1053,11 @@ const handleScaledLayoutUpdated = (newLayout: GridLayoutItem[]) => {
       );
     });
 
-  if (!isChanged) return;
-  
-  // Update local layout data to reflect compaction
-  layoutData.value = compacted;
+  if (isLayoutChanged) {
+    layoutData.value = compacted;
+  }
 
+  // 始终同步到 store.widgets —— handleLayoutUpdated 内部有 store.widgets 对比守卫，不会无限循环
   handleLayoutUpdated(compacted);
 };
 
