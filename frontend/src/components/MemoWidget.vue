@@ -18,8 +18,7 @@ const editorRef = ref<InstanceType<typeof MemoEditor> | null>(null);
 const isEditing = ref(false);
 const localUpdatedAt = ref(0);
 const lastInputAt = ref(0);
-const isBroadcasting = ref(false);
-const isPageVisible = ref(document.visibilityState === "visible");
+const isSaving = ref(false); // 保存中标志，防止数据被覆盖
 
 // Persistence
 const { saveToIndexedDB, loadFromIndexedDB, status, progress, saveVersionSnapshot, loadVersions, deleteVersion } =
@@ -139,15 +138,45 @@ const buildPayload = () => ({
 
 let serverSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let broadcastTimer: ReturnType<typeof setTimeout> | null = null;
-const ACTIVE_INPUT_WINDOW = 800;
-const POLL_ACTIVE_INTERVAL = 800;
-const POLL_IDLE_INTERVAL = 5000;
+
 const saveToServer = (immediate = false) => {
   if (!store.isLogged) return;
-  const doSave = () => {
+  const doSave = async () => {
+    isSaving.value = true;
     const payload = buildPayload();
     localUpdatedAt.value = payload.updatedAt;
-    store.saveWidget(props.widget.id, payload);
+    try {
+      // 使用新的版本控制API（Last-Write-Wins模式）
+      const response = await fetch(`/api/widgets/v2/${props.widget.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          data: payload,
+          version: 0, // Last-Write-Wins：版本号不重要
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        // 通过 Socket.IO 通知其他设备
+        if (store.socket) {
+          store.socket.emit("memo:update", {
+            token: store.token || localStorage.getItem("flat-nas-token"),
+            widgetId: props.widget.id,
+            content: payload,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('保存失败:', error);
+    } finally {
+      setTimeout(() => {
+        isSaving.value = false;
+      }, 500);
+    }
   };
 
   if (immediate) {
@@ -162,58 +191,40 @@ const saveToServer = (immediate = false) => {
   }, 800);
 };
 
+// Socket.IO 监听远程更新
 const applyRemotePayload = (payload: WidgetConfig["data"]) => {
   const parsed = parsePayload(payload);
   if (!parsed.content) return;
+
+  // 如果正在保存，忽略远程更新
+  if (isSaving.value) return;
+
+  // 如果正在编辑，忽略远程更新（避免打断用户）
   if (isEditing.value) return;
-  if (parsed.updatedAt && parsed.updatedAt <= localUpdatedAt.value) return;
-  if (parsed.content !== localData.value) {
-    localData.value = parsed.content;
-    mode.value = parsed.mode;
-    localUpdatedAt.value = parsed.updatedAt || Date.now();
-  }
-};
 
-const scheduleBroadcast = () => {
-  if (!isBroadcasting.value || !store.isLogged) return;
-  if (broadcastTimer) clearTimeout(broadcastTimer);
-  broadcastTimer = setTimeout(() => {
-    if (!isBroadcasting.value || !store.isLogged) return;
-    const payload = buildPayload();
-    store.socket?.emit("memo:update", {
-      token: store.token || localStorage.getItem("flat-nas-token"),
-      widgetId: props.widget.id,
-      content: payload,
-    });
-  }, 300);
-};
+  // 如果内容相同，不更新
+  if (parsed.content === localData.value && parsed.mode === mode.value) return;
 
-const updateSyncMode = () => {
-  const active =
-    isEditing.value && Date.now() - lastInputAt.value <= ACTIVE_INPUT_WINDOW;
-  const targetInterval = isPageVisible.value ? POLL_ACTIVE_INTERVAL : POLL_IDLE_INTERVAL;
-  if (active) {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-      pollTimer = null;
-    }
-    isBroadcasting.value = true;
-  } else {
-    isBroadcasting.value = false;
-    if (!pollTimer) {
-      pollTimer = setInterval(pollRemote, targetInterval);
-    } else if (pollTimer && targetInterval !== currentPollInterval) {
-      clearInterval(pollTimer);
-      pollTimer = setInterval(pollRemote, targetInterval);
-    }
-  }
-  currentPollInterval = targetInterval;
+  // 应用远程更新
+  localData.value = parsed.content;
+  mode.value = parsed.mode;
+  localUpdatedAt.value = parsed.updatedAt || Date.now();
 };
 
 const handleInputActivity = () => {
   lastInputAt.value = Date.now();
-  updateSyncMode();
-  scheduleBroadcast();
+  // 用户输入时，通过Socket.IO广播更新
+  if (store.isLogged && store.socket) {
+    if (broadcastTimer) clearTimeout(broadcastTimer);
+    broadcastTimer = setTimeout(() => {
+      const payload = buildPayload();
+      store.socket?.emit("memo:update", {
+        token: store.token || localStorage.getItem("flat-nas-token"),
+        widgetId: props.widget.id,
+        content: payload,
+      });
+    }, 300);
+  }
 };
 
 const handleInnerWheel = (e: WheelEvent) => {
@@ -388,56 +399,24 @@ watch(historyVersions, () => {
   if (!exists) selectedVersionId.value = "new";
 });
 
-let pollTimer: ReturnType<typeof setInterval> | null = null;
-let idleCheckTimer: ReturnType<typeof setInterval> | null = null;
-let currentPollInterval = POLL_ACTIVE_INTERVAL;
-const handleVisibilityChange = () => {
-  isPageVisible.value = document.visibilityState === "visible";
-  updateSyncMode();
-};
-const pollRemote = async () => {
-  if (!store.isLogged || !store.isConnected || isEditing.value) return;
-  const id = props.widget.id;
-  if (!id) return;
-  if (import.meta.env.MODE === "test") return;
-  try {
-    const res = await fetch(`/api/widgets/${id}`, { headers: store.getHeaders() });
-    if (!res.ok) return;
-    const data = await res.json();
-    if (data?.data) {
-      applyRemotePayload(data.data);
-    }
-  } catch {
-    return;
-  }
-};
-
 onMounted(() => {
-  updateSyncMode();
-  idleCheckTimer = setInterval(updateSyncMode, 1000);
-  document.addEventListener("visibilitychange", handleVisibilityChange);
   document.addEventListener("pointerdown", handleDocPointerDown);
   refreshVersions();
 });
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer);
-  if (idleCheckTimer) clearInterval(idleCheckTimer);
   if (serverSaveTimer) clearTimeout(serverSaveTimer);
   if (autoSaveTimer) clearTimeout(autoSaveTimer);
   if (broadcastTimer) clearTimeout(broadcastTimer);
-  document.removeEventListener("visibilitychange", handleVisibilityChange);
   document.removeEventListener("pointerdown", handleDocPointerDown);
 });
 
 const handleFocus = () => {
   isEditing.value = true;
-  updateSyncMode();
 };
 
 const handleBlur = () => {
   isEditing.value = false;
-  updateSyncMode();
 };
 
 </script>

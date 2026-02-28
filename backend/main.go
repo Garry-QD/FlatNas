@@ -151,7 +151,11 @@ func main() {
 		api.GET("/docker-status", handlers.GetDockerStatus)                                        // Added Docker Status
 		api.GET("/docker/debug", handlers.GetDockerDebug)
 		api.GET("/config/proxy-status", handlers.GetProxyStatus)
-		api.GET("/widgets/:id", handlers.GetWidget) // Added Widget Data
+		api.GET("/widgets/:id", handlers.GetWidget) // Added Widget Data (deprecated, use version-controlled API)
+
+		// Version-controlled Widget API
+		api.GET("/widgets/v2/:id", middleware.AuthMiddleware(), handlers.GetWidgetWithVersion)   // 获取带版本号的 Widget
+		api.PUT("/widgets/v2/:id", middleware.AuthMiddleware(), handlers.SaveWidgetWithVersion) // 保存带版本号的 Widget
 
 		// Icon Routes
 		api.GET("/ali-icons", handlers.GetAliIcons)
