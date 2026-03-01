@@ -40,18 +40,20 @@ type Item struct {
 }
 
 type Widget struct {
-	ID       string                  `json:"id"`
-	Type     string                  `json:"type"`
-	Enable   bool                    `json:"enable"`
-	IsPublic bool                    `json:"isPublic"`
-	Data     any                     `json:"data"` // Flexible
-	Layouts  map[string]WidgetLayout `json:"layouts,omitempty"`
-	X        float64                 `json:"x,omitempty"`
-	Y        float64                 `json:"y,omitempty"`
-	W        float64                 `json:"w,omitempty"`
-	H        float64                 `json:"h,omitempty"`
-	ColSpan  float64                 `json:"colSpan,omitempty"`
-	RowSpan  float64                 `json:"rowSpan,omitempty"`
+	ID        string                  `json:"id"`
+	Type      string                  `json:"type"`
+	Enable    bool                    `json:"enable"`
+	IsPublic  bool                    `json:"isPublic"`
+	Data      any                     `json:"data"` // Flexible
+	Version   int                     `json:"version,omitempty"`   // 版本号，用于冲突检测
+	UpdatedAt int64                   `json:"updatedAt,omitempty"` // 更新时间戳
+	Layouts   map[string]WidgetLayout `json:"layouts,omitempty"`
+	X         float64                 `json:"x,omitempty"`
+	Y         float64                 `json:"y,omitempty"`
+	W         float64                 `json:"w,omitempty"`
+	H         float64                 `json:"h,omitempty"`
+	ColSpan   float64                 `json:"colSpan,omitempty"`
+	RowSpan   float64                 `json:"rowSpan,omitempty"`
 }
 
 type WidgetLayout struct {
