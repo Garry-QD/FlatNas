@@ -183,13 +183,15 @@ const isDomainInWhitelist = (hostname, whitelistStr) => {
 
 export const getNetworkConfig = (appConfig = {}, localForceNetworkMode) => {
   const internalDomains = typeof appConfig.internalDomains === "string" ? appConfig.internalDomains : "";
+  const networkRules = typeof appConfig.networkRules === "string" ? appConfig.networkRules : "";
+  const lanProbeTarget = typeof appConfig.lanProbeTarget === "string" ? appConfig.lanProbeTarget.trim() : "";
   const whitelistLatencyMode = appConfig.whitelistLatencyMode === true;
   const mode = typeof localForceNetworkMode === "string" ? localForceNetworkMode : "";
-  const forceNetworkMode = ["auto", "lan", "wan"].includes(mode) ? mode : "auto";
+  const forceNetworkMode = ["auto", "lan", "wan", "latency"].includes(mode) ? mode : "auto";
   const raw = appConfig.latencyThresholdMs;
   const base = typeof raw === "number" && Number.isFinite(raw) ? Math.trunc(raw) : 50;
   const latencyThresholdMs = Math.min(30000, Math.max(10, base));
-  return { internalDomains, whitelistLatencyMode, forceNetworkMode, latencyThresholdMs };
+  return { internalDomains, networkRules, lanProbeTarget, whitelistLatencyMode, forceNetworkMode, latencyThresholdMs };
 };
 
 export const computeEffectiveNetworkMode = (
@@ -197,9 +199,17 @@ export const computeEffectiveNetworkMode = (
   clientIp,
   clientIpSource,
   measuredLatencyMs,
-  { internalDomains = "", whitelistLatencyMode = false, forceNetworkMode = "auto", latencyThresholdMs = 50 } = {},
+  {
+    internalDomains = "",
+    networkRules = "",
+    whitelistLatencyMode = false,
+    forceNetworkMode = "auto",
+    latencyThresholdMs = 50,
+    lanProbeReachable = false,
+  } = {},
 ) => {
   const hostnameIntrinsicLan = isInternalNetwork(hostname, "", "");
+  const hostnameRuleLan = !!hostname && isInternalNetwork(hostname, "", networkRules);
   const canTrustClientIp = clientIpSource === "header";
   const clientIsLan = canTrustClientIp && !!clientIp && isInternalNetwork(clientIp, "", "");
   const latencyBasedLan = Number.isFinite(measuredLatencyMs) && measuredLatencyMs > 0 && measuredLatencyMs <= latencyThresholdMs;
@@ -211,6 +221,8 @@ export const computeEffectiveNetworkMode = (
 
   // 域名本身是内网地址
   if (hostnameIntrinsicLan) return { isLan: true, reason: "hostname_intrinsic", measuredLatencyMs };
+  if (hostnameRuleLan) return { isLan: true, reason: "hostname_rule", measuredLatencyMs };
+  if (lanProbeReachable) return { isLan: true, reason: "lan_probe", measuredLatencyMs };
 
   // 白名单域名：启用延迟判定时根据延迟判定，未启用则直接判定为外网
   if (isInWhitelist) {

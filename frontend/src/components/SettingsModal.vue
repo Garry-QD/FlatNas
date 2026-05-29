@@ -3716,9 +3716,8 @@ watch(activeTab, (val) => {
                   >注</span
                 >
                 <p class="text-xs text-gray-600 leading-relaxed">
-                  输入域名白名单（每行一个域名）。访问白名单域名时，会根据延迟自动判定：
-                  <b>延迟低 = 内网</b>，<b>延迟高 = 外网</b>。
-                  不在白名单中的域名会直接判定为外网。
+                  这里可以配置域名白名单、内网探测地址和游客是否可拿到内网地址。
+                  默认情况下，游客响应里不会返回任何 `lanUrl` / 备用内网地址，只有显式开启后才会返回。
                 </p>
               </div>
 
@@ -3731,6 +3730,40 @@ watch(activeTab, (val) => {
                   class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-gray-900 outline-none font-mono"
                   placeholder="每行一个域名（如 hp.fnos996.top 或 fnos996.top）"
                 ></textarea>
+              </div>
+
+              <div class="space-y-2">
+                <label class="block text-sm font-medium text-gray-700">内网探测地址 / 网关</label>
+                <input
+                  v-model="store.appConfig.lanProbeTarget"
+                  @change="store.markDirty()"
+                  type="text"
+                  class="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:border-gray-900 outline-none font-mono"
+                  placeholder="例如：192.168.1.1、nas.local 或 https://nas.local/"
+                />
+                <p class="text-[11px] text-gray-500">
+                  浏览器会直接尝试访问这个地址；当前客户端能访问成功时，优先判定为内网。留空则关闭这条判定。
+                </p>
+              </div>
+
+              <div class="flex items-start justify-between gap-4 rounded-lg border border-gray-200 bg-white px-3 py-3">
+                <div class="min-w-0">
+                  <div class="text-sm font-medium text-gray-700">游客访问内网地址</div>
+                  <p class="mt-1 text-[11px] leading-relaxed text-gray-500">
+                    关闭时，未登录用户拿不到任何 `lanUrl` / 备用内网地址；开启后，游客也会收到公开项目的内网地址并可直接访问。
+                  </p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    v-model="store.appConfig.allowGuestLanAccess"
+                    type="checkbox"
+                    class="sr-only peer"
+                    @change="store.markDirty()"
+                  />
+                  <div
+                    class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 peer-checked:after:translate-x-full after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-300 after:rounded-full after:h-5 after:w-5 after:transition-all"
+                  ></div>
+                </label>
               </div>
             </div>
 

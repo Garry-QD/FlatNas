@@ -24,17 +24,10 @@ export const useConfigStore = defineStore("config", () => {
 
   // Version / update checking
   const currentVersion = "1.2.6";
-  const latestVersion = ref("");
   const dockerUpdateAvailable = ref(false);
-  const updateCheckLastAt = useStorage<number>("flat-nas-update-check-last-at", 0);
-  const UPDATE_CHECK_TTL = 30 * 60 * 1000;
 
   const hasUpdate = computed(() => {
-    if (dockerUpdateAvailable.value) return true;
-    if (!latestVersion.value) return false;
-    const v1 = currentVersion.replace(/^v/, "");
-    const v2 = latestVersion.value.replace(/^v/, "");
-    return v1 !== v2;
+    return dockerUpdateAvailable.value;
   });
 
   // Resource version for cache busting
@@ -137,7 +130,10 @@ export const useConfigStore = defineStore("config", () => {
     customJsDisclaimerAgreed: false,
     mouseHoverEffect: "scale",
     autoUltrawide: false,
+    internalDomains: "",
     networkRules: "",
+    lanProbeTarget: "",
+    allowGuestLanAccess: false,
     networkPresets: {
       tailscale: false,
       zerotier: false,
@@ -146,6 +142,7 @@ export const useConfigStore = defineStore("config", () => {
       ngrok: false,
     },
     latencyThresholdMs: 200,
+    whitelistLatencyMode: false,
   });
 
   const systemConfig = ref<SystemConfig>({
@@ -163,28 +160,6 @@ export const useConfigStore = defineStore("config", () => {
   const isServerSyncLocked = computed(() => serverSyncLockCount.value > 0);
 
   const checkUpdate = async (force = false) => {
-    try {
-      const now = Date.now();
-      const shouldCheckRemote =
-        force ||
-        !updateCheckLastAt.value ||
-        now - updateCheckLastAt.value >= UPDATE_CHECK_TTL ||
-        !latestVersion.value;
-
-      if (shouldCheckRemote) {
-        updateCheckLastAt.value = now;
-        const res = await fetch("https://gitee.com/api/v5/repos/gjx0808/FlatNas/tags");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.length > 0) {
-            latestVersion.value = data[0].name;
-          }
-        }
-      }
-    } catch (e) {
-      console.error("Failed to check update", e);
-    }
-
     if (!systemConfig.value.enableDocker) {
       dockerUpdateAvailable.value = false;
       return;
@@ -245,10 +220,8 @@ export const useConfigStore = defineStore("config", () => {
     weatherNetworkStatus,
     isPageUnloading,
     currentVersion,
-    latestVersion,
     dockerUpdateAvailable,
     hasUpdate,
-    updateCheckLastAt,
     resourceVersion,
     checkUpdate,
     refreshResources,

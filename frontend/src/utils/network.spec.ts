@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyNetworkTarget, isInternalNetwork } from "./network";
+import { classifyNetworkTarget, computeEffectiveNetworkMode, getNetworkConfig, isInternalNetwork } from "./network";
 
 describe("network rules: ip:", () => {
   it("matches ip prefix with trailing dot", () => {
@@ -19,6 +19,48 @@ describe("network rules: ip:", () => {
 
   it("does not match domains", () => {
     expect(classifyNetworkTarget("example.com", "ip:11.22.", "")).toBe("wan");
+  });
+});
+
+describe("getNetworkConfig", () => {
+  it("returns network rules, probe target, and latency mode", () => {
+    expect(
+      getNetworkConfig(
+        {
+          internalDomains: "a.example.com",
+          networkRules: "domain_suffix:corp.local",
+          lanProbeTarget: " http://192.168.1.1 ",
+          whitelistLatencyMode: true,
+          latencyThresholdMs: 123,
+        },
+        "latency",
+      ),
+    ).toEqual({
+      internalDomains: "a.example.com",
+      networkRules: "domain_suffix:corp.local",
+      lanProbeTarget: "http://192.168.1.1",
+      whitelistLatencyMode: true,
+      forceNetworkMode: "latency",
+      latencyThresholdMs: 123,
+    });
+  });
+});
+
+describe("computeEffectiveNetworkMode", () => {
+  it("treats successful LAN probe as intranet", () => {
+    expect(
+      computeEffectiveNetworkMode("flatnas.example.com", "", "", 0, {
+        lanProbeReachable: true,
+      }),
+    ).toMatchObject({ isLan: true, reason: "lan_probe" });
+  });
+
+  it("treats hostname matched by network rules as intranet", () => {
+    expect(
+      computeEffectiveNetworkMode("panel.corp.local", "", "", 0, {
+        networkRules: "domain_suffix:corp.local",
+      }),
+    ).toMatchObject({ isLan: true, reason: "hostname_rule" });
   });
 });
 

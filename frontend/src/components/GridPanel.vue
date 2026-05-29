@@ -443,6 +443,8 @@ watch(showGroupSettingsModal, (val) => {
 const isLanMode = ref(false);
 const latency = ref(0);
 const isChecking = ref(false);
+const isCheckingLanProbe = ref(false);
+const lanProbeReachable = ref(false);
 const networkScope = typeof window !== "undefined" ? window.location.hostname : "default";
 const networkConfig = computed(() => getNetworkConfig(store.appConfig, store.forceNetworkMode));
 const forceMode = computed({
@@ -455,20 +457,36 @@ const latencyThresholdMs = computed(() => networkConfig.value.latencyThresholdMs
 const lastKnownClientIp = ref("");
 const lastKnownClientIpSource = ref("");
 
+const resolveNetworkMode = (
+  hostname: string,
+  clientIp: string,
+  clientIpSource: string,
+  measuredLatencyMs: number,
+) => {
+  const cfg = networkConfig.value;
+  return computeEffectiveNetworkMode(
+    hostname,
+    clientIp,
+    clientIpSource,
+    measuredLatencyMs,
+    {
+      internalDomains: cfg.internalDomains,
+      networkRules: cfg.networkRules,
+      whitelistLatencyMode: cfg.whitelistLatencyMode,
+      forceNetworkMode: cfg.forceNetworkMode,
+      latencyThresholdMs: cfg.latencyThresholdMs,
+      lanProbeReachable: lanProbeReachable.value,
+    },
+  );
+};
+
 const effectiveIsLan = computed(() => {
   if (!store.isLanModeInited) return false;
-  const cfg = networkConfig.value;
-  const result = computeEffectiveNetworkMode(
+  const result = resolveNetworkMode(
     window.location.hostname,
     lastKnownClientIp.value,
     lastKnownClientIpSource.value,
     latency.value,
-    {
-      internalDomains: cfg.internalDomains,
-      networkRules: cfg.networkRules,
-      forceNetworkMode: cfg.forceNetworkMode,
-      latencyThresholdMs: cfg.latencyThresholdMs,
-    },
   );
   return result.isLan;
 });
@@ -1228,10 +1246,81 @@ const fetchWithTimeout = (input: RequestInfo | URL, init: RequestInit = {}, time
   });
 };
 
+const buildLanProbeCandidates = (target: string) => {
+  const raw = target.trim();
+  if (!raw) return [];
+
+  const candidates = new Set<string>();
+  const pushCandidate = (value: string) => {
+    const next = value.trim();
+    if (!next) return;
+    candidates.add(next);
+  };
+
+  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(raw)) {
+    pushCandidate(raw);
+  } else if (raw.startsWith("//")) {
+    pushCandidate(`${window.location.protocol}${raw}`);
+  } else {
+    const hostLike = raw.replace(/^\/+/, "");
+    const preferredScheme = window.location.protocol === "https:" ? "https://" : "http://";
+    pushCandidate(`${preferredScheme}${hostLike}`);
+    pushCandidate(`https://${hostLike}`);
+    if (window.location.protocol !== "https:") {
+      pushCandidate(`http://${hostLike}`);
+    }
+  }
+
+  return Array.from(candidates);
+};
+
+const probeLanTargetInBrowser = async (target: string) => {
+  const candidates = buildLanProbeCandidates(target);
+  for (const candidate of candidates) {
+    try {
+      const url = new URL(candidate);
+      url.searchParams.set("_flatnas_probe", String(Date.now()));
+      await fetchWithTimeout(
+        url.toString(),
+        {
+          method: "GET",
+          mode: "no-cors",
+          cache: "no-store",
+          credentials: "omit",
+        },
+        1500,
+      );
+      return true;
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return false;
+};
+
+const checkLanProbe = async () => {
+  const target = networkConfig.value.lanProbeTarget;
+  if (!target) {
+    lanProbeReachable.value = false;
+    return false;
+  }
+  if (isCheckingLanProbe.value) return lanProbeReachable.value;
+
+  try {
+    isCheckingLanProbe.value = true;
+    lanProbeReachable.value = await probeLanTargetInBrowser(target);
+  } finally {
+    isCheckingLanProbe.value = false;
+  }
+
+  return lanProbeReachable.value;
+};
+
 const checkLatency = async () => {
   try {
     if (isChecking.value) return;
     isChecking.value = true;
+    await checkLanProbe();
     const samples: number[] = [];
     for (let i = 0; i < 2; i++) {
       const start = performance.now();
@@ -1255,18 +1344,11 @@ const checkLatency = async () => {
     latency.value = samples.length > 0 ? Math.min(...samples) : 0;
 
     if (latency.value > 0) {
-      const cfg = networkConfig.value;
-      const result = computeEffectiveNetworkMode(
+      const result = resolveNetworkMode(
         window.location.hostname,
         lastKnownClientIp.value,
         lastKnownClientIpSource.value,
         latency.value,
-        {
-          internalDomains: cfg.internalDomains,
-          networkRules: cfg.networkRules,
-          forceNetworkMode: cfg.forceNetworkMode,
-          latencyThresholdMs: cfg.latencyThresholdMs,
-        },
       );
       isLanMode.value = result.isLan;
     }
@@ -1280,18 +1362,11 @@ watch(forceMode, (val) => {
     checkLatency();
   }
   if (store.isLanModeInited) {
-    const cfg = networkConfig.value;
-    const result = computeEffectiveNetworkMode(
+    const result = resolveNetworkMode(
       window.location.hostname,
       lastKnownClientIp.value,
       lastKnownClientIpSource.value,
       latency.value,
-      {
-        internalDomains: cfg.internalDomains,
-        networkRules: cfg.networkRules,
-        forceNetworkMode: cfg.forceNetworkMode,
-        latencyThresholdMs: cfg.latencyThresholdMs,
-      },
     );
     isLanMode.value = result.isLan;
   }
@@ -1300,36 +1375,38 @@ watch(latencyThresholdMs, () => {
   if (forceMode.value === "latency") {
     checkLatency();
   } else if (store.isLanModeInited) {
-    const cfg = networkConfig.value;
-    const result = computeEffectiveNetworkMode(
+    const result = resolveNetworkMode(
       window.location.hostname,
       lastKnownClientIp.value,
       lastKnownClientIpSource.value,
       latency.value,
-      {
-        internalDomains: cfg.internalDomains,
-        networkRules: cfg.networkRules,
-        forceNetworkMode: cfg.forceNetworkMode,
-        latencyThresholdMs: cfg.latencyThresholdMs,
-      },
     );
     isLanMode.value = result.isLan;
   }
 });
 
+watch(
+  () => networkConfig.value.lanProbeTarget,
+  async () => {
+    await checkLanProbe();
+    if (store.isLanModeInited) {
+      const result = resolveNetworkMode(
+        window.location.hostname,
+        lastKnownClientIp.value,
+        lastKnownClientIpSource.value,
+        latency.value,
+      );
+      isLanMode.value = result.isLan;
+    }
+  },
+);
+
 onMounted(() => {
-  const cfg = networkConfig.value;
-  const initialResult = computeEffectiveNetworkMode(
+  const initialResult = resolveNetworkMode(
     window.location.hostname,
     "",
     "",
     0,
-    {
-      internalDomains: cfg.internalDomains,
-      networkRules: cfg.networkRules,
-      forceNetworkMode: cfg.forceNetworkMode,
-      latencyThresholdMs: cfg.latencyThresholdMs,
-    },
   );
   isLanMode.value = initialResult.isLan;
   setTimeout(() => checkLatency(), 2000);
@@ -1580,16 +1657,8 @@ const handleCardClick = (item: NavItem) => {
 
   // effectiveIsLan 已经封装了 forceMode (LAN/WAN/Latency/Auto) 的所有判断逻辑
   // 直接使用它可以保证 UI 状态（是否显示内网标识）与实际跳转逻辑的一致性
-  if (store.isLogged && effectiveIsLan.value && item.lanUrl) {
+  if (effectiveIsLan.value && item.lanUrl) {
     targetUrl = item.lanUrl;
-  }
-
-  // 特殊情况：如果解析出的 targetUrl 为空（说明没有外网链接），
-  // 但存在内网链接（说明是因为未登录被降级了，或者是压根没配外网链接）
-  // 此时如果用户未登录，则拦截并提示登录。
-  if (!targetUrl && item.lanUrl && !store.isLogged) {
-    showLoginModal.value = true;
-    return;
   }
 
   // 如果确实没有链接可跳，则不做反应
@@ -2308,12 +2377,6 @@ const handleMenuLanOpen = () => {
 
   if (!item || !item.lanUrl) return;
 
-  // 内网访问依然需要登录权限
-  if (!store.isLogged) {
-    showLoginModal.value = true;
-    return;
-  }
-
   window.open(item.lanUrl, "_blank");
 };
 
@@ -2631,18 +2694,12 @@ const fetchIp = async (force = false) => {
           ipInfo.value = data;
           lastKnownClientIp.value = data?.clientIp || "";
           lastKnownClientIpSource.value = data?.clientIpSource || "";
-          const cfg = networkConfig.value;
-          const result = computeEffectiveNetworkMode(
+          await checkLanProbe();
+          const result = resolveNetworkMode(
             window.location.hostname,
             lastKnownClientIp.value,
             lastKnownClientIpSource.value,
             latency.value,
-            {
-              internalDomains: cfg.internalDomains,
-              networkRules: cfg.networkRules,
-              forceNetworkMode: cfg.forceNetworkMode,
-              latencyThresholdMs: cfg.latencyThresholdMs,
-            },
           );
           isLanMode.value = result.isLan;
           store.ipFetchStatus = "success";
@@ -2698,18 +2755,12 @@ const fetchIp = async (force = false) => {
       lastKnownClientIp.value = ipInfo.value.clientIp;
       lastKnownClientIpSource.value = ipInfo.value.clientIpSource;
 
-      const cfg = networkConfig.value;
-      const result = computeEffectiveNetworkMode(
+      await checkLanProbe();
+      const result = resolveNetworkMode(
         window.location.hostname,
         lastKnownClientIp.value,
         lastKnownClientIpSource.value,
         latency.value,
-        {
-          internalDomains: cfg.internalDomains,
-          networkRules: cfg.networkRules,
-          forceNetworkMode: cfg.forceNetworkMode,
-          latencyThresholdMs: cfg.latencyThresholdMs,
-        },
       );
       isLanMode.value = result.isLan;
       store.ipFetchStatus = "success";

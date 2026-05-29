@@ -406,6 +406,13 @@ func GetData(c *gin.Context) {
 
 	filterStart := time.Now()
 	if isGuest {
+		allowGuestLanAccess := false
+		if appConfig, ok := userData["appConfig"].(map[string]interface{}); ok {
+			if v, ok := appConfig["allowGuestLanAccess"].(bool); ok && v {
+				allowGuestLanAccess = true
+			}
+		}
+
 		// Filter public items manually in the map structure
 		// This is tricky with untyped map, but necessary to preserve data integrity
 		if groups, ok := userData["groups"].([]interface{}); ok {
@@ -445,12 +452,15 @@ func GetData(c *gin.Context) {
 			userData["widgets"] = filteredWidgets
 		}
 
-		sensitiveKeys := map[string]struct{}{
-			"lanUrl":        {},
-			"backupLanUrls": {},
-			"lanHost":       {},
+		if !allowGuestLanAccess {
+			sensitiveKeys := map[string]struct{}{
+				"lanUrl":             {},
+				"backupLanUrls":      {},
+				"lanHost":            {},
+				"lanProbeTarget":     {},
+			}
+			removeSensitiveFields(userData, sensitiveKeys)
 		}
-		removeSensitiveFields(userData, sensitiveKeys)
 	}
 	filterMs := time.Since(filterStart).Milliseconds()
 
