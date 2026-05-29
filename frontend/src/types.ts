@@ -111,6 +111,8 @@ export interface AppConfig {
   weatherEffectEnabled?: boolean;
   internalDomains?: string;
   networkRules?: string;
+  lanProbeTarget?: string;
+  allowGuestLanAccess?: boolean;
   networkPresets?: {
     tailscale?: boolean;
     zerotier?: boolean;

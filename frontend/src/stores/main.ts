@@ -90,7 +90,6 @@ export const useMainStore = defineStore("main", () => {
   const weatherNetworkStatus = computed(() => configStore.weatherNetworkStatus);
   const detectWeatherNetworkStatus = networkStore.detectWeatherNetworkStatus;
   const currentVersion = computed(() => configStore.currentVersion);
-  const latestVersion = computed(() => configStore.latestVersion);
   const hasUpdate = computed(() => configStore.hasUpdate);
   const checkUpdate = configStore.checkUpdate;
   const refreshResources = configStore.refreshResources;
@@ -292,7 +291,6 @@ export const useMainStore = defineStore("main", () => {
     weatherNetworkStatus,
     detectWeatherNetworkStatus,
     currentVersion,
-    latestVersion,
     hasUpdate,
     checkUpdate,
     refreshResources,
