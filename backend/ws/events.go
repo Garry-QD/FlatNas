@@ -107,16 +107,26 @@ func BroadcastMemoUpdated(manager *WSManager, username string, widgetID string, 
 }
 
 // BroadcastDataUpdated REST API 保存数据后通过 WebSocket 广播
-func BroadcastDataUpdated(manager *WSManager, username string, version int64) {
+func BroadcastDataUpdated(manager *WSManager, username string, version int64, changedWidgets []string, deletedWidgets []string, structureChanged bool) {
 	if manager == nil {
 		return
 	}
+	payload := map[string]interface{}{
+		"username": username,
+		"version":  version,
+	}
+	if len(changedWidgets) > 0 {
+		payload["changedWidgets"] = changedWidgets
+	}
+	if len(deletedWidgets) > 0 {
+		payload["deletedWidgets"] = deletedWidgets
+	}
+	if structureChanged {
+		payload["structureChanged"] = true
+	}
 	replyMsg, _ := json.Marshal(map[string]interface{}{
-		"type": "data_updated",
-		"payload": map[string]interface{}{
-			"username": username,
-			"version":  version,
-		},
+		"type":    "data_updated",
+		"payload": payload,
 	})
 	manager.BroadcastToUser(username, replyMsg, "")
 }
@@ -130,8 +140,8 @@ func (b *WSBroadcaster) BroadcastMemo(username string, widgetID string, content 
 	BroadcastMemoUpdated(b.Manager, username, widgetID, content)
 }
 
-func (b *WSBroadcaster) BroadcastData(username string, version int64) {
-	BroadcastDataUpdated(b.Manager, username, version)
+func (b *WSBroadcaster) BroadcastData(username string, version int64, changedWidgets []string, deletedWidgets []string, structureChanged bool) {
+	BroadcastDataUpdated(b.Manager, username, version, changedWidgets, deletedWidgets, structureChanged)
 }
 
 func (b *WSBroadcaster) BroadcastTodo(username string, widgetID string, content interface{}) {

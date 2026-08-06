@@ -2,8 +2,10 @@ import "./assets/main.css";
 import "./assets/grid-layout.css";
 import { createApp } from "vue";
 import { createPinia } from "pinia";
+import { createAppI18n } from "./plugins/i18n";
 import App from "./App.vue";
 import { useMainStore } from "./stores/main";
+import { useI18nStore } from "./stores/i18n";
 import { attachErrorCapture, ensureOverlayHandled } from "./utils/overlay";
 import { installFetchUrlPatch } from "./utils/runtimeUrls";
 import { installNetworkFetchPatch } from "./utils/networkFetch";
@@ -26,8 +28,15 @@ installNetworkFetchPatch();
 
 const app = createApp(App);
 const pinia = createPinia();
+const i18n = createAppI18n();
 
 app.use(pinia);
+app.use(i18n);
+
+// 初始化 i18n 语言设置
+const i18nStore = useI18nStore();
+i18nStore.initLocale();
+
 app.mount("#app");
 
 const bootstrap = async () => {

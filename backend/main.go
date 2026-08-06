@@ -98,6 +98,7 @@ func trimBasePath(basePath, reqPath string) string {
 	return reqPath
 }
 
+
 func main() {
 	fmt.Println("Backend process started")
 	gin.SetMode(gin.ReleaseMode)
@@ -355,6 +356,7 @@ func main() {
 			authorized.POST("/save", handlers.SaveData) // Added SaveData
 			authorized.PUT("/memo/:id", handlers.SaveMemo)
 			authorized.PUT("/widgets/:id", handlers.SaveSingleWidget)      // Phase 3: Fine-grained widget save
+			authorized.POST("/widgets/batch", handlers.GetWidgetsBatch)    // Delta Push: batch widget query
 			authorized.POST("/system-config", handlers.UpdateSystemConfig) // Added SystemConfig Update
 			authorized.POST("/data/import", handlers.ImportData)           // Added ImportData
 			authorized.POST("/default/save", handlers.SaveDefault)

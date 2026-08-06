@@ -455,9 +455,25 @@ func uploadBackground(c *gin.Context, dir string, webPrefix string) {
 	if dir == config.MobileBackgroundsDir {
 		targetMeta = store.MobileBackgrounds
 	}
+	// Step 1: validate all files before touching disk (avoid partial writes)
 	for _, file := range files {
-		ext := filepath.Ext(file.Filename)
-		filename := fmt.Sprintf("custom_%d%s", time.Now().UnixMilli(), ext)
+		if !isSupportedWallpaperFile(file.Filename) {
+			assetMetaMu.Unlock()
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(
+				"Unsupported file type: %s (supported: jpg, jpeg, png, gif, webp, svg)",
+				file.Filename,
+			)})
+			return
+		}
+	}
+	for i, file := range files {
+		ext := strings.ToLower(filepath.Ext(file.Filename))
+		ts := time.Now().UnixMilli()
+		suffix := ""
+		if i > 0 {
+			suffix = fmt.Sprintf("_%d", i)
+		}
+		filename := fmt.Sprintf("custom_%d%s%s", ts, suffix, ext)
 		if err := c.SaveUploadedFile(file, filepath.Join(dir, filename)); err != nil {
 			assetMetaMu.Unlock()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save " + filename})

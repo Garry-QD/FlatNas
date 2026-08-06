@@ -9,12 +9,12 @@ const emit = defineEmits<{
 const commands = [
   { 
     cmd: 'bold', 
-    label: 'Bold', 
+    label: '粗体', 
     icon: '<path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4h-1v4h1a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6V4zm5 6h3a2 2 0 0 0 0-4h-3v4zm0 8h3a2 2 0 0 0 0-4h-3v4z"/>' 
   },
   { 
     cmd: 'italic', 
-    label: 'Italic', 
+    label: '斜体', 
     icon: '<path d="M10 4v3h2.21l-3.42 8H6v3h8v-3h-2.21l3.42-8H18V4z"/>' 
   },
   { separator: true },
@@ -33,19 +33,19 @@ const commands = [
   { separator: true },
   { 
     cmd: 'insertUnorderedList', 
-    label: 'List', 
+    label: '列表', 
     icon: '<path d="M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z"/>'
   },
   { 
     cmd: 'formatBlock', 
     val: 'PRE', 
-    label: 'Code', 
+    label: '代码', 
     icon: '<path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/>'
   },
   { 
     cmd: 'formatBlock', 
     val: 'BLOCKQUOTE', 
-    label: 'Quote', 
+    label: '引用', 
     icon: '<path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/>'
   }
 ];

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { useMainStore } from "../stores/main";
 
 // 生成唯一ID，避免多个组件实例间clipPath冲突
@@ -27,7 +27,6 @@ const imgGeometry = computed(() => {
 
 const isImg = computed(() => {
   const s = props.icon || "";
-  // 支持 http, data:image, blob: 以及包含 / 或 . 的本地路径，排除 SVG 代码
   return (
     !!s &&
     (s.startsWith("http") ||
@@ -45,6 +44,39 @@ const finalIcon = computed(() => {
     return store.getAssetUrl(icon);
   }
   return icon;
+});
+
+// --- 图片加载错误处理 ---
+const imgLoadError = ref(false);
+
+// 当 icon 变化时重置错误状态
+watch(
+  () => props.icon,
+  () => {
+    imgLoadError.value = false;
+  },
+);
+
+const onImageError = (_event: Event) => {
+  if (!imgLoadError.value) {
+    imgLoadError.value = true;
+    console.warn("[IconShape] 图标加载失败，回退到文字显示:", finalIcon.value);
+  }
+};
+
+/** 从图标 URL 提取回退文字（取文件名首字符或 emoji） */
+const fallbackText = computed(() => {
+  const icon = props.icon || "";
+  // 尝试从 URL 路径提取文件名
+  try {
+    const parts = icon.split("/");
+    const last = parts[parts.length - 1] || icon;
+    const name = last.split(".")[0] || last;
+    if (name && name.length > 0) return name.slice(0, 2).toUpperCase();
+  } catch {
+    // ignore
+  }
+  return "?";
 });
 
 const isSvg = computed(() => {
@@ -127,15 +159,31 @@ const pathD = computed(() => {
           :style="fillStyle"
         />
 
-        <image
-          v-if="isImg"
-          :href="finalIcon"
-          :x="imgGeometry.x"
-          :y="imgGeometry.y"
-          :width="imgGeometry.width"
-          :height="imgGeometry.height"
-          preserveAspectRatio="xMidYMid slice"
-        />
+        <!-- 图片图标：加载成功显示图片，失败则回退到文字 -->
+        <template v-if="isImg && !imgLoadError">
+          <image
+            :href="finalIcon"
+            :x="imgGeometry.x"
+            :y="imgGeometry.y"
+            :width="imgGeometry.width"
+            :height="imgGeometry.height"
+            preserveAspectRatio="xMidYMid slice"
+            @error="onImageError"
+          />
+        </template>
+        <!-- 图片加载失败回退文字 -->
+        <text
+          v-else-if="isImg && imgLoadError"
+          x="50"
+          y="55"
+          text-anchor="middle"
+          dominant-baseline="middle"
+          :font-size="sizePx * 0.4"
+          font-family="system-ui"
+          fill="#999"
+        >
+          {{ fallbackText }}
+        </text>
         <foreignObject v-else-if="isSvg" x="0" y="0" width="100" height="100">
           <div
             v-html="finalIcon"

@@ -160,4 +160,7 @@ docs/
 .fnsync_temp_dir
 .github
 .vscode
+.zcode
+.qodo
+gui-test-screenshots
 LOG.md

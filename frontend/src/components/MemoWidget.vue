@@ -129,7 +129,7 @@ const triggerSave = async () => {
   await refreshVersions();
   if (status.value === "success") {
     // Triple Feedback 2: Toast
-    toastMessage.value = "已保存，刷新不丢失";
+    toastMessage.value = "已保存，刷新不丢失";  // 已本地化
     showToast.value = true;
     setTimeout(() => (showToast.value = false), 3000);
   }
@@ -137,6 +137,18 @@ const triggerSave = async () => {
 };
 
 const toggleMode = () => {
+  if (mode.value === "rich") {
+    // rich → simple: strip HTML tags, keep plain text
+    const tmp = document.createElement("div");
+    tmp.innerHTML = localData.value;
+    localData.value = tmp.textContent || tmp.innerText || "";
+  } else {
+    // simple → rich: wrap plain text lines in <p> tags if not already HTML
+    const text = localData.value;
+    if (text && !/<[a-z][\s\S]*>/i.test(text)) {
+      localData.value = text.split("\n").map((line) => `<p>${line || "<br>"}</p>`).join("");
+    }
+  }
   mode.value = mode.value === "simple" ? "rich" : "simple";
   saveToServer(true);
 };
@@ -873,9 +885,26 @@ loadFromIndexedDB().then(async () => {
      } else {
         const d = props.widget.data as { rich?: string; simple?: string; mode?: "simple" | "rich"; server_ts?: number; updatedAt?: number };
         localData.value = d.rich || d.simple || "";
-        mode.value = d.mode || "simple";
+        // Auto-detect mode: use saved mode if present, otherwise infer from content shape
+        const looksLikeHtml = localData.value && /<[a-z][\s\S]*>/i.test(localData.value);
+        if (d.mode === "rich") {
+          mode.value = "rich";
+        } else if (d.mode === "simple" && looksLikeHtml) {
+          // Dirty data fix: mode says simple but content is HTML (from old toggleMode bug)
+          // Switch to rich to render properly instead of showing raw tags
+          mode.value = "rich";
+        } else if (!d.mode && looksLikeHtml) {
+          mode.value = "rich";
+        } else {
+          mode.value = "simple";
+        }
         serverTs.value = typeof d.server_ts === "number" ? d.server_ts : (typeof d.updatedAt === "number" ? d.updatedAt : 0);
      }
+  }
+  // Dirty data fix: if IndexedDB or widget.data loaded HTML content with mode="simple",
+  // auto-correct to "rich" so the contenteditable renders it instead of showing raw tags
+  if (mode.value === "simple" && localData.value && /<[a-z][\s\S]*>/i.test(localData.value)) {
+    mode.value = "rich";
   }
   await refreshVersions();
 });
@@ -988,7 +1017,7 @@ onUnmounted(() => {
     <div 
       class="absolute top-0 left-0 w-3 h-3 cursor-pointer z-50 overflow-hidden group/curl"
       @click="toggleMode"
-      title="切换模式 (Switch Mode)"
+      title="切换模式"
     >
       <!-- The shadow of the curl -->
       <div class="absolute top-0 left-0 w-0 h-0 border-t-[12px] border-r-[12px] border-t-white/0 border-r-black/20 transform translate-x-0.5 translate-y-0.5 blur-[1px] transition-all duration-300 group-hover/curl:scale-105"></div>
@@ -1079,7 +1108,7 @@ onUnmounted(() => {
           status === 'saving' ? 'opacity-70 cursor-wait' : ''
         ]"
         :disabled="status === 'saving'"
-        title="保存 (Save)"
+        title="保存"
       >
         <svg v-if="status === 'success'" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />

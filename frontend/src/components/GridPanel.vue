@@ -17,6 +17,7 @@ import { useStorage, useWindowSize, useIntervalFn } from "@vueuse/core";
 import { useMainStore } from "../stores/main";
 import { useWallpaperRotation } from "../composables/useWallpaperRotation";
 import { useDevice } from "../composables/useDevice";
+import { useIconPreloader } from "../composables/useIconPreloader";
 import { generateLayout, type GridLayoutItem } from "../utils/gridLayout";
 import type { NavItem, WidgetConfig, NavGroup } from "@/types";
 import OverlayMotion from "@/components/base/OverlayMotion.vue";
@@ -1355,6 +1356,41 @@ watch(
     gridPostInitReady = true;
     store.cleanInvalidGroups();
     normalizeDivCardWidgets();
+  },
+  { immediate: true },
+);
+
+// --- 图标预加载：首次数据加载完成后，缓存远程图标到本地 ---
+const iconPreloader = useIconPreloader();
+let iconPreloadDone = false;
+watch(
+  () => [store.isClientReady, store.items, store.widgets] as const,
+  ([ready, items, widgets]) => {
+    if (!ready || iconPreloadDone) return;
+    const allItems = [
+      ...items,
+      // 也收集 widgets 中的数据（如 bookmarks 子项）
+      ...widgets.flatMap((w) => {
+        if (!w.data || !Array.isArray(w.data)) return [];
+        return w.data.flatMap((entry: unknown) => {
+          if (entry && typeof entry === "object" && Array.isArray((entry as Record<string, unknown>).children)) {
+            return ((entry as Record<string, unknown>).children as NavItem[]) || [];
+          }
+          return [];
+        });
+      }),
+    ];
+    if (allItems.length === 0) return;
+    iconPreloadDone = true;
+    // 异步预加载，不阻塞 UI 渲染
+    iconPreloader.preloadIcons(items, widgets).then(() => {
+      // 将已缓存的图标路径回写到 items
+      const replaced = iconPreloader.applyCachedIcons(items);
+      if (replaced > 0) {
+        // 响应式更新：强制 Vue 重新渲染
+        store.markDirty();
+      }
+    });
   },
   { immediate: true },
 );

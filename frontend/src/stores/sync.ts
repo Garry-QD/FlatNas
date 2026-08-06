@@ -67,10 +67,23 @@ export const useSyncStore = defineStore("sync", () => {
       onConnected: (ws) => {
         if (ws?.url) trackWsUrlChange(ws.url);
         wsContinuousFailures = 0;
+        rapidDisconnectCount = 0;
         networkStore.markFresh();
       },
       onDisconnected: () => {
         wsContinuousFailures++;
+        // Rapid failure detection: if 3+ disconnects within 5s, WS is likely blocked by proxy
+        const now = Date.now();
+        if (now - lastDisconnectTime < 5000) {
+          rapidDisconnectCount++;
+          if (rapidDisconnectCount >= 3 && auth.isLogged && !isHttpPollingActive) {
+            console.warn("[WS] Rapid failures detected (proxy env?), starting HTTP polling immediately");
+            startHttpPolling();
+          }
+        } else {
+          rapidDisconnectCount = 1;
+        }
+        lastDisconnectTime = now;
         if (wsContinuousFailures > 6) {
           console.warn(`[WS] ${wsContinuousFailures} consecutive disconnections, scheduling immediate sync`);
           setTimeout(() => fetchAndProcessData(), 0);
@@ -78,6 +91,10 @@ export const useSyncStore = defineStore("sync", () => {
       },
     },
   );
+
+  // Rapid failure detection for proxy environments where WS upgrade is unsupported
+  let rapidDisconnectCount = 0;
+  let lastDisconnectTime = 0;
 
   let wsHealthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -359,6 +376,45 @@ export const useSyncStore = defineStore("sync", () => {
     finally { cacheStore.isFetchingData = false; }
   };
 
+  // ---- 增量合并：批量拉取变化的 widget ----
+  const fetchAndMergeWidgets = async (changedIds: string[], deletedIds: string[]) => {
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (auth.token) headers["Authorization"] = `Bearer ${auth.token}`;
+      const res = await fetch("/api/widgets/batch", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ids: changedIds }),
+      });
+      if (!res.ok) throw new Error(`Batch fetch failed: ${res.status}`);
+      const result = await res.json() as { success?: boolean; widgets?: any[] };
+      if (!result.success || !Array.isArray(result.widgets)) throw new Error("Invalid batch response");
+
+      isApplyingServerData = true;
+      // 合并变化的 widget
+      for (const sw of result.widgets) {
+        const idx = widgetsStore.widgets.findIndex((x: any) => x.id === sw.id);
+        if (idx >= 0) {
+          widgetsStore.widgets[idx] = { ...widgetsStore.widgets[idx], ...sw };
+        } else {
+          widgetsStore.widgets.push(sw);
+        }
+      }
+      // 删除已移除的 widget
+      if (deletedIds.length > 0) {
+        const delSet = new Set(deletedIds);
+        widgetsStore.widgets = widgetsStore.widgets.filter((w: any) => !delSet.has(w.id));
+      }
+      isApplyingServerData = false;
+      cacheStore.saveToCache(buildCacheSnapshot({}));
+    } catch (e) {
+      // 增量失败，降级全量
+      console.warn("[DeltaPush] Incremental failed, fallback to full sync", e);
+      isApplyingServerData = false;
+      await fetchAndProcessData();
+    }
+  };
+
   // ---- WebSocket connect watch ----
   watch(status, async (newStatus) => {
     if (newStatus === "OPEN") {
@@ -371,6 +427,7 @@ export const useSyncStore = defineStore("sync", () => {
       if (auth.isLogged && auth.token) wsSend({ type: "auth", payload: { token: auth.token } });
       networkStore.startNetworkHeartbeat(wsSend);
       startWsHealthCheck();
+      startVersionCheck();
       if (isFirstConnect) return;
       try {
         const serverVersion = await fetchVersionOnly();
@@ -394,6 +451,7 @@ export const useSyncStore = defineStore("sync", () => {
     } else if (newStatus === "CLOSED") {
       if (newStatus === "CLOSED") { console.log("WS disconnected"); wsContinuousFailures++; }
       networkStore.stopNetworkHeartbeat();
+      stopVersionCheck();
       // Only trigger HTTP polling fallback when authenticated; guests use HTTP-only mode
       if (auth.isLogged && wsContinuousFailures >= WS_FALLBACK_THRESHOLD && !isHttpPollingActive) startHttpPolling();
     }
@@ -429,7 +487,18 @@ export const useSyncStore = defineStore("sync", () => {
           if (sv > pendingServerVersion.value) pendingServerVersion.value = sv; return;
         }
         dataVersion.value = sv;
-        fetchAndProcessData();
+
+        const structureChanged = p.structureChanged === true;
+        const changedWidgets = (p.changedWidgets || []) as string[];
+        const deletedWidgets = (p.deletedWidgets || []) as string[];
+
+        if (!structureChanged && changedWidgets.length > 0 && changedWidgets.length <= 5) {
+          // 增量路径：批量拉取变化的 widget
+          fetchAndMergeWidgets(changedWidgets, deletedWidgets);
+        } else {
+          // 全量路径（含向后兼容：老后端无 changedWidgets 字段时走此分支）
+          fetchAndProcessData();
+        }
         break;
       }
       case "network_heartbeat": networkStore.lastNetworkHeartbeatAt = Date.now(); networkStore.isNetworkSyncActive = true; break;
@@ -438,11 +507,71 @@ export const useSyncStore = defineStore("sync", () => {
     }
   });
 
+  // ---- BroadcastChannel: 同浏览器多 Tab 即时同步 ----
+  let bc: BroadcastChannel | null = null;
+  let bcInited = false;
+
+  const initBroadcastChannel = () => {
+    if (bcInited || typeof BroadcastChannel === "undefined") return;
+    bcInited = true;
+    bc = new BroadcastChannel("flatnas-sync");
+    bc.onmessage = (event) => {
+      const msg = event.data;
+      if (!msg?.type) return;
+      switch (msg.type) {
+        case "saved": {
+          const sv = normalizeVersion(msg.version);
+          if (sv > dataVersion.value && !isApplyingServerData) {
+            console.log(`[BC] Tab saved v${sv}, syncing...`);
+            dataVersion.value = sv;
+            // jitter 防止多 Tab 同时请求（惊群效应）
+            setTimeout(() => fetchAndProcessData(), Math.random() * 500);
+          }
+          break;
+        }
+        case "logout": {
+          if (auth.isLogged) doLogout();
+          break;
+        }
+      }
+    };
+    window.addEventListener("beforeunload", () => { bc?.close(); });
+  };
+
+  const broadcastSaved = (version: number) => {
+    bc?.postMessage({ type: "saved", version });
+  };
+
+  // ---- 心跳版本校验（WS 在线时的安全网） ----
+  let versionCheckTimer: ReturnType<typeof setInterval> | null = null;
+  const VERSION_CHECK_INTERVAL = 60000; // 60s
+
+  const startVersionCheck = () => {
+    if (versionCheckTimer) return;
+    versionCheckTimer = setInterval(async () => {
+      if (status.value !== "OPEN" || !auth.isLogged) return;
+      if (document.visibilityState === "hidden") return;
+      if (saveStore.isSaving || isApplyingServerData) return;
+      try {
+        const serverVer = await fetchVersionOnly();
+        if (serverVer > dataVersion.value) {
+          console.log(`[VersionCheck] Server v${serverVer} > local v${dataVersion.value}, syncing...`);
+          await fetchAndProcessData();
+        }
+      } catch { /* ignore */ }
+    }, VERSION_CHECK_INTERVAL);
+  };
+
+  const stopVersionCheck = () => {
+    if (versionCheckTimer) { clearInterval(versionCheckTimer); versionCheckTimer = null; }
+  };
+
   // ---- init ----
   const init = async () => {
     if (isInitializing) return;
     isInitializing = true;
     initCompleted.value = false;
+    initBroadcastChannel();
     // Only open WS when authenticated; avoid meaningless guest reconnect loops
     if (typeof window !== "undefined" && auth.isLogged && status.value !== "OPEN") wsOpen();
     cacheStore.hasServerSnapshot = false;
@@ -481,9 +610,42 @@ export const useSyncStore = defineStore("sync", () => {
         wsMessageHandlerBound = true;
         if (typeof document !== "undefined" && !visibilityVersionCheckBound) {
           visibilityVersionCheckBound = true;
+
+          const onWakeUp = () => {
+            if (!auth.isLogged) return;
+            // 延迟 500ms 给移动端网络层恢复时间
+            setTimeout(async () => {
+              if (!auth.isLogged) return;
+              try {
+                const serverVer = await fetchVersionOnly();
+                if (serverVer > dataVersion.value) {
+                  console.log(`[WakeUp] Server v${serverVer} > local v${dataVersion.value}, syncing...`);
+                  dataVersion.value = serverVer;
+                  await fetchAndProcessData();
+                }
+              } catch { /* ignore */ }
+              // WS 断了就重连
+              if (status.value !== "OPEN" && status.value !== "CONNECTING") {
+                console.log("[WakeUp] WS not connected, reopening...");
+                wsOpen();
+              }
+            }, 500);
+          };
+
+          // 自动检测：触屏设备使用更激进的唤醒策略
+          const isTouchDevice = typeof window !== "undefined"
+            && window.matchMedia("(pointer: coarse)").matches;
+
           document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState === "visible") saveStore.checkVersionAfterActivation(auth.isLogged, dataVersion.value, fetchVersionOnly);
+            if (document.visibilityState === "visible") onWakeUp();
           });
+
+          if (isTouchDevice) {
+            window.addEventListener("pageshow", (e) => {
+              if ((e as PageTransitionEvent).persisted) onWakeUp();
+            });
+            window.addEventListener("focus", onWakeUp);
+          }
         }
       }
     }
@@ -496,6 +658,8 @@ export const useSyncStore = defineStore("sync", () => {
     networkStore.stopNetworkHeartbeat();
     stopHttpPolling();
     stopPingCheck();
+    stopVersionCheck();
+    bc?.postMessage({ type: "logout" });
     auth.token = "";
     auth.username = "";
     localStorage.removeItem("flat-nas-token");
@@ -507,11 +671,14 @@ export const useSyncStore = defineStore("sync", () => {
   // ---- saveData wrapper ----
   const saveData = async (immediate = false, force = false) => {
     const result = await saveStore.saveData(immediate, force, dataVersion, rssFeeds, rssCategories, fetchAndProcessData);
-    if (result === "saved" && pendingServerVersion.value > 0 && pendingServerVersion.value > dataVersion.value) {
-      const psv = pendingServerVersion.value;
-      pendingServerVersion.value = 0;
-      dataVersion.value = psv;
-      await fetchAndProcessData();
+    if (result === "saved") {
+      broadcastSaved(dataVersion.value);
+      if (pendingServerVersion.value > 0 && pendingServerVersion.value > dataVersion.value) {
+        const psv = pendingServerVersion.value;
+        pendingServerVersion.value = 0;
+        dataVersion.value = psv;
+        await fetchAndProcessData();
+      }
     }
     return result;
   };

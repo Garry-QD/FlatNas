@@ -25,17 +25,18 @@ const isHttpPollingActive = computed(() => {
 const networkMode = computed(() => {
   if (store.offlineQueueCount > 0) return "offline";
   if (store.isConnected) return "online";
-  // WS connecting or established: not truly offline
   const wsStatus = store.status;
   const wsConnectingOrOpen = wsStatus === "CONNECTING" || wsStatus === "OPEN";
-  if (isHttpPollingActive.value || !store.isLogged) return "degraded";
+  if (isHttpPollingActive.value) return "http-sync";
+  if (!store.isLogged) return "guest";
   if (wsConnectingOrOpen) return "degraded";
-  // Authed, WS down and no HTTP polling: truly offline
   return "offline";
 });
 
 const statusClass = computed(() => ({
   "mode--online": networkMode.value === "online",
+  "mode--http-sync": networkMode.value === "http-sync",
+  "mode--guest": networkMode.value === "guest",
   "mode--degraded": networkMode.value === "degraded",
   "mode--offline": networkMode.value === "offline",
 }));
@@ -45,8 +46,9 @@ const statusLabel = computed(() => {
   if (store.isConnected) return "在线";
   const wsStatus = store.status;
   const wsConnectingOrOpen = wsStatus === "CONNECTING" || wsStatus === "OPEN";
-  if (isHttpPollingActive.value || !store.isLogged) return "降级在线";
-  if (wsConnectingOrOpen) return "降级在线";
+  if (isHttpPollingActive.value) return "HTTP 同步";
+  if (!store.isLogged) return "访客";
+  if (wsConnectingOrOpen) return "连接中";
   return "离线";
 });
 
@@ -55,7 +57,8 @@ const statusTooltip = computed(() => {
   if (store.isConnected) return "WebSocket 已连接";
   const wsStatus = store.status;
   const wsConnectingOrOpen = wsStatus === "CONNECTING" || wsStatus === "OPEN";
-  if (isHttpPollingActive.value || !store.isLogged) return "WebSocket 断开，HTTP 通道可用";
+  if (isHttpPollingActive.value) return "WebSocket 不可用，HTTP 轮询同步中（15s 间隔）";
+  if (!store.isLogged) return "访客模式 · 数据已加载";
   if (wsConnectingOrOpen) return "WebSocket 连接中...";
   return "网络不可用";
 });
@@ -115,6 +118,27 @@ const statusTooltip = computed(() => {
   background: #f59e0b;
   box-shadow: 0 0 6px rgba(245, 158, 11, 0.5);
   animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+/* HTTP Sync - Blue (working but non-optimal) */
+.mode--http-sync {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+.mode--http-sync .indicator-dot {
+  background: #3b82f6;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.5);
+}
+
+/* Guest - Gray/Neutral */
+.mode--guest {
+  background: rgba(156, 163, 175, 0.15);
+  color: #6b7280;
+  border: 1px solid rgba(156, 163, 175, 0.3);
+}
+.mode--guest .indicator-dot {
+  background: #9ca3af;
 }
 
 /* Offline - Red */

@@ -186,6 +186,7 @@ export interface AppConfig {
   mouseHoverEffect?: "scale" | "lift" | "glow" | "none" | string;
   autoUltrawide?: boolean;
   hideHeaderOnMobile?: boolean;
+  locale?: string;
 }
 
 export interface SystemConfig {
