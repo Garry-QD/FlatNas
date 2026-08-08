@@ -1034,8 +1034,6 @@ const submit = async () => {
     >
       <div
         class="bg-white w-full rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[500px]"
-        @mousedown.stop
-        @mouseup.stop
       >
         <div class="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
           <h3 class="font-bold text-gray-700">裁剪图标</h3>
@@ -1051,6 +1049,7 @@ const submit = async () => {
             :autoCropWidth="216"
             :autoCropHeight="216"
             :fixed="true"
+            :can-move="true"
             :fixedNumber="[1, 1]"
             :centerBox="true"
             outputType="png"

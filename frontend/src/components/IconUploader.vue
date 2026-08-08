@@ -165,6 +165,7 @@ const confirmCrop = () => {
             :autoCropWidth="216"
             :autoCropHeight="216"
             :fixed="true"
+            :can-move="true"
             :fixedNumber="[1, 1]"
             :centerBox="true"
             outputType="png"
